@@ -9,6 +9,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RoslynToRdf.Cli", "src\Rosl
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RoslynToRdf.Tests", "tests\RoslynToRdf.Tests\RoslynToRdf.Tests.csproj", "{C3D4E5F6-A7B8-9012-CDEF-123456789012}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RoslynToRdf.Tests", "tests\RoslynToRdf.Tests\RoslynToRdf.Tests.csproj", "{E8D15633-3A4E-4C6B-9408-97A0B999B46F}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Test", "Test", "{E771B334-677D-460D-999B-0B3A8400CA55}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -27,5 +31,12 @@ Global
 		{C3D4E5F6-A7B8-9012-CDEF-123456789012}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C3D4E5F6-A7B8-9012-CDEF-123456789012}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C3D4E5F6-A7B8-9012-CDEF-123456789012}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E8D15633-3A4E-4C6B-9408-97A0B999B46F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E8D15633-3A4E-4C6B-9408-97A0B999B46F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E8D15633-3A4E-4C6B-9408-97A0B999B46F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E8D15633-3A4E-4C6B-9408-97A0B999B46F}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{E8D15633-3A4E-4C6B-9408-97A0B999B46F} = {E771B334-677D-460D-999B-0B3A8400CA55}
 	EndGlobalSection
 EndGlobal
