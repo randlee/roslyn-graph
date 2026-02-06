@@ -119,11 +119,11 @@ fn parameter_iri_ordinals() {
     let method_iri = m.member_iri(&type_iri, "run", "");
     assert_eq!(
         m.parameter_iri(&method_iri, 0),
-        format!("{}/param/0", method_iri)
+        format!("{method_iri}/param/0")
     );
     assert_eq!(
         m.parameter_iri(&method_iri, 3),
-        format!("{}/param/3", method_iri)
+        format!("{method_iri}/param/3")
     );
 }
 
@@ -135,11 +135,11 @@ fn type_parameter_iri() {
     let type_iri = m.type_iri("mycrate", "0.1.0", "Container");
     assert_eq!(
         m.type_parameter_iri(&type_iri, 0),
-        format!("{}/typeparam/0", type_iri)
+        format!("{type_iri}/typeparam/0")
     );
     assert_eq!(
         m.type_parameter_iri(&type_iri, 2),
-        format!("{}/typeparam/2", type_iri)
+        format!("{type_iri}/typeparam/2")
     );
 }
 
