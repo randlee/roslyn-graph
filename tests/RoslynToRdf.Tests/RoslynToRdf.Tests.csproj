@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\RoslynToRdf.Core\RoslynToRdf.Core.csproj" />
+    <ProjectReference Include="..\..\src\RoslynToRdf.Cli\RoslynToRdf.Cli.csproj" />
   </ItemGroup>
 
 </Project>
