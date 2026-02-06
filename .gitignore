@@ -45,3 +45,4 @@ coverage-*/
 
 # Rust build artifacts
 crates/*/target/
+crates/rust2rdf/tests/fixture-crate/target/

@@ -1,20 +1,74 @@
 //! Serde model for rustdoc JSON output format.
 //!
-//! These types match the rustdoc JSON schema. We only model fields we need
-//! for extraction. Unknown fields are silently ignored via serde defaults.
+//! These types match the rustdoc JSON schema (format version 35+).
+//! We only model fields we need for extraction. Unknown fields are silently
+//! ignored via serde defaults.
 //!
 //! Design notes:
 //! - We use `#[serde(default)]` liberally for forward/backward compatibility.
+//! - Enums use externally tagged representation (serde default), matching
+//!   the rustdoc JSON format: `{ "struct": { ... } }`.
 //! - Enums with `#[serde(other)]` place the Unknown variant last (serde requirement).
 //! - We do NOT use `#[serde(deny_unknown_fields)]` -- unknown fields are ignored.
-//! - Aliases handle both old (snake_case) and newer naming conventions.
+//! - The `Id` type accepts both string and integer JSON values for compatibility
+//!   across rustdoc format versions.
 
 use serde::Deserialize;
 use std::collections::HashMap;
 
 /// Newtype for rustdoc item IDs.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
+///
+/// Handles both string IDs (older format versions) and integer IDs (format
+/// version 35+) by using a custom deserializer.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Id(pub String);
+
+impl<'de> Deserialize<'de> for Id {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct IdVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for IdVisitor {
+            type Value = Id;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a string or integer ID")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Id, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(Id(v.to_string()))
+            }
+
+            fn visit_string<E>(self, v: String) -> Result<Id, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(Id(v))
+            }
+
+            fn visit_u64<E>(self, v: u64) -> Result<Id, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(Id(v.to_string()))
+            }
+
+            fn visit_i64<E>(self, v: i64) -> Result<Id, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(Id(v.to_string()))
+            }
+        }
+
+        deserializer.deserialize_any(IdVisitor)
+    }
+}
 
 /// Top-level rustdoc JSON output.
 #[derive(Debug, Deserialize)]
@@ -69,9 +123,9 @@ pub struct Item {
     /// Visibility.
     #[serde(default)]
     pub visibility: Visibility,
-    /// Attributes as strings (e.g., "#[derive(Debug)]").
+    /// Attributes (strings or structured objects depending on format version).
     #[serde(default)]
-    pub attrs: Vec<String>,
+    pub attrs: Vec<serde_json::Value>,
     /// Deprecation information.
     #[serde(default)]
     pub deprecation: Option<Deprecation>,
@@ -160,13 +214,12 @@ pub enum ItemKind {
 
 /// The inner content of an Item -- determines what kind of item it is.
 ///
-/// Uses adjacently tagged representation: `{ "kind": "...", "inner": ... }`.
-/// The `Unknown` variant catches any unrecognized `kind` values for forward
+/// Uses externally tagged representation (serde default): `{ "module": { ... } }`.
+/// The `Unknown` variant catches any unrecognized tag values for forward
 /// compatibility.
 #[derive(Debug, Deserialize, Default)]
-#[serde(tag = "kind", content = "inner")]
+#[serde(rename_all = "snake_case")]
 pub enum ItemEnum {
-    #[serde(alias = "module")]
     Module {
         #[serde(default)]
         items: Vec<Id>,
@@ -174,7 +227,6 @@ pub enum ItemEnum {
         is_stripped: bool,
     },
 
-    #[serde(alias = "struct")]
     Struct {
         #[serde(default)]
         kind: StructKind,
@@ -184,19 +236,17 @@ pub enum ItemEnum {
         impls: Vec<Id>,
     },
 
-    #[serde(alias = "union")]
     Union {
         #[serde(default)]
         generics: Generics,
         #[serde(default)]
         fields: Vec<Id>,
-        #[serde(default)]
-        fields_stripped: bool,
+        #[serde(default, alias = "fields_stripped")]
+        has_stripped_fields: bool,
         #[serde(default)]
         impls: Vec<Id>,
     },
 
-    #[serde(alias = "enum")]
     Enum {
         #[serde(default)]
         generics: Generics,
@@ -208,10 +258,8 @@ pub enum ItemEnum {
         impls: Vec<Id>,
     },
 
-    #[serde(alias = "variant")]
-    Variant(VariantKind),
+    Variant(VariantData),
 
-    #[serde(alias = "function")]
     Function {
         #[serde(default)]
         sig: FunctionSignature,
@@ -219,9 +267,10 @@ pub enum ItemEnum {
         generics: Generics,
         #[serde(default)]
         has_body: bool,
+        #[serde(default)]
+        header: FunctionHeader,
     },
 
-    #[serde(alias = "trait")]
     Trait {
         #[serde(default)]
         generics: Generics,
@@ -235,11 +284,10 @@ pub enum ItemEnum {
         is_auto: bool,
         #[serde(default)]
         is_unsafe: bool,
-        #[serde(default)]
-        is_object_safe: bool,
+        #[serde(default, alias = "is_object_safe")]
+        is_dyn_compatible: bool,
     },
 
-    #[serde(alias = "impl")]
     Impl {
         #[serde(default)]
         generics: Generics,
@@ -260,7 +308,6 @@ pub enum ItemEnum {
         blanket_impl: Option<Type>,
     },
 
-    #[serde(alias = "use")]
     Use {
         #[serde(default)]
         source: String,
@@ -272,7 +319,6 @@ pub enum ItemEnum {
         is_glob: bool,
     },
 
-    #[serde(alias = "type_alias")]
     TypeAlias {
         #[serde(default)]
         generics: Generics,
@@ -281,32 +327,29 @@ pub enum ItemEnum {
         type_: Option<Type>,
     },
 
-    #[serde(alias = "constant")]
     Constant {
         #[serde(rename = "type")]
         type_: Type,
         #[serde(rename = "const")]
         #[serde(default)]
-        value: Option<String>,
+        const_: Option<ConstExpr>,
     },
 
-    #[serde(alias = "static")]
     Static {
         #[serde(rename = "type")]
         type_: Type,
         #[serde(default)]
         is_mutable: bool,
         #[serde(default)]
-        value: Option<String>,
+        is_unsafe: bool,
+        #[serde(default)]
+        expr: Option<String>,
     },
 
-    #[serde(alias = "struct_field")]
     StructField(Type),
 
-    #[serde(alias = "macro")]
     Macro(String),
 
-    #[serde(alias = "assoc_const")]
     AssocConst {
         #[serde(rename = "type")]
         type_: Type,
@@ -314,7 +357,6 @@ pub enum ItemEnum {
         value: Option<String>,
     },
 
-    #[serde(alias = "assoc_type")]
     AssocType {
         #[serde(default)]
         generics: Generics,
@@ -331,44 +373,80 @@ pub enum ItemEnum {
     Unknown,
 }
 
+/// A constant expression with value and type information.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct ConstExpr {
+    #[serde(default)]
+    pub expr: Option<String>,
+    #[serde(default)]
+    pub value: Option<String>,
+    #[serde(default)]
+    pub is_literal: bool,
+}
+
 /// Struct layout kind.
+///
+/// Handles three formats:
+/// - `"unit"` (string)
+/// - `{ "tuple": [...] }` (externally tagged)
+/// - `{ "plain": { "fields": [...], "has_stripped_fields": false } }` (externally tagged)
 #[derive(Debug, Deserialize, Default)]
-#[serde(tag = "kind", content = "fields")]
+#[serde(rename_all = "snake_case")]
 pub enum StructKind {
     #[default]
-    #[serde(alias = "unit")]
     Unit,
-    #[serde(alias = "tuple")]
     Tuple(Vec<Option<Id>>),
-    #[serde(alias = "plain")]
     Plain {
         fields: Vec<Id>,
-        #[serde(default)]
-        fields_stripped: bool,
+        #[serde(default, alias = "fields_stripped")]
+        has_stripped_fields: bool,
     },
 }
 
-/// Enum variant kind.
+/// Variant data wrapper (contains kind and optional discriminant).
 #[derive(Debug, Deserialize, Default)]
-#[serde(tag = "kind")]
+pub struct VariantData {
+    #[serde(default)]
+    pub kind: VariantKind,
+    #[serde(default)]
+    pub discriminant: Option<Discriminant>,
+}
+
+/// Discriminant value for enum variants.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Discriminant {
+    #[serde(default)]
+    pub expr: Option<String>,
+    #[serde(default)]
+    pub value: Option<String>,
+}
+
+/// Enum variant kind.
+///
+/// Handles three formats:
+/// - `"plain"` (string)
+/// - `{ "tuple": [...] }` (externally tagged)
+/// - `{ "struct": { "fields": [...], "has_stripped_fields": false } }` (externally tagged)
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
 pub enum VariantKind {
     #[default]
-    #[serde(alias = "plain")]
     Plain,
-    #[serde(alias = "tuple")]
     Tuple(Vec<Option<Id>>),
-    #[serde(alias = "struct")]
     Struct {
         fields: Vec<Id>,
-        #[serde(default)]
-        fields_stripped: bool,
+        #[serde(default, alias = "fields_stripped")]
+        has_stripped_fields: bool,
     },
 }
 
 /// A resolved path reference to another item.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct ResolvedPath {
-    pub name: String,
+    /// The path string (e.g., "Vec", "std::io::Error").
+    /// Field is named `path` in newer format versions, `name` in older ones.
+    #[serde(alias = "name")]
+    pub path: String,
     #[serde(default)]
     pub id: Option<Id>,
     #[serde(default)]
@@ -377,31 +455,25 @@ pub struct ResolvedPath {
 
 /// A type reference in the rustdoc JSON.
 ///
-/// Uses adjacently tagged representation: `{ "kind": "...", "inner": ... }`.
+/// Uses externally tagged representation: `{ "primitive": "i32" }`.
 /// The `Unknown` variant catches any unrecognized type kinds.
 #[derive(Debug, Clone, Deserialize, Default)]
-#[serde(tag = "kind", content = "inner")]
+#[serde(rename_all = "snake_case")]
 pub enum Type {
-    #[serde(alias = "resolved_path")]
     ResolvedPath(ResolvedPath),
 
-    #[serde(alias = "primitive")]
     Primitive(String),
 
-    #[serde(alias = "tuple")]
     Tuple(Vec<Type>),
 
-    #[serde(alias = "slice")]
     Slice(Box<Type>),
 
-    #[serde(alias = "array")]
     Array {
         #[serde(rename = "type")]
         type_: Box<Type>,
         len: String,
     },
 
-    #[serde(alias = "raw_pointer")]
     RawPointer {
         #[serde(default)]
         is_mutable: bool,
@@ -409,7 +481,6 @@ pub enum Type {
         type_: Box<Type>,
     },
 
-    #[serde(alias = "borrowed_ref")]
     BorrowedRef {
         #[serde(default)]
         lifetime: Option<String>,
@@ -419,10 +490,8 @@ pub enum Type {
         type_: Box<Type>,
     },
 
-    #[serde(alias = "function_pointer")]
     FunctionPointer(Box<FunctionPointer>),
 
-    #[serde(alias = "qualified_path")]
     QualifiedPath {
         name: String,
         #[serde(default)]
@@ -433,16 +502,12 @@ pub enum Type {
         trait_: Option<ResolvedPath>,
     },
 
-    #[serde(alias = "impl_trait")]
     ImplTrait(Vec<GenericBound>),
 
-    #[serde(alias = "dyn_trait")]
     DynTrait(DynTrait),
 
-    #[serde(alias = "infer")]
     Infer,
 
-    #[serde(alias = "generic")]
     Generic(String),
 
     /// Catch-all for unrecognized type kinds (forward compatibility).
@@ -507,15 +572,13 @@ pub struct GenericParamDef {
 
 /// Kind of generic parameter.
 #[derive(Debug, Clone, Deserialize, Default)]
-#[serde(tag = "kind", content = "inner")]
+#[serde(rename_all = "snake_case")]
 pub enum GenericParamDefKind {
-    #[serde(alias = "lifetime")]
     Lifetime {
         #[serde(default)]
         outlives: Vec<String>,
     },
 
-    #[serde(alias = "type")]
     Type {
         #[serde(default)]
         bounds: Vec<GenericBound>,
@@ -525,7 +588,6 @@ pub enum GenericParamDefKind {
         is_synthetic: bool,
     },
 
-    #[serde(alias = "const")]
     Const {
         #[serde(rename = "type")]
         type_: Type,
@@ -541,9 +603,8 @@ pub enum GenericParamDefKind {
 
 /// A generic bound on a type parameter.
 #[derive(Debug, Clone, Deserialize)]
-#[serde(tag = "kind", content = "inner")]
+#[serde(rename_all = "snake_case")]
 pub enum GenericBound {
-    #[serde(alias = "trait_bound")]
     TraitBound {
         #[serde(rename = "trait")]
         trait_: ResolvedPath,
@@ -553,10 +614,8 @@ pub enum GenericBound {
         generic_params: Vec<GenericParamDef>,
     },
 
-    #[serde(alias = "outlives")]
     Outlives(String),
 
-    #[serde(alias = "use")]
     Use(Vec<String>),
 }
 
@@ -572,9 +631,8 @@ pub enum TraitBoundModifier {
 
 /// Where predicate.
 #[derive(Debug, Clone, Deserialize)]
-#[serde(tag = "kind", content = "inner")]
+#[serde(rename_all = "snake_case")]
 pub enum WherePredicate {
-    #[serde(alias = "bound_predicate")]
     BoundPredicate {
         #[serde(rename = "type")]
         type_: Type,
@@ -584,22 +642,19 @@ pub enum WherePredicate {
         generic_params: Vec<GenericParamDef>,
     },
 
-    #[serde(alias = "lifetime_predicate")]
     LifetimePredicate {
         lifetime: String,
         #[serde(default)]
         outlives: Vec<String>,
     },
 
-    #[serde(alias = "eq_predicate")]
     EqPredicate { lhs: Type, rhs: Type },
 }
 
 /// Generic arguments.
 #[derive(Debug, Clone, Deserialize)]
-#[serde(tag = "kind", content = "inner")]
+#[serde(rename_all = "snake_case")]
 pub enum GenericArgs {
-    #[serde(alias = "angle_bracketed")]
     AngleBracketed {
         #[serde(default)]
         args: Vec<GenericArg>,
@@ -607,7 +662,6 @@ pub enum GenericArgs {
         constraints: Vec<TypeBinding>,
     },
 
-    #[serde(alias = "parenthesized")]
     Parenthesized {
         #[serde(default)]
         inputs: Vec<Type>,
@@ -618,18 +672,14 @@ pub enum GenericArgs {
 
 /// A single generic argument.
 #[derive(Debug, Clone, Deserialize)]
-#[serde(tag = "kind", content = "inner")]
+#[serde(rename_all = "snake_case")]
 pub enum GenericArg {
-    #[serde(alias = "lifetime")]
     Lifetime(String),
 
-    #[serde(alias = "type")]
     Type(Type),
 
-    #[serde(alias = "const")]
     Const(ConstantValue),
 
-    #[serde(alias = "infer")]
     Infer,
 }
 
@@ -654,12 +704,10 @@ pub struct TypeBinding {
 
 /// Kind of type binding.
 #[derive(Debug, Clone, Deserialize, Default)]
-#[serde(tag = "kind", content = "inner")]
+#[serde(rename_all = "snake_case")]
 pub enum TypeBindingKind {
-    #[serde(alias = "equality")]
     Equality(Type),
 
-    #[serde(alias = "constraint")]
     Constraint(Vec<GenericBound>),
 
     /// Catch-all for unrecognized binding kinds.
