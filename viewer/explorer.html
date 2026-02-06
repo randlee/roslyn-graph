@@ -792,8 +792,9 @@
                         if (base && base.name) {
                             return `<div class="detail-item">${base.name}</div>`;
                         } else {
-                            const typeName = getTypeName(iri);
-                            return `<div class="detail-item" style="color: #888;">${typeName} <span style="font-size: 0.85em;">(external)</span></div>`;
+                            const fullTypeName = getTypeName(iri);
+                            const simpleTypeName = getSimpleTypeName(fullTypeName);
+                            return `<div class="detail-item" style="color: #888;" title="${escapeHtml(fullTypeName)}">${simpleTypeName} <span style="font-size: 0.85em;">(external)</span></div>`;
                         }
                     }).join('')}
                 </div>`;
@@ -807,8 +808,9 @@
                         if (iface && iface.name) {
                             return `<div class="detail-item">${iface.name}</div>`;
                         } else {
-                            const typeName = getTypeName(iri);
-                            return `<div class="detail-item" style="color: #888;">${typeName} <span style="font-size: 0.85em;">(external)</span></div>`;
+                            const fullTypeName = getTypeName(iri);
+                            const simpleTypeName = getSimpleTypeName(fullTypeName);
+                            return `<div class="detail-item" style="color: #888;" title="${escapeHtml(fullTypeName)}">${simpleTypeName} <span style="font-size: 0.85em;">(external)</span></div>`;
                         }
                     }).join('')}
                 </div>`;
@@ -923,15 +925,104 @@
             return div.innerHTML;
         }
 
+        function formatGenericTypeName(typeName) {
+            if (!typeName) return '';
+
+            // Convert .NET generic syntax to C# generic syntax
+            // Pattern: TypeName`N[TypeArg1,TypeArg2,...] -> TypeName<TypeArg1,TypeArg2,...>
+
+            // Handle nested generics recursively
+            let result = typeName;
+
+            // Replace backtick+digit pattern (arity marker) followed by brackets
+            // Example: IEquatable`1[Temperature] -> IEquatable<Temperature>
+            result = result.replace(/`\d+\[/g, '<');
+
+            // Replace closing bracket with closing angle bracket
+            // We need to handle nested generics, so we'll do a simple replacement
+            // This works for most cases but may need refinement for deeply nested generics
+            let depth = 0;
+            let chars = result.split('');
+            for (let i = 0; i < chars.length; i++) {
+                if (chars[i] === '<') depth++;
+                else if (chars[i] === '[' && depth > 0) chars[i] = '<';
+                else if (chars[i] === ']' && depth > 0) {
+                    chars[i] = '>';
+                    depth--;
+                }
+            }
+            result = chars.join('');
+
+            return result;
+        }
+
         function getTypeName(typeIri) {
             if (!typeIri) return '';
             const type = graphData.types.get(typeIri);
             if (type && type.name) return type.name;
             // Extract simple name from IRI for external types
             const parts = typeIri.split('/');
-            const name = parts[parts.length - 1] || typeIri;
+            let name = parts[parts.length - 1] || typeIri;
             // Decode URL-encoded characters
-            return decodeURIComponent(name);
+            name = decodeURIComponent(name);
+            // Format generic type syntax
+            return formatGenericTypeName(name);
+        }
+
+        function getSimpleTypeName(fullTypeName) {
+            if (!fullTypeName) return '';
+            // Extract the simple name (last part after final dot)
+            // But preserve the generic parameters
+            // Example: System.IEquatable<Temperature> -> IEquatable<Temperature>
+
+            // Find the last dot before any generic bracket
+            const genericStart = fullTypeName.indexOf('<');
+            let namespacePart, genericPart = '';
+
+            if (genericStart !== -1) {
+                namespacePart = fullTypeName.substring(0, genericStart);
+                genericPart = fullTypeName.substring(genericStart);
+            } else {
+                namespacePart = fullTypeName;
+            }
+
+            // Get the simple name
+            const lastDotIndex = namespacePart.lastIndexOf('.');
+            const simpleName = lastDotIndex !== -1 ? namespacePart.substring(lastDotIndex + 1) : namespacePart;
+
+            // Recursively simplify generic parameters
+            if (genericPart) {
+                // Extract content inside <>
+                const innerContent = genericPart.substring(1, genericPart.length - 1);
+                // Split by comma but respect nested generics
+                const params = splitGenericParams(innerContent);
+                const simplifiedParams = params.map(p => getSimpleTypeName(p.trim()));
+                return simpleName + '<' + simplifiedParams.join(',') + '>';
+            }
+
+            return simpleName;
+        }
+
+        function splitGenericParams(str) {
+            // Split by comma but respect nested generics
+            const params = [];
+            let current = '';
+            let depth = 0;
+
+            for (let i = 0; i < str.length; i++) {
+                const char = str[i];
+                if (char === '<') depth++;
+                else if (char === '>') depth--;
+                else if (char === ',' && depth === 0) {
+                    params.push(current);
+                    current = '';
+                    continue;
+                }
+                current += char;
+            }
+            if (current) params.push(current);
+
+            return params;
         }
 
         function isCompilerGenerated(typeName) {
