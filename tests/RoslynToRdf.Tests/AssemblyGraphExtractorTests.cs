@@ -1316,4 +1316,153 @@ public class Container
     }
 
     #endregion
+
+    #region Compiler Generated
+
+    [Fact]
+    public void Extract_CompilerGeneratedMembers_ExcludedByDefault()
+    {
+        var source = @"
+namespace Sample;
+public class Container
+{
+    public int AutoProp { get; set; }
+}
+";
+
+        var compilation = TestUtilities.CreateCompilation(source, "CompilerGenOff");
+        var emitter = new TestEmitter();
+        var options = new ExtractionOptions {
+            BaseUri = "http://test.example/",
+            IncludeCompilerGenerated = false,
+            IncludePrivate = true
+        };
+
+        var extractor = new AssemblyGraphExtractor(emitter, options);
+        extractor.Extract(compilation, compilation.Assembly);
+
+        var minter = new IriMinter("http://test.example/");
+        var container = compilation.GetTypeByMetadataName("Sample.Container")!;
+        var backingField = container.GetMembers().OfType<IFieldSymbol>()
+            .FirstOrDefault(f => f.IsImplicitlyDeclared);
+
+        Assert.NotNull(backingField);
+        var fieldIri = minter.Member(backingField);
+        var rdfType = DotNetOntology.Rdf + "type";
+
+        Assert.DoesNotContain(emitter.Triples, t => t.Subject == fieldIri && t.Predicate == rdfType);
+    }
+
+    [Fact]
+    public void Extract_CompilerGeneratedMembers_IncludedWhenEnabled()
+    {
+        var source = @"
+namespace Sample;
+public class Container
+{
+    public int AutoProp { get; set; }
+}
+";
+
+        var compilation = TestUtilities.CreateCompilation(source, "CompilerGenOn");
+        var emitter = new TestEmitter();
+        var options = new ExtractionOptions {
+            BaseUri = "http://test.example/",
+            IncludeCompilerGenerated = true,
+            IncludePrivate = true
+        };
+
+        var extractor = new AssemblyGraphExtractor(emitter, options);
+        extractor.Extract(compilation, compilation.Assembly);
+
+        var minter = new IriMinter("http://test.example/");
+        var container = compilation.GetTypeByMetadataName("Sample.Container")!;
+        var backingField = container.GetMembers().OfType<IFieldSymbol>()
+            .FirstOrDefault(f => f.IsImplicitlyDeclared);
+
+        Assert.NotNull(backingField);
+        var fieldIri = minter.Member(backingField);
+        var rdfType = DotNetOntology.Rdf + "type";
+
+        Assert.Contains(emitter.Triples, t => t.Subject == fieldIri && t.Predicate == rdfType);
+    }
+
+    #endregion
+
+    #region Pointer Types
+
+    [Fact]
+    public void Extract_PointerType_EmitsPointerElementType()
+    {
+        var source = @"
+namespace Sample;
+public unsafe class Container
+{
+    public int* Ptr;
+}
+";
+
+        var compilation = TestUtilities.CreateCompilation(source, "PointerType", allowUnsafe: true);
+        var emitter = new TestEmitter();
+        var options = new ExtractionOptions { BaseUri = "http://test.example/" };
+
+        var extractor = new AssemblyGraphExtractor(emitter, options);
+        extractor.Extract(compilation, compilation.Assembly);
+
+        var minter = new IriMinter("http://test.example/");
+        var container = compilation.GetTypeByMetadataName("Sample.Container")!;
+        var ptrField = container.GetMembers("Ptr").OfType<IFieldSymbol>().Single();
+        var ptrType = ptrField.Type as IPointerTypeSymbol;
+
+        Assert.NotNull(ptrType);
+        var ptrIri = minter.Type(ptrType);
+        var pointerElement = minter.OntologyPrefix + DotNetOntology.TypeRels.PointerElementType;
+        var typeKind = minter.OntologyPrefix + DotNetOntology.TypeProps.TypeKind;
+
+        Assert.Contains(emitter.Triples, t => t.Subject == ptrIri && t.Predicate == pointerElement);
+        Assert.Contains(emitter.Triples, t => t.Subject == ptrIri && t.Predicate == typeKind && t.Object == "Pointer");
+    }
+
+    #endregion
+
+    #region Constructed Type Arguments
+
+    [Fact]
+    public void Extract_ConstructedGenericType_EmitsTypeArgumentNodes()
+    {
+        var source = @"
+using System.Collections.Generic;
+namespace Sample;
+public class Container
+{
+    public Dictionary<string, List<int>> Map { get; set; }
+}
+";
+
+        var compilation = TestUtilities.CreateCompilation(source, "GenericTypeArgs");
+        var emitter = new TestEmitter();
+        var options = new ExtractionOptions {
+            BaseUri = "http://test.example/",
+            IncludeExternalTypes = true
+        };
+
+        var extractor = new AssemblyGraphExtractor(emitter, options);
+        extractor.Extract(compilation, compilation.Assembly);
+
+        var minter = new IriMinter("http://test.example/");
+        var container = compilation.GetTypeByMetadataName("Sample.Container")!;
+        var prop = container.GetMembers("Map").OfType<IPropertySymbol>().Single();
+        var dictType = (INamedTypeSymbol)prop.Type;
+
+        var dictIri = minter.Type(dictType);
+        var typeArgRel = minter.OntologyPrefix + DotNetOntology.TypeRels.TypeArgument;
+        var indexProp = minter.OntologyPrefix + "index";
+
+        var argNodeIri = dictIri + "/typearg/0";
+
+        Assert.Contains(emitter.Triples, t => t.Subject == dictIri && t.Predicate == typeArgRel && t.Object == argNodeIri);
+        Assert.Contains(emitter.Triples, t => t.Subject == argNodeIri && t.Predicate == indexProp && t.Object == "0");
+    }
+
+    #endregion
 }

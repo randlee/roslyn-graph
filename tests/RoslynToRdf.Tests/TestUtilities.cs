@@ -7,7 +7,10 @@ namespace RoslynToRdf.Tests;
 
 internal static class TestUtilities
 {
-    public static CSharpCompilation CreateCompilation(string source, string assemblyName = "TestAssembly")
+    public static CSharpCompilation CreateCompilation(
+        string source,
+        string assemblyName = "TestAssembly",
+        bool allowUnsafe = false)
     {
         var parseOptions = new CSharpParseOptions(documentationMode: DocumentationMode.Diagnose);
         var tree = CSharpSyntaxTree.ParseText(source, parseOptions);
@@ -16,7 +19,7 @@ internal static class TestUtilities
             assemblyName,
             new[] { tree },
             GetDefaultReferences(),
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, allowUnsafe: allowUnsafe));
     }
 
     public static (string assemblyPath, string directory) EmitToTempAssembly(CSharpCompilation compilation)

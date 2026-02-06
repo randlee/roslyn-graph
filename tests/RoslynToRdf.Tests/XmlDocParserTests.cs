@@ -1250,4 +1250,34 @@ public class C
         Assert.Contains(refs, r => r.ToDisplayString() == "Sample.Helper");
         Assert.Contains(refs, r => r.ToDisplayString() == "string");
     }
+
+    [Fact]
+    public void GetSeeAlsoReferences_WithNestedGenericParameters_ReturnsMethod()
+    {
+        var source = @"
+using System.Collections.Generic;
+namespace Sample;
+public class Helper
+{
+    public void Process(Dictionary<string, List<int>> map) { }
+}
+public class C
+{
+    /// <summary>Test</summary>
+    /// <seealso cref=""M:Sample.Helper.Process(System.Collections.Generic.Dictionary{System.String,System.Collections.Generic.List{System.Int32}})"" />
+    public void M() { }
+}
+";
+
+        var compilation = TestUtilities.CreateCompilation(source, "NestedGenericParams");
+        var type = compilation.GetTypeByMetadataName("Sample.C")!;
+        var method = type.GetMembers("M").OfType<IMethodSymbol>().Single();
+
+        var parser = new XmlDocParser(compilation);
+        var refs = parser.GetSeeAlsoReferences(method).ToArray();
+
+        Assert.Single(refs);
+        Assert.Equal(SymbolKind.Method, refs[0].Kind);
+        Assert.Equal("Process", refs[0].Name);
+    }
 }
