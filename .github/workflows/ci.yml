@@ -15,6 +15,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
 jobs:
   test:
     name: Build and Test
@@ -68,4 +73,5 @@ jobs:
           path: ./TestResults/CoverageReport/
 
       - name: Publish coverage summary
+        if: always() && hashFiles('./TestResults/CoverageReport/SummaryGithub.md') != ''
         run: cat ./TestResults/CoverageReport/SummaryGithub.md >> $GITHUB_STEP_SUMMARY
