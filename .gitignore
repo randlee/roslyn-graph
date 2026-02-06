@@ -42,3 +42,6 @@ coverage/
 coverage-*/
 *.trx
 *.coverage
+
+# Rust build artifacts
+crates/*/target/
