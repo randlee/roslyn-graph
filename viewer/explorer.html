@@ -616,8 +616,11 @@
         function buildGraph() {
             const elements = [];
 
-            // Add nodes (only for visible namespaces)
+            // Add nodes (only for visible namespaces, excluding compiler-generated types)
             graphData.types.forEach((type, iri) => {
+                // Filter out compiler-generated types
+                if (isCompilerGenerated(type.name)) return;
+
                 // Show type if it has a name AND (no namespace assigned OR namespace is visible)
                 const shouldShow = type.name && (!type.namespace || visibleNamespaces.has(type.namespace));
                 if (shouldShow) {
@@ -660,8 +663,12 @@
         }
 
         function updateUI() {
+            // Count non-compiler-generated types
+            const nonCompilerTypes = Array.from(graphData.types.values())
+                .filter(type => !isCompilerGenerated(type.name));
+
             // Update stats
-            document.getElementById('type-count').textContent = graphData.types.size;
+            document.getElementById('type-count').textContent = nonCompilerTypes.length;
             document.getElementById('ns-count').textContent = graphData.namespaces.size;
             statsGrid.style.display = 'grid';
 
@@ -678,12 +685,18 @@
                         <button class="icon-btn" id="select-none-btn" data-tooltip="Deselect all namespaces">☐</button>
                     </div>
                 </h2>
-            ` + sorted.map(ns =>
-                `<div class="namespace-item" data-ns="${ns.iri}">
+            ` + sorted.map(ns => {
+                // Count non-compiler-generated types in this namespace
+                const typeCount = ns.types.filter(typeIri => {
+                    const type = graphData.types.get(typeIri);
+                    return type && !isCompilerGenerated(type.name);
+                }).length;
+
+                return `<div class="namespace-item" data-ns="${ns.iri}">
                     <input type="checkbox" class="namespace-checkbox" data-ns="${ns.iri}" checked>
-                    <span class="namespace-label">📁 ${ns.name} <span class="badge">${ns.types.length}</span></span>
-                </div>`
-            ).join('');
+                    <span class="namespace-label">📁 ${ns.name} <span class="badge">${typeCount}</span></span>
+                </div>`;
+            }).join('');
 
             // Add select all/none button listeners
             document.getElementById('select-all-btn')?.addEventListener('click', () => {
@@ -776,7 +789,12 @@
                     <h3>Inherits</h3>
                     ${type.inherits.map(iri => {
                         const base = graphData.types.get(iri);
-                        return `<div class="detail-item">${base ? base.name : 'External'}</div>`;
+                        if (base && base.name) {
+                            return `<div class="detail-item">${base.name}</div>`;
+                        } else {
+                            const typeName = getTypeName(iri);
+                            return `<div class="detail-item" style="color: #888;">${typeName} <span style="font-size: 0.85em;">(external)</span></div>`;
+                        }
                     }).join('')}
                 </div>`;
             }
@@ -786,7 +804,12 @@
                     <h3>Implements</h3>
                     ${type.implements.map(iri => {
                         const iface = graphData.types.get(iri);
-                        return `<div class="detail-item">${iface ? iface.name : 'External'}</div>`;
+                        if (iface && iface.name) {
+                            return `<div class="detail-item">${iface.name}</div>`;
+                        } else {
+                            const typeName = getTypeName(iri);
+                            return `<div class="detail-item" style="color: #888;">${typeName} <span style="font-size: 0.85em;">(external)</span></div>`;
+                        }
                     }).join('')}
                 </div>`;
             }
@@ -904,9 +927,19 @@
             if (!typeIri) return '';
             const type = graphData.types.get(typeIri);
             if (type && type.name) return type.name;
-            // Extract simple name from IRI
+            // Extract simple name from IRI for external types
             const parts = typeIri.split('/');
-            return parts[parts.length - 1] || typeIri;
+            const name = parts[parts.length - 1] || typeIri;
+            // Decode URL-encoded characters
+            return decodeURIComponent(name);
+        }
+
+        function isCompilerGenerated(typeName) {
+            if (!typeName) return false;
+            // Filter out compiler-generated types
+            return typeName === '<Module>' ||
+                   typeName === '<PrivateImplementationDetails>' ||
+                   typeName.startsWith('<>');
         }
 
         function filterTypes(query) {
