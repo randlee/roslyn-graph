@@ -125,7 +125,11 @@ public partial class IriMinter
 
         if (type is ITypeParameterSymbol typeParam)
         {
-            return $"T:{typeParam.Name}";
+            // Include the declaring type or method to make type parameters unique
+            var ownerPart = typeParam.DeclaringType != null
+                ? GetFullMetadataName(typeParam.DeclaringType)
+                : typeParam.DeclaringMethod?.ToDisplayString() ?? "";
+            return $"T:{ownerPart}.{typeParam.Name}";
         }
 
         if (type is not INamedTypeSymbol namedType)
@@ -199,7 +203,17 @@ public partial class IriMinter
             for (int i = 0; i < method.Parameters.Length; i++)
             {
                 if (i > 0) sb.Append(',');
-                sb.Append(GetFullMetadataName(method.Parameters[i].Type));
+
+                // Include ref/out/in modifiers
+                var param = method.Parameters[i];
+                if (param.RefKind == RefKind.Ref)
+                    sb.Append("ref ");
+                else if (param.RefKind == RefKind.Out)
+                    sb.Append("out ");
+                else if (param.RefKind == RefKind.In)
+                    sb.Append("in ");
+
+                sb.Append(GetFullMetadataName(param.Type));
             }
             sb.Append(')');
             return sb.ToString();
