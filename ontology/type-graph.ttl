@@ -1,0 +1,100 @@
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix tg: <http://typegraph.example/ontology/> .
+
+tg: a owl:Ontology ;
+    rdfs:label "Type Graph Ontology" ;
+    rdfs:comment "A language-neutral ontology for representing type information as RDF. Used by both .NET (RoslynToRdf) and Rust (rust2rdf) tools." .
+
+# Classes
+tg:Assembly a rdfs:Class ; rdfs:label "Assembly/Crate" .
+tg:Namespace a rdfs:Class ; rdfs:label "Namespace/Module" .
+tg:Type a rdfs:Class ; rdfs:label "Type" .
+tg:Class a rdfs:Class ; rdfs:subClassOf tg:Type ; rdfs:label "Class" .
+tg:Struct a rdfs:Class ; rdfs:subClassOf tg:Type ; rdfs:label "Struct" .
+tg:Interface a rdfs:Class ; rdfs:subClassOf tg:Type ; rdfs:label "Interface/Trait" .
+tg:Enum a rdfs:Class ; rdfs:subClassOf tg:Type ; rdfs:label "Enum" .
+tg:Delegate a rdfs:Class ; rdfs:subClassOf tg:Type ; rdfs:label "Delegate" .
+tg:Record a rdfs:Class ; rdfs:subClassOf tg:Type ; rdfs:label "Record" .
+tg:Member a rdfs:Class ; rdfs:label "Member" .
+tg:Method a rdfs:Class ; rdfs:subClassOf tg:Member ; rdfs:label "Method" .
+tg:Constructor a rdfs:Class ; rdfs:subClassOf tg:Member ; rdfs:label "Constructor" .
+tg:Property a rdfs:Class ; rdfs:subClassOf tg:Member ; rdfs:label "Property" .
+tg:Field a rdfs:Class ; rdfs:subClassOf tg:Member ; rdfs:label "Field" .
+tg:Event a rdfs:Class ; rdfs:subClassOf tg:Member ; rdfs:label "Event" .
+tg:Parameter a rdfs:Class ; rdfs:label "Parameter" .
+tg:TypeParameter a rdfs:Class ; rdfs:label "TypeParameter" .
+tg:Attribute a rdfs:Class ; rdfs:label "Attribute" .
+
+# Type Properties
+tg:name a rdf:Property ; rdfs:label "name" ; rdfs:range xsd:string .
+tg:fullName a rdf:Property ; rdfs:label "fullName" ; rdfs:range xsd:string .
+tg:typeKind a rdf:Property ; rdfs:label "typeKind" ; rdfs:domain tg:Type ; rdfs:range xsd:string .
+tg:accessibility a rdf:Property ; rdfs:label "accessibility" ; rdfs:range xsd:string .
+tg:isAbstract a rdf:Property ; rdfs:label "isAbstract" ; rdfs:range xsd:boolean .
+tg:isSealed a rdf:Property ; rdfs:label "isSealed" ; rdfs:range xsd:boolean .
+tg:isStatic a rdf:Property ; rdfs:label "isStatic" ; rdfs:range xsd:boolean .
+tg:isGeneric a rdf:Property ; rdfs:label "isGeneric" ; rdfs:range xsd:boolean .
+tg:isValueType a rdf:Property ; rdfs:label "isValueType" ; rdfs:range xsd:boolean .
+tg:isRecord a rdf:Property ; rdfs:label "isRecord" ; rdfs:range xsd:boolean .
+
+# Type Relationships
+tg:definedInAssembly a rdf:Property ; rdfs:label "definedInAssembly" ; rdfs:domain tg:Type ; rdfs:range tg:Assembly .
+tg:inNamespace a rdf:Property ; rdfs:label "inNamespace" ; rdfs:domain tg:Type ; rdfs:range tg:Namespace .
+tg:inherits a rdf:Property ; rdfs:label "inherits" ; rdfs:domain tg:Type ; rdfs:range tg:Type .
+tg:implements a rdf:Property ; rdfs:label "implements" ; rdfs:domain tg:Type ; rdfs:range tg:Interface .
+tg:nestedIn a rdf:Property ; rdfs:label "nestedIn" ; rdfs:domain tg:Type ; rdfs:range tg:Type .
+tg:hasMember a rdf:Property ; rdfs:label "hasMember" ; rdfs:domain tg:Type ; rdfs:range tg:Member .
+tg:hasTypeParameter a rdf:Property ; rdfs:label "hasTypeParameter" ; rdfs:range tg:TypeParameter .
+tg:hasAttribute a rdf:Property ; rdfs:label "hasAttribute" ; rdfs:range tg:Attribute .
+tg:genericDefinition a rdf:Property ; rdfs:label "genericDefinition" ; rdfs:domain tg:Type ; rdfs:range tg:Type .
+tg:typeArgument a rdf:Property ; rdfs:label "typeArgument" ; rdfs:domain tg:Type .
+tg:arrayElementType a rdf:Property ; rdfs:label "arrayElementType" ; rdfs:domain tg:Type ; rdfs:range tg:Type .
+tg:throws a rdf:Property ; rdfs:label "throws" ; rdfs:comment "Exception type from XML docs" ; rdfs:range tg:Type .
+tg:relatedTo a rdf:Property ; rdfs:label "relatedTo" ; rdfs:comment "Related symbol from seealso" .
+
+# Member Properties
+tg:isVirtual a rdf:Property ; rdfs:label "isVirtual" ; rdfs:range xsd:boolean .
+tg:isOverride a rdf:Property ; rdfs:label "isOverride" ; rdfs:range xsd:boolean .
+tg:isAsync a rdf:Property ; rdfs:label "isAsync" ; rdfs:range xsd:boolean .
+tg:isConst a rdf:Property ; rdfs:label "isConst" ; rdfs:range xsd:boolean .
+tg:isReadOnly a rdf:Property ; rdfs:label "isReadOnly" ; rdfs:range xsd:boolean .
+
+# Member Relationships
+tg:memberOf a rdf:Property ; rdfs:label "memberOf" ; rdfs:domain tg:Member ; rdfs:range tg:Type .
+tg:returnType a rdf:Property ; rdfs:label "returnType" ; rdfs:domain tg:Method ; rdfs:range tg:Type .
+tg:propertyType a rdf:Property ; rdfs:label "propertyType" ; rdfs:domain tg:Property ; rdfs:range tg:Type .
+tg:fieldType a rdf:Property ; rdfs:label "fieldType" ; rdfs:domain tg:Field ; rdfs:range tg:Type .
+tg:eventType a rdf:Property ; rdfs:label "eventType" ; rdfs:domain tg:Event ; rdfs:range tg:Type .
+tg:hasParameter a rdf:Property ; rdfs:label "hasParameter" ; rdfs:domain tg:Method ; rdfs:range tg:Parameter .
+tg:overridesMethod a rdf:Property ; rdfs:label "overridesMethod" ; rdfs:domain tg:Member ; rdfs:range tg:Member .
+
+# Parameter Properties
+tg:ordinal a rdf:Property ; rdfs:label "ordinal" ; rdfs:range xsd:integer .
+tg:isOptional a rdf:Property ; rdfs:label "isOptional" ; rdfs:domain tg:Parameter ; rdfs:range xsd:boolean .
+tg:refKind a rdf:Property ; rdfs:label "refKind" ; rdfs:domain tg:Parameter ; rdfs:range xsd:string .
+tg:defaultValue a rdf:Property ; rdfs:label "defaultValue" ; rdfs:domain tg:Parameter ; rdfs:range xsd:string .
+tg:parameterType a rdf:Property ; rdfs:label "parameterType" ; rdfs:domain tg:Parameter ; rdfs:range tg:Type .
+tg:parameterOf a rdf:Property ; rdfs:label "parameterOf" ; rdfs:domain tg:Parameter ; rdfs:range tg:Method .
+
+# Type Parameter Properties
+tg:variance a rdf:Property ; rdfs:label "variance" ; rdfs:domain tg:TypeParameter ; rdfs:range xsd:string .
+tg:typeParameterOf a rdf:Property ; rdfs:label "typeParameterOf" ; rdfs:domain tg:TypeParameter .
+tg:constrainedToType a rdf:Property ; rdfs:domain tg:TypeParameter ; rdfs:range tg:Type .
+
+# Assembly Properties
+tg:version a rdf:Property ; rdfs:label "version" ; rdfs:domain tg:Assembly ; rdfs:range xsd:string .
+
+# Namespace Relationships
+tg:parentNamespace a rdf:Property ; rdfs:domain tg:Namespace ; rdfs:range tg:Namespace .
+tg:containsType a rdf:Property ; rdfs:domain tg:Namespace ; rdfs:range tg:Type .
+
+# Attribute Properties
+tg:attributeOf a rdf:Property ; rdfs:label "attributeOf" ; rdfs:domain tg:Attribute .
+tg:attributeType a rdf:Property ; rdfs:domain tg:Attribute ; rdfs:range tg:Type .
+
+# Language Tag
+tg:language a rdf:Property ; rdfs:label "language" ; rdfs:domain tg:Assembly ; rdfs:range xsd:string ;
+    rdfs:comment "Source language identifier, e.g. 'dotnet', 'rust'." .

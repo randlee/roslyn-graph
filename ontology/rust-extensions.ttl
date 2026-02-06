@@ -1,0 +1,59 @@
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix tg: <http://typegraph.example/ontology/> .
+@prefix rt: <http://rust.example/ontology/> .
+
+rt: a owl:Ontology ;
+    rdfs:label "Rust Type Graph Extensions" ;
+    rdfs:comment "Rust-specific extensions to the shared Type Graph Ontology (tg:). Used by rust2rdf." .
+
+# Classes
+rt:Crate a rdfs:Class ; rdfs:subClassOf tg:Assembly ; rdfs:label "Crate" .
+rt:Module a rdfs:Class ; rdfs:subClassOf tg:Namespace ; rdfs:label "Module" .
+rt:Trait a rdfs:Class ; rdfs:subClassOf tg:Interface ; rdfs:label "Trait" .
+rt:Union a rdfs:Class ; rdfs:subClassOf tg:Type ; rdfs:label "Union" .
+rt:TypeAlias a rdfs:Class ; rdfs:subClassOf tg:Type ; rdfs:label "TypeAlias" .
+rt:EnumVariant a rdfs:Class ; rdfs:label "EnumVariant" .
+rt:TraitImpl a rdfs:Class ; rdfs:label "TraitImpl" .
+rt:InherentImpl a rdfs:Class ; rdfs:label "InherentImpl" .
+rt:Lifetime a rdfs:Class ; rdfs:label "Lifetime" .
+rt:ConstParam a rdfs:Class ; rdfs:label "ConstParam" .
+rt:Macro a rdfs:Class ; rdfs:label "Macro" .
+rt:Static a rdfs:Class ; rdfs:subClassOf tg:Field ; rdfs:label "Static" .
+rt:Constant a rdfs:Class ; rdfs:subClassOf tg:Field ; rdfs:label "Constant" .
+
+# Predicates
+rt:dependsOn a rdf:Property ; rdfs:label "dependsOn" ; rdfs:domain tg:Assembly ; rdfs:range tg:Assembly ;
+    rdfs:comment "Crate dependency relationship." .
+rt:superTrait a rdf:Property ; rdfs:label "superTrait" ; rdfs:domain rt:Trait ; rdfs:range rt:Trait ;
+    rdfs:comment "Supertrait bound on a trait." .
+rt:implFor a rdf:Property ; rdfs:label "implFor" ; rdfs:domain rt:TraitImpl ; rdfs:range tg:Type ;
+    rdfs:comment "The type that a trait impl targets." .
+rt:implTrait a rdf:Property ; rdfs:label "implTrait" ; rdfs:domain rt:TraitImpl ; rdfs:range rt:Trait ;
+    rdfs:comment "The trait being implemented." .
+rt:hasImpl a rdf:Property ; rdfs:label "hasImpl" ; rdfs:domain tg:Type ; rdfs:range rt:TraitImpl ;
+    rdfs:comment "Links a type to its trait or inherent impl." .
+rt:hasVariant a rdf:Property ; rdfs:label "hasVariant" ; rdfs:domain tg:Enum ; rdfs:range rt:EnumVariant ;
+    rdfs:comment "Links an enum to its variants." .
+rt:variantKind a rdf:Property ; rdfs:label "variantKind" ; rdfs:domain rt:EnumVariant ; rdfs:range xsd:string ;
+    rdfs:comment "Variant discriminant kind: 'unit', 'tuple', or 'struct'." .
+rt:variantField a rdf:Property ; rdfs:label "variantField" ; rdfs:domain rt:EnumVariant ; rdfs:range tg:Field ;
+    rdfs:comment "Links a variant to its fields." .
+rt:hasLifetime a rdf:Property ; rdfs:label "hasLifetime" ; rdfs:range rt:Lifetime ;
+    rdfs:comment "Links a type or method to a lifetime parameter." .
+rt:lifetimeBound a rdf:Property ; rdfs:label "lifetimeBound" ; rdfs:domain rt:Lifetime ; rdfs:range rt:Lifetime ;
+    rdfs:comment "Lifetime outlives relationship." .
+rt:isUnsafe a rdf:Property ; rdfs:label "isUnsafe" ; rdfs:range xsd:boolean ;
+    rdfs:comment "Whether a function, trait, or impl is marked unsafe." .
+rt:isMutable a rdf:Property ; rdfs:label "isMutable" ; rdfs:range xsd:boolean ;
+    rdfs:comment "Whether a static or field binding is mutable." .
+rt:isExhaustive a rdf:Property ; rdfs:label "isExhaustive" ; rdfs:domain tg:Enum ; rdfs:range xsd:boolean ;
+    rdfs:comment "Whether the enum is exhaustive (non_exhaustive attribute absent)." .
+rt:errorType a rdf:Property ; rdfs:label "errorType" ; rdfs:domain tg:Method ; rdfs:range tg:Type ;
+    rdfs:comment "The error type for Result-returning functions." .
+rt:derives a rdf:Property ; rdfs:label "derives" ; rdfs:domain tg:Type ; rdfs:range rt:Trait ;
+    rdfs:comment "Derive macro applied to the type." .
+rt:traitBound a rdf:Property ; rdfs:label "traitBound" ; rdfs:domain tg:TypeParameter ; rdfs:range rt:Trait ;
+    rdfs:comment "Trait bound on a generic type parameter." .

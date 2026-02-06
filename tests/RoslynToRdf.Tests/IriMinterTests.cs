@@ -38,10 +38,17 @@ public class IriMinterTests
     }
 
     [Fact]
-    public void OntologyPrefix_ReturnsOntologyPath()
+    public void OntologyPrefix_ReturnsSharedOntologyPath()
     {
         var minter = new IriMinter("http://test.example/");
-        Assert.Equal("http://test.example/ontology/", minter.OntologyPrefix);
+        Assert.Equal("http://typegraph.example/ontology/", minter.OntologyPrefix);
+    }
+
+    [Fact]
+    public void DotNetOntologyPrefix_ReturnsBaseUriOntologyPath()
+    {
+        var minter = new IriMinter("http://test.example/");
+        Assert.Equal("http://test.example/ontology/", minter.DotNetOntologyPrefix);
     }
 
     #endregion

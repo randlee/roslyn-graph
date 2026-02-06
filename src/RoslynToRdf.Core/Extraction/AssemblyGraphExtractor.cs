@@ -31,10 +31,12 @@ public sealed partial class AssemblyGraphExtractor
         _emitter.AddPrefix("rdf", DotNetOntology.Rdf);
         _emitter.AddPrefix("rdfs", DotNetOntology.Rdfs);
         _emitter.AddPrefix("xsd", DotNetOntology.Xsd);
-        _emitter.AddPrefix("dt", _iris.OntologyPrefix);
+        _emitter.AddPrefix(DotNetOntology.Prefix, _iris.OntologyPrefix);
+        _emitter.AddPrefix(DotNetOntology.DotNetPrefix, _iris.DotNetOntologyPrefix);
     }
 
     private string Prop(string name) => $"{_iris.OntologyPrefix}{name}";
+    private string DotNetProp(string name) => $"{_iris.DotNetOntologyPrefix}{name}";
     private string RdfType => $"{DotNetOntology.Rdf}type";
 
     /// <summary>
@@ -54,16 +56,18 @@ public sealed partial class AssemblyGraphExtractor
             targetAssembly.Identity.Version.ToString());
         
         if (!string.IsNullOrEmpty(targetAssembly.Identity.CultureName))
-            _emitter.EmitLiteral(asmIri, Prop(DotNetOntology.AsmProps.Culture), 
+            _emitter.EmitLiteral(asmIri, DotNetProp(DotNetOntology.AsmProps.Culture),
                 targetAssembly.Identity.CultureName);
 
         var publicKeyToken = targetAssembly.Identity.PublicKeyToken;
         if (publicKeyToken.Length > 0)
-            _emitter.EmitLiteral(asmIri, Prop(DotNetOntology.AsmProps.PublicKeyToken), 
+            _emitter.EmitLiteral(asmIri, DotNetProp(DotNetOntology.AsmProps.PublicKeyToken),
                 BitConverter.ToString(publicKeyToken.ToArray()).Replace("-", "").ToLowerInvariant());
 
-        _emitter.EmitBool(asmIri, Prop(DotNetOntology.AsmProps.IsInteractive), 
+        _emitter.EmitBool(asmIri, DotNetProp(DotNetOntology.AsmProps.IsInteractive),
             targetAssembly.IsInteractive);
+
+        _emitter.EmitLiteral(asmIri, _iris.OntologyPrefix + "language", "dotnet");
 
         // Walk all types in this assembly
         var typeCount = 0;
@@ -160,16 +164,16 @@ public sealed partial class AssemblyGraphExtractor
         _emitter.EmitBool(typeIri, Prop(DotNetOntology.TypeProps.IsGeneric), type.IsGenericType);
         _emitter.EmitBool(typeIri, Prop(DotNetOntology.TypeProps.IsValueType), type.IsValueType);
         _emitter.EmitBool(typeIri, Prop(DotNetOntology.TypeProps.IsRecord), type.IsRecord);
-        _emitter.EmitBool(typeIri, Prop(DotNetOntology.TypeProps.IsRefLikeType), type.IsRefLikeType);
+        _emitter.EmitBool(typeIri, DotNetProp(DotNetOntology.TypeProps.IsRefLikeType), type.IsRefLikeType);
         _emitter.EmitBool(typeIri, Prop(DotNetOntology.TypeProps.IsReadOnly), type.IsReadOnly);
-        _emitter.EmitBool(typeIri, Prop(DotNetOntology.TypeProps.IsUnmanagedType), type.IsUnmanagedType);
+        _emitter.EmitBool(typeIri, DotNetProp(DotNetOntology.TypeProps.IsUnmanagedType), type.IsUnmanagedType);
 
         if (type.SpecialType != SpecialType.None)
-            _emitter.EmitLiteral(typeIri, Prop(DotNetOntology.TypeProps.SpecialType), 
+            _emitter.EmitLiteral(typeIri, DotNetProp(DotNetOntology.TypeProps.SpecialType),
                 type.SpecialType.ToString());
 
         if (type.TypeKind == TypeKind.Enum && type.EnumUnderlyingType != null)
-            _emitter.EmitIri(typeIri, Prop(DotNetOntology.TypeProps.EnumUnderlyingType), 
+            _emitter.EmitIri(typeIri, DotNetProp(DotNetOntology.TypeProps.EnumUnderlyingType),
                 EnsureTypeEmitted(type.EnumUnderlyingType));
 
         // Relationships
@@ -316,15 +320,15 @@ public sealed partial class AssemblyGraphExtractor
         _emitter.EmitInt(tpIri, Prop(DotNetOntology.TypeParamProps.Ordinal), tp.Ordinal);
         _emitter.EmitLiteral(tpIri, Prop(DotNetOntology.TypeParamProps.Variance), tp.Variance.ToString());
 
-        _emitter.EmitBool(tpIri, Prop(DotNetOntology.TypeParamProps.HasReferenceTypeConstraint), 
+        _emitter.EmitBool(tpIri, DotNetProp(DotNetOntology.TypeParamProps.HasReferenceTypeConstraint),
             tp.HasReferenceTypeConstraint);
-        _emitter.EmitBool(tpIri, Prop(DotNetOntology.TypeParamProps.HasValueTypeConstraint), 
+        _emitter.EmitBool(tpIri, DotNetProp(DotNetOntology.TypeParamProps.HasValueTypeConstraint),
             tp.HasValueTypeConstraint);
-        _emitter.EmitBool(tpIri, Prop(DotNetOntology.TypeParamProps.HasUnmanagedTypeConstraint), 
+        _emitter.EmitBool(tpIri, DotNetProp(DotNetOntology.TypeParamProps.HasUnmanagedTypeConstraint),
             tp.HasUnmanagedTypeConstraint);
-        _emitter.EmitBool(tpIri, Prop(DotNetOntology.TypeParamProps.HasNotNullConstraint), 
+        _emitter.EmitBool(tpIri, DotNetProp(DotNetOntology.TypeParamProps.HasNotNullConstraint),
             tp.HasNotNullConstraint);
-        _emitter.EmitBool(tpIri, Prop(DotNetOntology.TypeParamProps.HasConstructorConstraint), 
+        _emitter.EmitBool(tpIri, DotNetProp(DotNetOntology.TypeParamProps.HasConstructorConstraint),
             tp.HasConstructorConstraint);
 
         _emitter.EmitIri(ownerIri, Prop(DotNetOntology.TypeRels.HasTypeParameter), tpIri);

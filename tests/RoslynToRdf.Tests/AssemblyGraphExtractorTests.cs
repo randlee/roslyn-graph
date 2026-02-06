@@ -424,7 +424,7 @@ public partial class Container
         if (method != null)
         {
             var methodIri = minter.Member(method);
-            var isPartialDef = minter.OntologyPrefix + DotNetOntology.MemberProps.IsPartialDefinition;
+            var isPartialDef = minter.DotNetOntologyPrefix + DotNetOntology.MemberProps.IsPartialDefinition;
             Assert.Contains(emitter.Triples, t => t.Subject == methodIri && t.Predicate == isPartialDef);
         }
     }
@@ -455,7 +455,7 @@ public static class Extensions
         var extensions = compilation.GetTypeByMetadataName("Sample.Extensions")!;
         var method = extensions.GetMembers("ExtensionMethod").OfType<IMethodSymbol>().Single();
         var methodIri = minter.Member(method);
-        var isExtension = minter.OntologyPrefix + DotNetOntology.MemberProps.IsExtensionMethod;
+        var isExtension = minter.DotNetOntologyPrefix + DotNetOntology.MemberProps.IsExtensionMethod;
 
         var triple = emitter.Triples.FirstOrDefault(t => t.Subject == methodIri && t.Predicate == isExtension);
         Assert.NotNull(triple);
@@ -513,7 +513,7 @@ public class Vector
         foreach (var op in operators)
         {
             var opIri = minter.Member(op);
-            var methodKind = minter.OntologyPrefix + DotNetOntology.MemberProps.MethodKind;
+            var methodKind = minter.DotNetOntologyPrefix + DotNetOntology.MemberProps.MethodKind;
             Assert.Contains(emitter.Triples, t => t.Subject == opIri && t.Predicate == methodKind && t.Object == "UserDefinedOperator");
         }
     }
@@ -580,7 +580,7 @@ public class Container
 
         var initOnlyProp = container.GetMembers("InitOnly").OfType<IPropertySymbol>().Single();
         var initOnlyIri = minter.Member(initOnlyProp);
-        var isInitOnly = minter.OntologyPrefix + DotNetOntology.MemberProps.IsInitOnly;
+        var isInitOnly = minter.DotNetOntologyPrefix + DotNetOntology.MemberProps.IsInitOnly;
 
         var triple = emitter.Triples.FirstOrDefault(t => t.Subject == initOnlyIri && t.Predicate == isInitOnly);
         Assert.NotNull(triple);
@@ -687,7 +687,7 @@ public class Constants
         var constants = compilation.GetTypeByMetadataName("Sample.Constants")!;
         var maxValue = constants.GetMembers("MaxValue").OfType<IFieldSymbol>().Single();
         var maxValueIri = minter.Member(maxValue);
-        var constValue = minter.OntologyPrefix + DotNetOntology.MemberProps.ConstValue;
+        var constValue = minter.DotNetOntologyPrefix + DotNetOntology.MemberProps.ConstValue;
 
         var triple = emitter.Triples.FirstOrDefault(t => t.Subject == maxValueIri && t.Predicate == constValue);
         Assert.NotNull(triple);
@@ -719,7 +719,7 @@ public class Container
         var container = compilation.GetTypeByMetadataName("Sample.Container")!;
         var field = container.GetMembers("volatileField").OfType<IFieldSymbol>().Single();
         var fieldIri = minter.Member(field);
-        var isVolatile = minter.OntologyPrefix + DotNetOntology.MemberProps.IsVolatile;
+        var isVolatile = minter.DotNetOntologyPrefix + DotNetOntology.MemberProps.IsVolatile;
 
         var triple = emitter.Triples.FirstOrDefault(t => t.Subject == fieldIri && t.Predicate == isVolatile);
         Assert.NotNull(triple);
@@ -965,7 +965,7 @@ public class Decorated { }
         var decorated = compilation.GetTypeByMetadataName("Sample.Decorated")!;
         var attr = decorated.GetAttributes()[0];
         var attrIri = minter.Attribute(decorated, attr, 0);
-        var namedArgs = minter.OntologyPrefix + DotNetOntology.AttrProps.NamedArguments;
+        var namedArgs = minter.DotNetOntologyPrefix + DotNetOntology.AttrProps.NamedArguments;
 
         Assert.Contains(emitter.Triples, t => t.Subject == attrIri && t.Predicate == namedArgs);
     }
@@ -1090,7 +1090,7 @@ public enum Status : byte
         var minter = new IriMinter("http://test.example/");
         var status = compilation.GetTypeByMetadataName("Sample.Status")!;
         var statusIri = minter.Type(status);
-        var underlyingType = minter.OntologyPrefix + DotNetOntology.TypeProps.EnumUnderlyingType;
+        var underlyingType = minter.DotNetOntologyPrefix + DotNetOntology.TypeProps.EnumUnderlyingType;
 
         Assert.Contains(emitter.Triples, t => t.Subject == statusIri && t.Predicate == underlyingType);
     }
@@ -1197,7 +1197,7 @@ public ref struct RefStruct
         var minter = new IriMinter("http://test.example/");
         var refStruct = compilation.GetTypeByMetadataName("Sample.RefStruct")!;
         var refStructIri = minter.Type(refStruct);
-        var isRefLike = minter.OntologyPrefix + DotNetOntology.TypeProps.IsRefLikeType;
+        var isRefLike = minter.DotNetOntologyPrefix + DotNetOntology.TypeProps.IsRefLikeType;
 
         var triple = emitter.Triples.FirstOrDefault(t => t.Subject == refStructIri && t.Predicate == isRefLike);
         Assert.NotNull(triple);
@@ -1416,7 +1416,7 @@ public unsafe class Container
 
         Assert.NotNull(ptrType);
         var ptrIri = minter.Type(ptrType);
-        var pointerElement = minter.OntologyPrefix + DotNetOntology.TypeRels.PointerElementType;
+        var pointerElement = minter.DotNetOntologyPrefix + DotNetOntology.TypeRels.PointerElementType;
         var typeKind = minter.OntologyPrefix + DotNetOntology.TypeProps.TypeKind;
 
         Assert.Contains(emitter.Triples, t => t.Subject == ptrIri && t.Predicate == pointerElement);

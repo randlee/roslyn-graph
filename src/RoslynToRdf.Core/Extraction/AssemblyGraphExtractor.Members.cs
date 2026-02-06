@@ -20,16 +20,16 @@ public sealed partial class AssemblyGraphExtractor
         _emitter.EmitIri(methodIri, RdfType, Prop(methodClass));
         _emitter.EmitLiteral(methodIri, Prop(DotNetOntology.MemberProps.Name), method.Name);
         _emitter.EmitLiteral(methodIri, Prop(DotNetOntology.MemberProps.Accessibility), method.DeclaredAccessibility.ToString());
-        _emitter.EmitLiteral(methodIri, Prop(DotNetOntology.MemberProps.MethodKind), method.MethodKind.ToString());
+        _emitter.EmitLiteral(methodIri, DotNetProp(DotNetOntology.MemberProps.MethodKind), method.MethodKind.ToString());
         _emitter.EmitBool(methodIri, Prop(DotNetOntology.MemberProps.IsStatic), method.IsStatic);
         _emitter.EmitBool(methodIri, Prop(DotNetOntology.MemberProps.IsAbstract), method.IsAbstract);
         _emitter.EmitBool(methodIri, Prop(DotNetOntology.MemberProps.IsVirtual), method.IsVirtual);
         _emitter.EmitBool(methodIri, Prop(DotNetOntology.MemberProps.IsOverride), method.IsOverride);
         _emitter.EmitBool(methodIri, Prop(DotNetOntology.MemberProps.IsSealed), method.IsSealed);
-        _emitter.EmitBool(methodIri, Prop(DotNetOntology.MemberProps.IsExtern), method.IsExtern);
+        _emitter.EmitBool(methodIri, DotNetProp(DotNetOntology.MemberProps.IsExtern), method.IsExtern);
         _emitter.EmitBool(methodIri, Prop(DotNetOntology.MemberProps.IsAsync), method.IsAsync);
-        _emitter.EmitBool(methodIri, Prop(DotNetOntology.MemberProps.IsExtensionMethod), method.IsExtensionMethod);
-        _emitter.EmitBool(methodIri, Prop(DotNetOntology.MemberProps.IsPartialDefinition), method.IsPartialDefinition);
+        _emitter.EmitBool(methodIri, DotNetProp(DotNetOntology.MemberProps.IsExtensionMethod), method.IsExtensionMethod);
+        _emitter.EmitBool(methodIri, DotNetProp(DotNetOntology.MemberProps.IsPartialDefinition), method.IsPartialDefinition);
         _emitter.EmitBool(methodIri, Prop(DotNetOntology.MemberProps.IsReadOnly), method.IsReadOnly);
 
         _emitter.EmitIri(typeIri, Prop(DotNetOntology.TypeRels.HasMember), methodIri);
@@ -51,7 +51,7 @@ public sealed partial class AssemblyGraphExtractor
             _emitter.EmitIri(methodIri, Prop(DotNetOntology.MemberRels.OverridesMethod), _iris.Member(method.OverriddenMethod));
 
         foreach (var impl in method.ExplicitInterfaceImplementations)
-            _emitter.EmitIri(methodIri, Prop(DotNetOntology.MemberRels.ExplicitInterfaceImpl), _iris.Member(impl));
+            _emitter.EmitIri(methodIri, DotNetProp(DotNetOntology.MemberRels.ExplicitInterfaceImpl), _iris.Member(impl));
 
         if (_options.IncludeAttributes)
         {
@@ -88,16 +88,16 @@ public sealed partial class AssemblyGraphExtractor
         _emitter.EmitBool(propIri, Prop(DotNetOntology.MemberProps.IsVirtual), prop.IsVirtual);
         _emitter.EmitBool(propIri, Prop(DotNetOntology.MemberProps.IsOverride), prop.IsOverride);
         _emitter.EmitBool(propIri, Prop(DotNetOntology.MemberProps.IsSealed), prop.IsSealed);
-        _emitter.EmitBool(propIri, Prop(DotNetOntology.MemberProps.IsRequired), prop.IsRequired);
-        _emitter.EmitBool(propIri, Prop(DotNetOntology.MemberProps.HasGetter), prop.GetMethod != null);
-        _emitter.EmitBool(propIri, Prop(DotNetOntology.MemberProps.HasSetter), prop.SetMethod != null);
+        _emitter.EmitBool(propIri, DotNetProp(DotNetOntology.MemberProps.IsRequired), prop.IsRequired);
+        _emitter.EmitBool(propIri, DotNetProp(DotNetOntology.MemberProps.HasGetter), prop.GetMethod != null);
+        _emitter.EmitBool(propIri, DotNetProp(DotNetOntology.MemberProps.HasSetter), prop.SetMethod != null);
 
         if (prop.GetMethod != null)
-            _emitter.EmitLiteral(propIri, Prop(DotNetOntology.MemberProps.GetterAccessibility), prop.GetMethod.DeclaredAccessibility.ToString());
+            _emitter.EmitLiteral(propIri, DotNetProp(DotNetOntology.MemberProps.GetterAccessibility), prop.GetMethod.DeclaredAccessibility.ToString());
         if (prop.SetMethod != null)
         {
-            _emitter.EmitLiteral(propIri, Prop(DotNetOntology.MemberProps.SetterAccessibility), prop.SetMethod.DeclaredAccessibility.ToString());
-            _emitter.EmitBool(propIri, Prop(DotNetOntology.MemberProps.IsInitOnly), prop.SetMethod.IsInitOnly);
+            _emitter.EmitLiteral(propIri, DotNetProp(DotNetOntology.MemberProps.SetterAccessibility), prop.SetMethod.DeclaredAccessibility.ToString());
+            _emitter.EmitBool(propIri, DotNetProp(DotNetOntology.MemberProps.IsInitOnly), prop.SetMethod.IsInitOnly);
         }
 
         _emitter.EmitIri(typeIri, Prop(DotNetOntology.TypeRels.HasMember), propIri);
@@ -111,7 +111,7 @@ public sealed partial class AssemblyGraphExtractor
             _emitter.EmitIri(propIri, Prop(DotNetOntology.MemberRels.OverridesMethod), _iris.Member(prop.OverriddenProperty));
 
         foreach (var impl in prop.ExplicitInterfaceImplementations)
-            _emitter.EmitIri(propIri, Prop(DotNetOntology.MemberRels.ExplicitInterfaceImpl), _iris.Member(impl));
+            _emitter.EmitIri(propIri, DotNetProp(DotNetOntology.MemberRels.ExplicitInterfaceImpl), _iris.Member(impl));
 
         if (_options.IncludeAttributes)
         {
@@ -138,11 +138,11 @@ public sealed partial class AssemblyGraphExtractor
         _emitter.EmitBool(fieldIri, Prop(DotNetOntology.MemberProps.IsStatic), field.IsStatic);
         _emitter.EmitBool(fieldIri, Prop(DotNetOntology.MemberProps.IsReadOnly), field.IsReadOnly);
         _emitter.EmitBool(fieldIri, Prop(DotNetOntology.MemberProps.IsConst), field.IsConst);
-        _emitter.EmitBool(fieldIri, Prop(DotNetOntology.MemberProps.IsVolatile), field.IsVolatile);
-        _emitter.EmitBool(fieldIri, Prop(DotNetOntology.MemberProps.IsRequired), field.IsRequired);
+        _emitter.EmitBool(fieldIri, DotNetProp(DotNetOntology.MemberProps.IsVolatile), field.IsVolatile);
+        _emitter.EmitBool(fieldIri, DotNetProp(DotNetOntology.MemberProps.IsRequired), field.IsRequired);
 
         if (field.HasConstantValue)
-            _emitter.EmitLiteral(fieldIri, Prop(DotNetOntology.MemberProps.ConstValue), field.ConstantValue?.ToString() ?? "null");
+            _emitter.EmitLiteral(fieldIri, DotNetProp(DotNetOntology.MemberProps.ConstValue), field.ConstantValue?.ToString() ?? "null");
 
         _emitter.EmitIri(typeIri, Prop(DotNetOntology.TypeRels.HasMember), fieldIri);
         _emitter.EmitIri(fieldIri, Prop(DotNetOntology.MemberRels.MemberOf), typeIri);
@@ -179,7 +179,7 @@ public sealed partial class AssemblyGraphExtractor
             _emitter.EmitIri(evtIri, Prop(DotNetOntology.MemberRels.OverridesMethod), _iris.Member(evt.OverriddenEvent));
 
         foreach (var impl in evt.ExplicitInterfaceImplementations)
-            _emitter.EmitIri(evtIri, Prop(DotNetOntology.MemberRels.ExplicitInterfaceImpl), _iris.Member(impl));
+            _emitter.EmitIri(evtIri, DotNetProp(DotNetOntology.MemberRels.ExplicitInterfaceImpl), _iris.Member(impl));
 
         if (_options.IncludeAttributes)
         {
@@ -197,9 +197,9 @@ public sealed partial class AssemblyGraphExtractor
         _emitter.EmitLiteral(paramIri, Prop(DotNetOntology.ParamProps.Name), param.Name);
         _emitter.EmitInt(paramIri, Prop(DotNetOntology.ParamProps.Ordinal), param.Ordinal);
         _emitter.EmitBool(paramIri, Prop(DotNetOntology.ParamProps.IsOptional), param.IsOptional);
-        _emitter.EmitBool(paramIri, Prop(DotNetOntology.ParamProps.IsParams), param.IsParams);
-        _emitter.EmitBool(paramIri, Prop(DotNetOntology.ParamProps.IsThis), param.IsThis);
-        _emitter.EmitBool(paramIri, Prop(DotNetOntology.ParamProps.IsDiscard), param.IsDiscard);
+        _emitter.EmitBool(paramIri, DotNetProp(DotNetOntology.ParamProps.IsParams), param.IsParams);
+        _emitter.EmitBool(paramIri, DotNetProp(DotNetOntology.ParamProps.IsThis), param.IsThis);
+        _emitter.EmitBool(paramIri, DotNetProp(DotNetOntology.ParamProps.IsDiscard), param.IsDiscard);
         _emitter.EmitLiteral(paramIri, Prop(DotNetOntology.ParamProps.RefKind), param.RefKind.ToString());
         _emitter.EmitBool(paramIri, Prop(DotNetOntology.ParamProps.HasExplicitDefaultValue), param.HasExplicitDefaultValue);
 
@@ -229,11 +229,11 @@ public sealed partial class AssemblyGraphExtractor
         _emitter.EmitIri(attrIri, Prop(DotNetOntology.AttrRels.AttributeType), EnsureTypeEmitted(attr.AttributeClass));
 
         if (attr.ConstructorArguments.Length > 0)
-            _emitter.EmitLiteral(attrIri, Prop(DotNetOntology.AttrProps.ConstructorArguments), 
+            _emitter.EmitLiteral(attrIri, DotNetProp(DotNetOntology.AttrProps.ConstructorArguments),
                 string.Join(", ", attr.ConstructorArguments.Select(FormatTypedConstant)));
 
         if (attr.NamedArguments.Length > 0)
-            _emitter.EmitLiteral(attrIri, Prop(DotNetOntology.AttrProps.NamedArguments), 
+            _emitter.EmitLiteral(attrIri, DotNetProp(DotNetOntology.AttrProps.NamedArguments),
                 string.Join(", ", attr.NamedArguments.Select(kv => $"{kv.Key}={FormatTypedConstant(kv.Value)}")));
     }
 

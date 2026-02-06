@@ -62,39 +62,39 @@ Parameter:  http://dotnet.example/type/{...}/member/{...}/param/{ordinal}
 
 ### Key Relationships
 
-- `dt:throws` - Exception type that may be thrown (from XML docs `<exception>`)
-- `dt:relatedTo` - Related symbol (from XML docs `<seealso>`)
-- `dt:inherits` - Type → Base type
-- `dt:implements` - Type → Interface
-- `dt:hasMember` - Type → Member
+- `tg:throws` - Exception type that may be thrown (from XML docs `<exception>`)
+- `tg:relatedTo` - Related symbol (from XML docs `<seealso>`)
+- `tg:inherits` - Type → Base type
+- `tg:implements` - Type → Interface
+- `tg:hasMember` - Type → Member
 
 ## Example SPARQL Queries
 
 ### Find methods that throw ArgumentNullException
 
 ```sparql
-PREFIX dt: <http://dotnet.example/ontology/>
+PREFIX tg: <http://typegraph.example/ontology/>
 
 SELECT ?method ?methodName ?typeName WHERE {
-  ?method a dt:Method ;
-          dt:name ?methodName ;
-          dt:throws ?ex ;
-          dt:memberOf ?type .
-  ?type dt:name ?typeName .
-  ?ex dt:name "ArgumentNullException" .
+  ?method a tg:Method ;
+          tg:name ?methodName ;
+          tg:throws ?ex ;
+          tg:memberOf ?type .
+  ?type tg:name ?typeName .
+  ?ex tg:name "ArgumentNullException" .
 }
 ```
 
 ### Find all classes implementing IDisposable
 
 ```sparql
-PREFIX dt: <http://dotnet.example/ontology/>
+PREFIX tg: <http://typegraph.example/ontology/>
 
 SELECT ?class ?className WHERE {
-  ?class a dt:Class ;
-         dt:name ?className ;
-         dt:implements ?iface .
-  ?iface dt:name "IDisposable" .
+  ?class a tg:Class ;
+         tg:name ?className ;
+         tg:implements ?iface .
+  ?iface tg:name "IDisposable" .
 }
 ```
 

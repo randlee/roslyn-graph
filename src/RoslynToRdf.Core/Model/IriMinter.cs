@@ -17,7 +17,8 @@ public partial class IriMinter
     }
 
     public string BaseUri => _baseUri;
-    public string OntologyPrefix => $"{_baseUri}/ontology/";
+    public string OntologyPrefix => "http://typegraph.example/ontology/";
+    public string DotNetOntologyPrefix => $"{_baseUri}/ontology/";
 
     /// <summary>
     /// IRI for an assembly.

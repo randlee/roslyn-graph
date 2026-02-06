@@ -5,7 +5,8 @@ namespace RoslynToRdf.Core.Model;
 /// </summary>
 public static class DotNetOntology
 {
-    public const string Prefix = "dt";
+    public const string Prefix = "tg";
+    public const string DotNetPrefix = "dt";
     
     // Standard prefixes
     public const string Rdf = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";

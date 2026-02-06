@@ -103,7 +103,7 @@ public sealed partial class AssemblyGraphExtractor
         _emitter.EmitLiteral(typeIri, Prop(DotNetOntology.TypeProps.TypeKind), "Pointer");
 
         var pointedAtIri = EnsureTypeEmitted(pointerType.PointedAtType);
-        _emitter.EmitIri(typeIri, Prop(DotNetOntology.TypeRels.PointerElementType), pointedAtIri);
+        _emitter.EmitIri(typeIri, DotNetProp(DotNetOntology.TypeRels.PointerElementType), pointedAtIri);
 
         return typeIri;
     }

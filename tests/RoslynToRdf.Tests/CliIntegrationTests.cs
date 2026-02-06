@@ -32,7 +32,7 @@ public class C { public int X => 1; }
         Assert.True(File.Exists(outputPath));
 
         var text = await File.ReadAllTextAsync(outputPath);
-        Assert.Contains("@prefix dt: <http://test.example/ontology/>", text);
+        Assert.Contains("@prefix tg: <http://typegraph.example/ontology/>", text);
         Assert.Contains("http://test.example/assembly/", text);
         Assert.True(string.IsNullOrWhiteSpace(result.Stdout));
     }

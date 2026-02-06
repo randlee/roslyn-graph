@@ -1,0 +1,59 @@
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix tg: <http://typegraph.example/ontology/> .
+@prefix dt: <http://dotnet.example/ontology/> .
+
+dt: a owl:Ontology ;
+    rdfs:label ".NET Type Graph Extensions" ;
+    rdfs:comment ".NET-specific extensions to the shared Type Graph Ontology (tg:). Used by RoslynToRdf." .
+
+# Property/Member Properties (.NET-specific)
+dt:hasGetter a rdf:Property ; rdfs:label "hasGetter" ; rdfs:domain tg:Property ; rdfs:range xsd:boolean .
+dt:hasSetter a rdf:Property ; rdfs:label "hasSetter" ; rdfs:domain tg:Property ; rdfs:range xsd:boolean .
+dt:constValue a rdf:Property ; rdfs:label "constValue" ; rdfs:domain tg:Field ; rdfs:range xsd:string .
+dt:isExtensionMethod a rdf:Property ; rdfs:label "isExtensionMethod" ; rdfs:domain tg:Method ; rdfs:range xsd:boolean .
+dt:methodKind a rdf:Property ; rdfs:label "methodKind" ; rdfs:domain tg:Method ; rdfs:range xsd:string .
+dt:isExtern a rdf:Property ; rdfs:label "isExtern" ; rdfs:range xsd:boolean .
+dt:isVolatile a rdf:Property ; rdfs:label "isVolatile" ; rdfs:range xsd:boolean .
+dt:isRequired a rdf:Property ; rdfs:label "isRequired" ; rdfs:range xsd:boolean .
+dt:isInitOnly a rdf:Property ; rdfs:label "isInitOnly" ; rdfs:range xsd:boolean .
+dt:getterAccessibility a rdf:Property ; rdfs:label "getterAccessibility" ; rdfs:domain tg:Property ; rdfs:range xsd:string .
+dt:setterAccessibility a rdf:Property ; rdfs:label "setterAccessibility" ; rdfs:domain tg:Property ; rdfs:range xsd:string .
+dt:isPartialDefinition a rdf:Property ; rdfs:label "isPartialDefinition" ; rdfs:range xsd:boolean .
+
+# Parameter Properties (.NET-specific)
+dt:isParams a rdf:Property ; rdfs:label "isParams" ; rdfs:domain tg:Parameter ; rdfs:range xsd:boolean .
+dt:isThis a rdf:Property ; rdfs:label "isThis" ; rdfs:domain tg:Parameter ; rdfs:range xsd:boolean .
+dt:isDiscard a rdf:Property ; rdfs:label "isDiscard" ; rdfs:domain tg:Parameter ; rdfs:range xsd:boolean .
+
+# Type Properties (.NET-specific)
+dt:isRefLikeType a rdf:Property ; rdfs:label "isRefLikeType" ; rdfs:domain tg:Type ; rdfs:range xsd:boolean .
+dt:isUnmanagedType a rdf:Property ; rdfs:label "isUnmanagedType" ; rdfs:domain tg:Type ; rdfs:range xsd:boolean .
+dt:specialType a rdf:Property ; rdfs:label "specialType" ; rdfs:domain tg:Type ; rdfs:range xsd:string .
+dt:enumUnderlyingType a rdf:Property ; rdfs:label "enumUnderlyingType" ; rdfs:domain tg:Enum ; rdfs:range tg:Type .
+dt:pointerElementType a rdf:Property ; rdfs:label "pointerElementType" ; rdfs:domain tg:Type ; rdfs:range tg:Type .
+
+# Type Parameter Properties (.NET-specific)
+dt:hasReferenceTypeConstraint a rdf:Property ; rdfs:domain tg:TypeParameter ; rdfs:range xsd:boolean .
+dt:hasValueTypeConstraint a rdf:Property ; rdfs:domain tg:TypeParameter ; rdfs:range xsd:boolean .
+dt:hasUnmanagedTypeConstraint a rdf:Property ; rdfs:domain tg:TypeParameter ; rdfs:range xsd:boolean .
+dt:hasNotNullConstraint a rdf:Property ; rdfs:domain tg:TypeParameter ; rdfs:range xsd:boolean .
+dt:hasConstructorConstraint a rdf:Property ; rdfs:domain tg:TypeParameter ; rdfs:range xsd:boolean .
+
+# Assembly Properties (.NET-specific)
+dt:culture a rdf:Property ; rdfs:label "culture" ; rdfs:domain tg:Assembly ; rdfs:range xsd:string .
+dt:publicKeyToken a rdf:Property ; rdfs:domain tg:Assembly ; rdfs:range xsd:string .
+dt:isInteractive a rdf:Property ; rdfs:label "isInteractive" ; rdfs:domain tg:Assembly ; rdfs:range xsd:boolean .
+
+# Attribute Properties (.NET-specific)
+dt:attributeClass a rdf:Property ; rdfs:label "attributeClass" ; rdfs:domain tg:Attribute ; rdfs:range xsd:string .
+dt:constructorArguments a rdf:Property ; rdfs:domain tg:Attribute ; rdfs:range xsd:string .
+dt:namedArguments a rdf:Property ; rdfs:domain tg:Attribute ; rdfs:range xsd:string .
+
+# Member Relationships (.NET-specific)
+dt:explicitInterfaceImplementation a rdf:Property ; rdfs:label "explicitInterfaceImplementation" ; rdfs:domain tg:Member ; rdfs:range tg:Member .
+
+# Namespace Relationships (.NET-specific)
+dt:containsType a rdf:Property ; rdfs:domain tg:Namespace ; rdfs:range tg:Type .
