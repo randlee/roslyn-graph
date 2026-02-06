@@ -312,17 +312,90 @@
             position: relative;
             cursor: help;
         }
+        .menu-button {
+            position: relative;
+            display: inline-block;
+        }
+        .menu-dropdown {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            margin-top: 4px;
+            background: #2d2d30;
+            border: 1px solid #555;
+            border-radius: 4px;
+            min-width: 300px;
+            max-width: 400px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+            z-index: 1000;
+        }
+        .menu-section {
+            padding: 8px 0;
+        }
+        .menu-header {
+            padding: 6px 12px;
+            font-size: 0.75em;
+            color: #999;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+        .menu-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background 0.2s;
+            display: flex;
+            flex-direction: column;
+        }
+        .menu-item:hover {
+            background: #094771;
+        }
+        .menu-item.single-line {
+            flex-direction: row;
+            align-items: center;
+            gap: 8px;
+        }
+        .menu-separator {
+            height: 1px;
+            background: #555;
+            margin: 4px 0;
+        }
+        .mru-file-name {
+            color: #d4d4d4;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .mru-file-meta {
+            font-size: 0.8em;
+            color: #888;
+            margin-top: 2px;
+        }
+        .menu-empty {
+            padding: 12px;
+            color: #666;
+            font-size: 0.85em;
+            text-align: center;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
             <h1>🔍 RDF Explorer - Assembly Type Graph</h1>
-            <div>
-                <label for="file-input" class="upload-btn">
-                    📁 Load RDF File
-                </label>
-                <input type="file" id="file-input" accept=".nt,.ttl">
+            <div class="menu-button">
+                <button class="upload-btn" id="load-menu-btn">▼ Load RDF File</button>
+                <div class="menu-dropdown" id="load-menu" style="display:none">
+                    <div class="menu-section" id="mru-section">
+                        <div class="menu-header">Recent Files</div>
+                        <div id="mru-list"></div>
+                    </div>
+                    <div class="menu-separator"></div>
+                    <div class="menu-item single-line" id="load-new">📁 Load new file...</div>
+                    <div class="menu-item single-line" id="clear-history">🗑️ Clear history</div>
+                </div>
+                <input type="file" id="file-input" accept=".nt,.ttl" style="display: none;">
             </div>
         </header>
 
@@ -368,12 +441,117 @@
             members: new Map() // Store member details
         };
         let visibleNamespaces = new Set(); // Track checked namespaces
+        let settings = {
+            mruFiles: []
+        };
 
         const fileInput = document.getElementById('file-input');
         const searchBox = document.getElementById('search-box');
         const namespaceList = document.getElementById('namespace-list');
         const detailsPanel = document.getElementById('details-panel');
         const statsGrid = document.getElementById('stats-grid');
+        const loadMenuBtn = document.getElementById('load-menu-btn');
+        const loadMenu = document.getElementById('load-menu');
+        const loadNewBtn = document.getElementById('load-new');
+        const clearHistoryBtn = document.getElementById('clear-history');
+        const mruList = document.getElementById('mru-list');
+
+        // LocalStorage Settings Management
+        function loadSettings() {
+            try {
+                const stored = localStorage.getItem('rdfExplorerSettings');
+                if (stored) {
+                    settings = JSON.parse(stored);
+                    if (!Array.isArray(settings.mruFiles)) {
+                        settings.mruFiles = [];
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to load settings:', e);
+                settings = { mruFiles: [] };
+            }
+        }
+
+        function saveSettings() {
+            try {
+                localStorage.setItem('rdfExplorerSettings', JSON.stringify(settings));
+            } catch (e) {
+                console.error('Failed to save settings:', e);
+            }
+        }
+
+        function addToMRU(fileName, fileSize) {
+            // Remove existing entry with same name
+            settings.mruFiles = settings.mruFiles.filter(f => f.path !== fileName);
+
+            // Add to front
+            settings.mruFiles.unshift({
+                path: fileName,
+                timestamp: new Date().toISOString(),
+                size: fileSize
+            });
+
+            // Keep only 10 most recent
+            settings.mruFiles = settings.mruFiles.slice(0, 10);
+
+            saveSettings();
+            updateMRUDisplay();
+        }
+
+        function clearMRU() {
+            settings.mruFiles = [];
+            saveSettings();
+            updateMRUDisplay();
+        }
+
+        function updateMRUDisplay() {
+            if (settings.mruFiles.length === 0) {
+                mruList.innerHTML = '<div class="menu-empty">No recent files</div>';
+                return;
+            }
+
+            mruList.innerHTML = settings.mruFiles.map((file, index) => {
+                const date = new Date(file.timestamp);
+                const timeStr = date.toLocaleString();
+                const sizeStr = formatFileSize(file.size);
+                const fileName = file.path.split(/[/\\]/).pop(); // Get filename only
+
+                return `
+                    <div class="menu-item" data-mru-index="${index}">
+                        <div class="mru-file-name" title="${escapeHtml(file.path)}">${escapeHtml(fileName)}</div>
+                        <div class="mru-file-meta">${timeStr} • ${sizeStr}</div>
+                    </div>
+                `;
+            }).join('');
+
+            // Add click handlers
+            document.querySelectorAll('[data-mru-index]').forEach(item => {
+                item.addEventListener('click', () => {
+                    const index = parseInt(item.dataset.mruIndex);
+                    loadFromMRU(index);
+                });
+            });
+        }
+
+        function loadFromMRU(index) {
+            const file = settings.mruFiles[index];
+            if (!file) return;
+
+            // Close menu
+            loadMenu.style.display = 'none';
+
+            // Show message and open file picker
+            alert(`Please locate and load this file:\n\n${file.path}\n\nDue to browser security restrictions, you need to manually select the file.`);
+            fileInput.click();
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }
 
         // Initialize Cytoscape
         function initGraph() {
@@ -465,6 +643,34 @@
             });
         }
 
+        // Menu toggle
+        loadMenuBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isVisible = loadMenu.style.display === 'block';
+            loadMenu.style.display = isVisible ? 'none' : 'block';
+        });
+
+        // Close menu when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!loadMenu.contains(e.target) && e.target !== loadMenuBtn) {
+                loadMenu.style.display = 'none';
+            }
+        });
+
+        // Load new file
+        loadNewBtn.addEventListener('click', () => {
+            loadMenu.style.display = 'none';
+            fileInput.click();
+        });
+
+        // Clear history
+        clearHistoryBtn.addEventListener('click', () => {
+            if (confirm('Clear all recent files history?')) {
+                clearMRU();
+            }
+            loadMenu.style.display = 'none';
+        });
+
         fileInput.addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -475,6 +681,12 @@
             buildGraph();
             updateUI();
             hideLoading();
+
+            // Add to MRU
+            addToMRU(file.name, file.size);
+
+            // Reset file input so same file can be loaded again
+            fileInput.value = '';
         });
 
         searchBox.addEventListener('input', (e) => {
@@ -790,7 +1002,7 @@
                     ${type.inherits.map(iri => {
                         const base = graphData.types.get(iri);
                         if (base && base.name) {
-                            return `<div class="detail-item">${base.name}</div>`;
+                            return `<div class="detail-item" title="${escapeHtml(base.name)}">${base.name}</div>`;
                         } else {
                             const fullTypeName = getTypeName(iri);
                             const simpleTypeName = getSimpleTypeName(fullTypeName);
@@ -806,7 +1018,7 @@
                     ${type.implements.map(iri => {
                         const iface = graphData.types.get(iri);
                         if (iface && iface.name) {
-                            return `<div class="detail-item">${iface.name}</div>`;
+                            return `<div class="detail-item" title="${escapeHtml(iface.name)}">${iface.name}</div>`;
                         } else {
                             const fullTypeName = getTypeName(iri);
                             const simpleTypeName = getSimpleTypeName(fullTypeName);
@@ -822,7 +1034,8 @@
                     <h3>Constructors (${categorized.constructor.length})</h3>
                     ${categorized.constructor.map(member => {
                         const returnType = getTypeName(member.returnType);
-                        return `<div class="detail-item">
+                        const fullSignature = returnType ? `${returnType} ${member.name}` : member.name;
+                        return `<div class="detail-item" title="${escapeHtml(fullSignature)}">
                             <span class="member-name">${member.name}</span>
                             ${returnType ? `<span class="member-type">: ${returnType}</span>` : ''}
                         </div>`;
@@ -835,7 +1048,8 @@
                     <h3>Properties (${categorized.property.length})</h3>
                     ${categorized.property.map(member => {
                         const returnType = getTypeName(member.returnType);
-                        return `<div class="detail-item">
+                        const fullSignature = returnType ? `${returnType} ${member.name}` : member.name;
+                        return `<div class="detail-item" title="${escapeHtml(fullSignature)}">
                             <span class="member-name">${member.name}</span>
                             ${returnType ? `<span class="member-type">: ${returnType}</span>` : ''}
                         </div>`;
@@ -862,7 +1076,8 @@
                     <h3>Fields (${categorized.field.length})</h3>
                     ${categorized.field.map(member => {
                         const returnType = getTypeName(member.returnType);
-                        return `<div class="detail-item">
+                        const fullSignature = returnType ? `${returnType} ${member.name}` : member.name;
+                        return `<div class="detail-item" title="${escapeHtml(fullSignature)}">
                             <span class="member-name">${member.name}</span>
                             ${returnType ? `<span class="member-type">: ${returnType}</span>` : ''}
                         </div>`;
@@ -875,7 +1090,8 @@
                     <h3>Events (${categorized.event.length})</h3>
                     ${categorized.event.map(member => {
                         const returnType = getTypeName(member.returnType);
-                        return `<div class="detail-item">
+                        const fullSignature = returnType ? `${returnType} ${member.name}` : member.name;
+                        return `<div class="detail-item" title="${escapeHtml(fullSignature)}">
                             <span class="member-name">${member.name}</span>
                             ${returnType ? `<span class="member-type">: ${returnType}</span>` : ''}
                         </div>`;
@@ -1060,6 +1276,8 @@
         }
 
         // Initialize
+        loadSettings();
+        updateMRUDisplay();
         initGraph();
     </script>
 </body>
