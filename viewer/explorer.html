@@ -65,16 +65,58 @@
             text-transform: uppercase;
             margin-bottom: 10px;
             font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .namespace-header-buttons {
+            display: flex;
+            gap: 4px;
+        }
+        .icon-btn {
+            background: transparent;
+            border: 1px solid #555;
+            color: #999;
+            cursor: pointer;
+            padding: 3px 6px;
+            border-radius: 3px;
+            font-size: 0.85em;
+            transition: all 0.2s;
+            position: relative;
+        }
+        .icon-btn:hover {
+            background: #3c3c3c;
+            border-color: #007acc;
+            color: #007acc;
+        }
+        .icon-btn:active {
+            background: #094771;
+        }
+        .icon-btn[data-tooltip]:hover::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            right: 0;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 0.75em;
+            white-space: nowrap;
+            margin-bottom: 4px;
+            z-index: 1000;
+            border: 1px solid #555;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
         }
         .namespace-list, .type-list {
             margin-bottom: 20px;
         }
         .namespace-item, .type-item {
-            padding: 8px 10px;
-            margin: 2px 0;
+            padding: 4px 8px;
+            margin: 1px 0;
             cursor: pointer;
             border-radius: 4px;
-            font-size: 0.9em;
+            font-size: 0.85em;
             transition: background 0.2s;
         }
         .namespace-item:hover, .type-item:hover {
@@ -249,6 +291,26 @@
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
+        }
+        .method-tooltip {
+            position: fixed;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 8px 12px;
+            border-radius: 4px;
+            border: 1px solid #555;
+            font-size: 0.85em;
+            font-family: 'Consolas', 'Monaco', monospace;
+            z-index: 2000;
+            max-width: 400px;
+            word-wrap: break-word;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+            pointer-events: none;
+            white-space: pre-wrap;
+        }
+        .detail-item.method-item {
+            position: relative;
+            cursor: help;
         }
     </style>
 </head>
@@ -608,12 +670,37 @@
                 .filter(ns => ns.name)
                 .sort((a, b) => a.name.localeCompare(b.name));
 
-            namespaceList.innerHTML = '<h2>Namespaces</h2>' + sorted.map(ns =>
+            namespaceList.innerHTML = `
+                <h2>
+                    <span>Namespaces</span>
+                    <div class="namespace-header-buttons">
+                        <button class="icon-btn" id="select-all-btn" data-tooltip="Select all namespaces">☑</button>
+                        <button class="icon-btn" id="select-none-btn" data-tooltip="Deselect all namespaces">☐</button>
+                    </div>
+                </h2>
+            ` + sorted.map(ns =>
                 `<div class="namespace-item" data-ns="${ns.iri}">
                     <input type="checkbox" class="namespace-checkbox" data-ns="${ns.iri}" checked>
                     <span class="namespace-label">📁 ${ns.name} <span class="badge">${ns.types.length}</span></span>
                 </div>`
             ).join('');
+
+            // Add select all/none button listeners
+            document.getElementById('select-all-btn')?.addEventListener('click', () => {
+                document.querySelectorAll('.namespace-checkbox').forEach(checkbox => {
+                    checkbox.checked = true;
+                    visibleNamespaces.add(checkbox.dataset.ns);
+                });
+                buildGraph();
+            });
+
+            document.getElementById('select-none-btn')?.addEventListener('click', () => {
+                document.querySelectorAll('.namespace-checkbox').forEach(checkbox => {
+                    checkbox.checked = false;
+                    visibleNamespaces.delete(checkbox.dataset.ns);
+                });
+                buildGraph();
+            });
 
             // Add checkbox event listeners
             document.querySelectorAll('.namespace-checkbox').forEach(checkbox => {
@@ -736,7 +823,8 @@
                     <h3>Methods (${categorized.method.length})</h3>
                     ${categorized.method.map(member => {
                         const returnType = getTypeName(member.returnType);
-                        return `<div class="detail-item">
+                        const signature = `${returnType || 'void'} ${member.name}()`;
+                        return `<div class="detail-item method-item" data-signature="${escapeHtml(signature)}">
                             <span class="member-name">${member.name}</span>
                             ${returnType ? `<span class="member-type">: ${returnType}</span>` : ''}
                         </div>`;
@@ -771,6 +859,45 @@
             }
 
             detailsPanel.innerHTML = html;
+
+            // Add tooltip functionality for methods
+            setupMethodTooltips();
+        }
+
+        function setupMethodTooltips() {
+            const methodItems = document.querySelectorAll('.method-item');
+            let tooltipElement = null;
+
+            methodItems.forEach(item => {
+                item.addEventListener('mouseenter', (e) => {
+                    const signature = item.dataset.signature;
+                    if (!signature) return;
+
+                    // Create tooltip
+                    tooltipElement = document.createElement('div');
+                    tooltipElement.className = 'method-tooltip';
+                    tooltipElement.textContent = signature;
+                    document.body.appendChild(tooltipElement);
+
+                    // Position tooltip
+                    const rect = item.getBoundingClientRect();
+                    tooltipElement.style.left = rect.left + 'px';
+                    tooltipElement.style.top = (rect.top - tooltipElement.offsetHeight - 8) + 'px';
+                });
+
+                item.addEventListener('mouseleave', () => {
+                    if (tooltipElement) {
+                        tooltipElement.remove();
+                        tooltipElement = null;
+                    }
+                });
+            });
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
         }
 
         function getTypeName(typeIri) {
