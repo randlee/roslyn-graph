@@ -438,7 +438,8 @@
             types: new Map(),
             namespaces: new Map(),
             relationships: [],
-            members: new Map() // Store member details
+            members: new Map(), // Store member details
+            parameters: new Map() // Store parameter details
         };
         let visibleNamespaces = new Set(); // Track checked namespaces
         let settings = {
@@ -698,7 +699,8 @@
                 types: new Map(),
                 namespaces: new Map(),
                 relationships: [],
-                members: new Map()
+                members: new Map(),
+                parameters: new Map()
             };
 
             const lines = text.split('\n').filter(l => l.trim() && !l.startsWith('#'));
@@ -739,10 +741,22 @@
                                 iri: subject,
                                 kind: typeName.toLowerCase(),
                                 name: '',
-                                returnType: ''
+                                returnType: '',
+                                parameters: []
                             });
                         }
                         graphData.members.get(subject).kind = typeName.toLowerCase();
+                    }
+                    // Extract parameter types
+                    if (typeName === 'Parameter') {
+                        if (!graphData.parameters.has(subject)) {
+                            graphData.parameters.set(subject, {
+                                iri: subject,
+                                name: '',
+                                parameterType: '',
+                                ordinal: 0
+                            });
+                        }
                     }
                 }
 
@@ -754,12 +768,36 @@
                     if (graphData.members.has(subject)) {
                         graphData.members.get(subject).name = objectLiteral;
                     }
+                    if (graphData.parameters.has(subject)) {
+                        graphData.parameters.get(subject).name = objectLiteral;
+                    }
                 }
 
                 // Extract return type for members
                 if (predicate === dtOntology + 'returnType' && objectIri) {
                     if (graphData.members.has(subject)) {
                         graphData.members.get(subject).returnType = objectIri;
+                    }
+                }
+
+                // Extract parameter type
+                if (predicate === dtOntology + 'parameterType' && objectIri) {
+                    if (graphData.parameters.has(subject)) {
+                        graphData.parameters.get(subject).parameterType = objectIri;
+                    }
+                }
+
+                // Extract parameter ordinal
+                if (predicate === dtOntology + 'ordinal' && objectLiteral) {
+                    if (graphData.parameters.has(subject)) {
+                        graphData.parameters.get(subject).ordinal = parseInt(objectLiteral);
+                    }
+                }
+
+                // Extract hasParameter relationship
+                if (predicate === dtOntology + 'hasParameter' && objectIri) {
+                    if (graphData.members.has(subject)) {
+                        graphData.members.get(subject).parameters.push(objectIri);
                     }
                 }
 
@@ -1032,11 +1070,10 @@
                 html += `<div class="detail-section">
                     <h3>Constructors (${categorized.constructor.length})</h3>
                     ${categorized.constructor.map(member => {
-                        const returnType = getTypeName(member.returnType);
-                        const fullSignature = returnType ? `${returnType} ${member.name}` : member.name;
+                        const params = getParameterSignature(member.parameters);
+                        const fullSignature = `${member.name}(${params})`;
                         return `<div class="detail-item" data-tooltip="${escapeHtml(fullSignature)}">
                             <span class="member-name">${member.name}</span>
-                            ${returnType ? `<span class="member-type">: ${returnType}</span>` : ''}
                         </div>`;
                     }).join('')}
                 </div>`;
@@ -1061,7 +1098,8 @@
                     <h3>Methods (${categorized.method.length})</h3>
                     ${categorized.method.map(member => {
                         const returnType = getTypeName(member.returnType);
-                        const signature = `${returnType || 'void'} ${member.name}()`;
+                        const params = getParameterSignature(member.parameters);
+                        const signature = `${returnType || 'void'} ${member.name}(${params})`;
                         return `<div class="detail-item" data-tooltip="${escapeHtml(signature)}">
                             <span class="member-name">${member.name}</span>
                             ${returnType ? `<span class="member-type">: ${returnType}</span>` : ''}
@@ -1119,7 +1157,7 @@
                     tooltipElement.textContent = tooltipText;
                     document.body.appendChild(tooltipElement);
 
-                    // Position tooltip
+                    // Position tooltip - left-align with the item
                     const rect = item.getBoundingClientRect();
                     tooltipElement.style.left = rect.left + 'px';
                     tooltipElement.style.top = (rect.top - tooltipElement.offsetHeight - 8) + 'px';
@@ -1138,6 +1176,22 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        function getParameterSignature(parameterIris) {
+            if (!parameterIris || parameterIris.length === 0) return '';
+
+            // Get parameter details and sort by ordinal
+            const params = parameterIris
+                .map(iri => graphData.parameters.get(iri))
+                .filter(p => p) // Filter out undefined
+                .sort((a, b) => a.ordinal - b.ordinal);
+
+            // Format as "type name, type name, ..."
+            return params.map(param => {
+                const typeName = getTypeName(param.parameterType);
+                return `${typeName} ${param.name}`;
+            }).join(', ');
         }
 
         function formatGenericTypeName(typeName) {
