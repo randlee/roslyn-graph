@@ -180,6 +180,10 @@
         .detail-item:last-child {
             border-bottom: none;
         }
+        .detail-item[data-tooltip] {
+            position: relative;
+            cursor: help;
+        }
         .member-name {
             color: #dcdcaa;
             font-weight: 500;
@@ -307,10 +311,6 @@
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
             pointer-events: none;
             white-space: pre-wrap;
-        }
-        .detail-item.method-item {
-            position: relative;
-            cursor: help;
         }
         .menu-button {
             position: relative;
@@ -540,8 +540,7 @@
             // Close menu
             loadMenu.style.display = 'none';
 
-            // Show message and open file picker
-            alert(`Please locate and load this file:\n\n${file.path}\n\nDue to browser security restrictions, you need to manually select the file.`);
+            // Directly open file picker
             fileInput.click();
         }
 
@@ -1002,11 +1001,11 @@
                     ${type.inherits.map(iri => {
                         const base = graphData.types.get(iri);
                         if (base && base.name) {
-                            return `<div class="detail-item" title="${escapeHtml(base.name)}">${base.name}</div>`;
+                            return `<div class="detail-item" data-tooltip="${escapeHtml(base.name)}">${base.name}</div>`;
                         } else {
                             const fullTypeName = getTypeName(iri);
                             const simpleTypeName = getSimpleTypeName(fullTypeName);
-                            return `<div class="detail-item" style="color: #888;" title="${escapeHtml(fullTypeName)}">${simpleTypeName} <span style="font-size: 0.85em;">(external)</span></div>`;
+                            return `<div class="detail-item" style="color: #888;" data-tooltip="${escapeHtml(fullTypeName)}">${simpleTypeName} <span style="font-size: 0.85em;">(external)</span></div>`;
                         }
                     }).join('')}
                 </div>`;
@@ -1018,11 +1017,11 @@
                     ${type.implements.map(iri => {
                         const iface = graphData.types.get(iri);
                         if (iface && iface.name) {
-                            return `<div class="detail-item" title="${escapeHtml(iface.name)}">${iface.name}</div>`;
+                            return `<div class="detail-item" data-tooltip="${escapeHtml(iface.name)}">${iface.name}</div>`;
                         } else {
                             const fullTypeName = getTypeName(iri);
                             const simpleTypeName = getSimpleTypeName(fullTypeName);
-                            return `<div class="detail-item" style="color: #888;" title="${escapeHtml(fullTypeName)}">${simpleTypeName} <span style="font-size: 0.85em;">(external)</span></div>`;
+                            return `<div class="detail-item" style="color: #888;" data-tooltip="${escapeHtml(fullTypeName)}">${simpleTypeName} <span style="font-size: 0.85em;">(external)</span></div>`;
                         }
                     }).join('')}
                 </div>`;
@@ -1035,7 +1034,7 @@
                     ${categorized.constructor.map(member => {
                         const returnType = getTypeName(member.returnType);
                         const fullSignature = returnType ? `${returnType} ${member.name}` : member.name;
-                        return `<div class="detail-item" title="${escapeHtml(fullSignature)}">
+                        return `<div class="detail-item" data-tooltip="${escapeHtml(fullSignature)}">
                             <span class="member-name">${member.name}</span>
                             ${returnType ? `<span class="member-type">: ${returnType}</span>` : ''}
                         </div>`;
@@ -1049,7 +1048,7 @@
                     ${categorized.property.map(member => {
                         const returnType = getTypeName(member.returnType);
                         const fullSignature = returnType ? `${returnType} ${member.name}` : member.name;
-                        return `<div class="detail-item" title="${escapeHtml(fullSignature)}">
+                        return `<div class="detail-item" data-tooltip="${escapeHtml(fullSignature)}">
                             <span class="member-name">${member.name}</span>
                             ${returnType ? `<span class="member-type">: ${returnType}</span>` : ''}
                         </div>`;
@@ -1063,7 +1062,7 @@
                     ${categorized.method.map(member => {
                         const returnType = getTypeName(member.returnType);
                         const signature = `${returnType || 'void'} ${member.name}()`;
-                        return `<div class="detail-item method-item" data-signature="${escapeHtml(signature)}">
+                        return `<div class="detail-item" data-tooltip="${escapeHtml(signature)}">
                             <span class="member-name">${member.name}</span>
                             ${returnType ? `<span class="member-type">: ${returnType}</span>` : ''}
                         </div>`;
@@ -1077,7 +1076,7 @@
                     ${categorized.field.map(member => {
                         const returnType = getTypeName(member.returnType);
                         const fullSignature = returnType ? `${returnType} ${member.name}` : member.name;
-                        return `<div class="detail-item" title="${escapeHtml(fullSignature)}">
+                        return `<div class="detail-item" data-tooltip="${escapeHtml(fullSignature)}">
                             <span class="member-name">${member.name}</span>
                             ${returnType ? `<span class="member-type">: ${returnType}</span>` : ''}
                         </div>`;
@@ -1091,7 +1090,7 @@
                     ${categorized.event.map(member => {
                         const returnType = getTypeName(member.returnType);
                         const fullSignature = returnType ? `${returnType} ${member.name}` : member.name;
-                        return `<div class="detail-item" title="${escapeHtml(fullSignature)}">
+                        return `<div class="detail-item" data-tooltip="${escapeHtml(fullSignature)}">
                             <span class="member-name">${member.name}</span>
                             ${returnType ? `<span class="member-type">: ${returnType}</span>` : ''}
                         </div>`;
@@ -1101,23 +1100,23 @@
 
             detailsPanel.innerHTML = html;
 
-            // Add tooltip functionality for methods
-            setupMethodTooltips();
+            // Add tooltip functionality for all detail items
+            setupDetailTooltips();
         }
 
-        function setupMethodTooltips() {
-            const methodItems = document.querySelectorAll('.method-item');
+        function setupDetailTooltips() {
+            const detailItems = document.querySelectorAll('.detail-item[data-tooltip]');
             let tooltipElement = null;
 
-            methodItems.forEach(item => {
+            detailItems.forEach(item => {
                 item.addEventListener('mouseenter', (e) => {
-                    const signature = item.dataset.signature;
-                    if (!signature) return;
+                    const tooltipText = item.dataset.tooltip;
+                    if (!tooltipText) return;
 
                     // Create tooltip
                     tooltipElement = document.createElement('div');
                     tooltipElement.className = 'method-tooltip';
-                    tooltipElement.textContent = signature;
+                    tooltipElement.textContent = tooltipText;
                     document.body.appendChild(tooltipElement);
 
                     // Position tooltip
