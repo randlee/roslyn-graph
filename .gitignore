@@ -35,3 +35,10 @@ packages/
 *.nt
 *.ttl
 !ontology/*.ttl
+
+# Test Results and Coverage
+TestResults/
+coverage/
+coverage-*/
+*.trx
+*.coverage
