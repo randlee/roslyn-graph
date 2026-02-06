@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RDF Explorer - Assembly Type Graph Viewer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            overflow: hidden;
+        }
+        .container {
+            display: grid;
+            grid-template-columns: 300px 1fr 350px;
+            grid-template-rows: 60px 1fr;
+            height: 100vh;
+        }
+        header {
+            grid-column: 1 / -1;
+            background: #2d2d30;
+            border-bottom: 1px solid #3e3e42;
+            padding: 0 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        h1 {
+            font-size: 1.3em;
+            color: #fff;
+            font-weight: 500;
+        }
+        .upload-btn {
+            background: #0e639c;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background 0.2s;
+        }
+        .upload-btn:hover {
+            background: #1177bb;
+        }
+        input[type="file"] {
+            display: none;
+        }
+        .sidebar {
+            background: #252526;
+            border-right: 1px solid #3e3e42;
+            overflow-y: auto;
+            padding: 15px;
+        }
+        .sidebar h2 {
+            font-size: 0.9em;
+            color: #999;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        .namespace-list, .type-list {
+            margin-bottom: 20px;
+        }
+        .namespace-item, .type-item {
+            padding: 8px 10px;
+            margin: 2px 0;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 0.9em;
+            transition: background 0.2s;
+        }
+        .namespace-item:hover, .type-item:hover {
+            background: #2a2d2e;
+        }
+        .namespace-item.active, .type-item.active {
+            background: #094771;
+            color: #fff;
+        }
+        .type-icon {
+            display: inline-block;
+            width: 16px;
+            margin-right: 8px;
+            text-align: center;
+        }
+        .search-box {
+            width: 100%;
+            padding: 8px;
+            background: #3c3c3c;
+            border: 1px solid #555;
+            border-radius: 4px;
+            color: #d4d4d4;
+            margin-bottom: 15px;
+            font-size: 0.9em;
+        }
+        .search-box:focus {
+            outline: none;
+            border-color: #007acc;
+        }
+        #cy {
+            background: #1e1e1e;
+        }
+        .details-panel {
+            background: #252526;
+            border-left: 1px solid #3e3e42;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        .details-panel h2 {
+            font-size: 1.1em;
+            margin-bottom: 15px;
+            color: #fff;
+            border-bottom: 2px solid #007acc;
+            padding-bottom: 8px;
+        }
+        .detail-section {
+            margin-bottom: 20px;
+        }
+        .detail-section h3 {
+            font-size: 0.85em;
+            color: #999;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+        .detail-item {
+            padding: 6px 0;
+            border-bottom: 1px solid #333;
+            font-size: 0.9em;
+        }
+        .detail-item:last-child {
+            border-bottom: none;
+        }
+        .member-name {
+            color: #dcdcaa;
+            font-weight: 500;
+        }
+        .member-type {
+            color: #4ec9b0;
+            margin-left: 10px;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: #2d2d30;
+            padding: 12px;
+            border-radius: 4px;
+            border-left: 3px solid #007acc;
+        }
+        .stat-label {
+            font-size: 0.75em;
+            color: #999;
+            margin-bottom: 4px;
+        }
+        .stat-value {
+            font-size: 1.5em;
+            color: #4ec9b0;
+            font-weight: 600;
+        }
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #666;
+            text-align: center;
+            padding: 40px;
+        }
+        .empty-state-icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+        }
+        .badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.75em;
+            margin-left: 8px;
+            background: #094771;
+        }
+        .namespace-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .namespace-checkbox {
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border: 1px solid #555;
+            border-radius: 3px;
+            background: #3c3c3c;
+            cursor: pointer;
+            position: relative;
+            flex-shrink: 0;
+        }
+        .namespace-checkbox:checked {
+            background: #007acc;
+            border-color: #007acc;
+        }
+        .namespace-checkbox:checked::after {
+            content: '✓';
+            position: absolute;
+            color: white;
+            font-size: 12px;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        .namespace-checkbox:hover {
+            border-color: #007acc;
+        }
+        .namespace-label {
+            flex: 1;
+            cursor: pointer;
+        }
+        .loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .loading-spinner {
+            border: 4px solid #333;
+            border-top: 4px solid #007acc;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔍 RDF Explorer - Assembly Type Graph</h1>
+            <div>
+                <label for="file-input" class="upload-btn">
+                    📁 Load RDF File
+                </label>
+                <input type="file" id="file-input" accept=".nt,.ttl">
+            </div>
+        </header>
+
+        <aside class="sidebar">
+            <input type="text" class="search-box" id="search-box" placeholder="Search types...">
+
+            <div class="stats-grid" id="stats-grid" style="display: none;">
+                <div class="stat-card">
+                    <div class="stat-label">Types</div>
+                    <div class="stat-value" id="type-count">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Namespaces</div>
+                    <div class="stat-value" id="ns-count">0</div>
+                </div>
+            </div>
+
+            <div class="namespace-list" id="namespace-list">
+                <h2>Namespaces</h2>
+                <div class="empty-state">
+                    <div class="empty-state-icon">📦</div>
+                    <p>Load an RDF file to explore types</p>
+                </div>
+            </div>
+        </aside>
+
+        <main id="cy"></main>
+
+        <aside class="details-panel" id="details-panel">
+            <div class="empty-state">
+                <div class="empty-state-icon">👈</div>
+                <p>Select a type from the graph or sidebar to view details</p>
+            </div>
+        </aside>
+    </div>
+
+    <script>
+        let cy;
+        let graphData = {
+            types: new Map(),
+            namespaces: new Map(),
+            relationships: [],
+            members: new Map() // Store member details
+        };
+        let visibleNamespaces = new Set(); // Track checked namespaces
+
+        const fileInput = document.getElementById('file-input');
+        const searchBox = document.getElementById('search-box');
+        const namespaceList = document.getElementById('namespace-list');
+        const detailsPanel = document.getElementById('details-panel');
+        const statsGrid = document.getElementById('stats-grid');
+
+        // Initialize Cytoscape
+        function initGraph() {
+            cy = cytoscape({
+                container: document.getElementById('cy'),
+                style: [
+                    {
+                        selector: 'node',
+                        style: {
+                            'background-color': '#4ec9b0',
+                            'label': 'data(label)',
+                            'color': '#fff',
+                            'text-valign': 'center',
+                            'text-halign': 'center',
+                            'font-size': '10px',
+                            'width': 60,
+                            'height': 60
+                        }
+                    },
+                    {
+                        selector: 'node.class',
+                        style: {
+                            'background-color': '#4ec9b0',
+                            'shape': 'rectangle'
+                        }
+                    },
+                    {
+                        selector: 'node.interface',
+                        style: {
+                            'background-color': '#b5cea8',
+                            'shape': 'diamond'
+                        }
+                    },
+                    {
+                        selector: 'node.struct',
+                        style: {
+                            'background-color': '#9cdcfe',
+                            'shape': 'octagon'
+                        }
+                    },
+                    {
+                        selector: 'node.enum',
+                        style: {
+                            'background-color': '#dcdcaa',
+                            'shape': 'triangle'
+                        }
+                    },
+                    {
+                        selector: 'edge',
+                        style: {
+                            'width': 2,
+                            'line-color': '#666',
+                            'target-arrow-color': '#666',
+                            'target-arrow-shape': 'triangle',
+                            'curve-style': 'bezier',
+                            'label': 'data(label)',
+                            'font-size': '8px',
+                            'color': '#999'
+                        }
+                    },
+                    {
+                        selector: 'edge.inherits',
+                        style: {
+                            'line-color': '#569cd6',
+                            'target-arrow-color': '#569cd6'
+                        }
+                    },
+                    {
+                        selector: 'edge.implements',
+                        style: {
+                            'line-color': '#b5cea8',
+                            'target-arrow-color': '#b5cea8',
+                            'line-style': 'dashed'
+                        }
+                    }
+                ],
+                layout: {
+                    name: 'cose',
+                    padding: 50,
+                    nodeRepulsion: 8000,
+                    idealEdgeLength: 100
+                }
+            });
+
+            cy.on('tap', 'node', function(evt) {
+                const node = evt.target;
+                const typeId = node.id();
+                showTypeDetails(typeId);
+            });
+        }
+
+        fileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            showLoading();
+            const text = await file.text();
+            await parseRDF(text);
+            buildGraph();
+            updateUI();
+            hideLoading();
+        });
+
+        searchBox.addEventListener('input', (e) => {
+            const query = e.target.value.toLowerCase();
+            filterTypes(query);
+        });
+
+        async function parseRDF(text) {
+            graphData = {
+                types: new Map(),
+                namespaces: new Map(),
+                relationships: [],
+                members: new Map()
+            };
+
+            const lines = text.split('\n').filter(l => l.trim() && !l.startsWith('#'));
+            const dtOntology = 'http://dotnet.example/ontology/';
+            const rdfType = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
+
+            // Parse triples
+            for (const line of lines) {
+                const match = line.match(/<([^>]+)>\s+<([^>]+)>\s+(<([^>]+)>|"([^"]*)")/);
+                if (!match) continue;
+
+                const subject = match[1];
+                const predicate = match[2];
+                const objectIri = match[4];
+                const objectLiteral = match[5];
+
+                // Extract type information
+                if (predicate === rdfType && objectIri) {
+                    const typeName = objectIri.replace(dtOntology, '');
+                    if (['Class', 'Interface', 'Struct', 'Enum'].includes(typeName)) {
+                        if (!graphData.types.has(subject)) {
+                            graphData.types.set(subject, {
+                                iri: subject,
+                                kind: typeName.toLowerCase(),
+                                name: '',
+                                namespace: '',
+                                members: [],
+                                inherits: [],
+                                implements: []
+                            });
+                        }
+                        graphData.types.get(subject).kind = typeName.toLowerCase();
+                    }
+                    // Extract member types
+                    if (['Method', 'Property', 'Field', 'Event', 'Constructor'].includes(typeName)) {
+                        if (!graphData.members.has(subject)) {
+                            graphData.members.set(subject, {
+                                iri: subject,
+                                kind: typeName.toLowerCase(),
+                                name: '',
+                                returnType: ''
+                            });
+                        }
+                        graphData.members.get(subject).kind = typeName.toLowerCase();
+                    }
+                }
+
+                // Extract name
+                if (predicate === dtOntology + 'name' && objectLiteral) {
+                    if (graphData.types.has(subject)) {
+                        graphData.types.get(subject).name = objectLiteral;
+                    }
+                    if (graphData.members.has(subject)) {
+                        graphData.members.get(subject).name = objectLiteral;
+                    }
+                }
+
+                // Extract return type for members
+                if (predicate === dtOntology + 'returnType' && objectIri) {
+                    if (graphData.members.has(subject)) {
+                        graphData.members.get(subject).returnType = objectIri;
+                    }
+                }
+
+                // Extract namespace
+                if (predicate === dtOntology + 'inNamespace' && objectIri) {
+                    if (graphData.types.has(subject)) {
+                        const ns = objectIri;
+                        graphData.types.get(subject).namespace = ns;
+                        if (!graphData.namespaces.has(ns)) {
+                            graphData.namespaces.set(ns, { iri: ns, name: '', types: [] });
+                        }
+                        graphData.namespaces.get(ns).types.push(subject);
+                    }
+                }
+
+                // Extract relationships
+                if (predicate === dtOntology + 'inherits') {
+                    if (graphData.types.has(subject)) {
+                        graphData.types.get(subject).inherits.push(objectIri);
+                        graphData.relationships.push({
+                            from: subject,
+                            to: objectIri,
+                            type: 'inherits'
+                        });
+                    }
+                }
+
+                if (predicate === dtOntology + 'implements') {
+                    if (graphData.types.has(subject)) {
+                        graphData.types.get(subject).implements.push(objectIri);
+                        graphData.relationships.push({
+                            from: subject,
+                            to: objectIri,
+                            type: 'implements'
+                        });
+                    }
+                }
+
+                // Extract members
+                if (predicate === dtOntology + 'hasMember') {
+                    if (graphData.types.has(subject)) {
+                        graphData.types.get(subject).members.push(objectIri);
+                    }
+                }
+            }
+
+            // Get namespace names
+            for (const line of lines) {
+                const match = line.match(/<([^>]+)>\s+<([^>]+)>\s+"([^"]*)"/);
+                if (!match) continue;
+                const subject = match[1];
+                const predicate = match[2];
+                const literal = match[3];
+
+                if (predicate === dtOntology + 'name' && graphData.namespaces.has(subject)) {
+                    graphData.namespaces.get(subject).name = literal;
+                }
+            }
+
+            // Initialize all namespaces as visible
+            visibleNamespaces.clear();
+            graphData.namespaces.forEach((ns, iri) => visibleNamespaces.add(iri));
+        }
+
+        function buildGraph() {
+            const elements = [];
+
+            // Add nodes (only for visible namespaces)
+            graphData.types.forEach((type, iri) => {
+                // Show type if it has a name AND (no namespace assigned OR namespace is visible)
+                const shouldShow = type.name && (!type.namespace || visibleNamespaces.has(type.namespace));
+                if (shouldShow) {
+                    elements.push({
+                        data: {
+                            id: iri,
+                            label: type.name,
+                            kind: type.kind,
+                            namespace: type.namespace
+                        },
+                        classes: type.kind
+                    });
+                }
+            });
+
+            // Add edges (only between visible nodes)
+            const visibleIris = new Set(elements.map(el => el.data.id));
+            graphData.relationships.forEach(rel => {
+                if (visibleIris.has(rel.from) && visibleIris.has(rel.to)) {
+                    elements.push({
+                        data: {
+                            source: rel.from,
+                            target: rel.to,
+                            label: rel.type
+                        },
+                        classes: rel.type
+                    });
+                }
+            });
+
+            cy.elements().remove();
+            cy.add(elements);
+            cy.layout({
+                name: 'cose',
+                padding: 50,
+                nodeRepulsion: 8000,
+                idealEdgeLength: 100,
+                animate: true
+            }).run();
+        }
+
+        function updateUI() {
+            // Update stats
+            document.getElementById('type-count').textContent = graphData.types.size;
+            document.getElementById('ns-count').textContent = graphData.namespaces.size;
+            statsGrid.style.display = 'grid';
+
+            // Update namespace list with checkboxes
+            const sorted = Array.from(graphData.namespaces.values())
+                .filter(ns => ns.name)
+                .sort((a, b) => a.name.localeCompare(b.name));
+
+            namespaceList.innerHTML = '<h2>Namespaces</h2>' + sorted.map(ns =>
+                `<div class="namespace-item" data-ns="${ns.iri}">
+                    <input type="checkbox" class="namespace-checkbox" data-ns="${ns.iri}" checked>
+                    <span class="namespace-label">📁 ${ns.name} <span class="badge">${ns.types.length}</span></span>
+                </div>`
+            ).join('');
+
+            // Add checkbox event listeners
+            document.querySelectorAll('.namespace-checkbox').forEach(checkbox => {
+                checkbox.addEventListener('change', (e) => {
+                    e.stopPropagation();
+                    const nsIri = checkbox.dataset.ns;
+                    if (checkbox.checked) {
+                        visibleNamespaces.add(nsIri);
+                    } else {
+                        visibleNamespaces.delete(nsIri);
+                    }
+                    buildGraph();
+                });
+            });
+
+            // Add namespace label click listeners
+            document.querySelectorAll('.namespace-label').forEach(label => {
+                label.addEventListener('click', (e) => {
+                    const nsIri = label.parentElement.dataset.ns;
+                    focusNamespace(nsIri);
+                });
+            });
+        }
+
+        function focusNamespace(nsIri) {
+            const ns = graphData.namespaces.get(nsIri);
+            if (!ns) return;
+
+            const typeNodes = ns.types.map(iri => cy.getElementById(iri));
+            cy.elements().removeClass('highlighted');
+            typeNodes.forEach(node => node.addClass('highlighted'));
+            cy.fit(typeNodes, 50);
+        }
+
+        function showTypeDetails(typeIri) {
+            const type = graphData.types.get(typeIri);
+            if (!type) return;
+
+            const kindIcon = {
+                'class': '🏛️',
+                'interface': '🔌',
+                'struct': '📦',
+                'enum': '🔢'
+            }[type.kind] || '📄';
+
+            // Categorize members
+            const categorized = {
+                constructor: [],
+                property: [],
+                method: [],
+                field: [],
+                event: []
+            };
+
+            type.members.forEach(memberIri => {
+                const member = graphData.members.get(memberIri);
+                if (member && member.name) {
+                    categorized[member.kind]?.push(member);
+                }
+            });
+
+            let html = `
+                <h2>${kindIcon} ${type.name}</h2>
+                <div class="detail-section">
+                    <h3>Type Information</h3>
+                    <div class="detail-item"><strong>Kind:</strong> ${type.kind}</div>
+                    <div class="detail-item"><strong>Total Members:</strong> ${type.members.length}</div>
+                </div>
+            `;
+
+            if (type.inherits.length > 0) {
+                html += `<div class="detail-section">
+                    <h3>Inherits</h3>
+                    ${type.inherits.map(iri => {
+                        const base = graphData.types.get(iri);
+                        return `<div class="detail-item">${base ? base.name : 'External'}</div>`;
+                    }).join('')}
+                </div>`;
+            }
+
+            if (type.implements.length > 0) {
+                html += `<div class="detail-section">
+                    <h3>Implements</h3>
+                    ${type.implements.map(iri => {
+                        const iface = graphData.types.get(iri);
+                        return `<div class="detail-item">${iface ? iface.name : 'External'}</div>`;
+                    }).join('')}
+                </div>`;
+            }
+
+            // Add member sections
+            if (categorized.constructor.length > 0) {
+                html += `<div class="detail-section">
+                    <h3>Constructors (${categorized.constructor.length})</h3>
+                    ${categorized.constructor.map(member => {
+                        const returnType = getTypeName(member.returnType);
+                        return `<div class="detail-item">
+                            <span class="member-name">${member.name}</span>
+                            ${returnType ? `<span class="member-type">: ${returnType}</span>` : ''}
+                        </div>`;
+                    }).join('')}
+                </div>`;
+            }
+
+            if (categorized.property.length > 0) {
+                html += `<div class="detail-section">
+                    <h3>Properties (${categorized.property.length})</h3>
+                    ${categorized.property.map(member => {
+                        const returnType = getTypeName(member.returnType);
+                        return `<div class="detail-item">
+                            <span class="member-name">${member.name}</span>
+                            ${returnType ? `<span class="member-type">: ${returnType}</span>` : ''}
+                        </div>`;
+                    }).join('')}
+                </div>`;
+            }
+
+            if (categorized.method.length > 0) {
+                html += `<div class="detail-section">
+                    <h3>Methods (${categorized.method.length})</h3>
+                    ${categorized.method.map(member => {
+                        const returnType = getTypeName(member.returnType);
+                        return `<div class="detail-item">
+                            <span class="member-name">${member.name}</span>
+                            ${returnType ? `<span class="member-type">: ${returnType}</span>` : ''}
+                        </div>`;
+                    }).join('')}
+                </div>`;
+            }
+
+            if (categorized.field.length > 0) {
+                html += `<div class="detail-section">
+                    <h3>Fields (${categorized.field.length})</h3>
+                    ${categorized.field.map(member => {
+                        const returnType = getTypeName(member.returnType);
+                        return `<div class="detail-item">
+                            <span class="member-name">${member.name}</span>
+                            ${returnType ? `<span class="member-type">: ${returnType}</span>` : ''}
+                        </div>`;
+                    }).join('')}
+                </div>`;
+            }
+
+            if (categorized.event.length > 0) {
+                html += `<div class="detail-section">
+                    <h3>Events (${categorized.event.length})</h3>
+                    ${categorized.event.map(member => {
+                        const returnType = getTypeName(member.returnType);
+                        return `<div class="detail-item">
+                            <span class="member-name">${member.name}</span>
+                            ${returnType ? `<span class="member-type">: ${returnType}</span>` : ''}
+                        </div>`;
+                    }).join('')}
+                </div>`;
+            }
+
+            detailsPanel.innerHTML = html;
+        }
+
+        function getTypeName(typeIri) {
+            if (!typeIri) return '';
+            const type = graphData.types.get(typeIri);
+            if (type && type.name) return type.name;
+            // Extract simple name from IRI
+            const parts = typeIri.split('/');
+            return parts[parts.length - 1] || typeIri;
+        }
+
+        function filterTypes(query) {
+            if (!query) {
+                cy.elements().style('opacity', 1);
+                return;
+            }
+
+            cy.nodes().forEach(node => {
+                const label = node.data('label').toLowerCase();
+                const opacity = label.includes(query) ? 1 : 0.2;
+                node.style('opacity', opacity);
+            });
+        }
+
+        function showLoading() {
+            const loading = document.createElement('div');
+            loading.className = 'loading';
+            loading.innerHTML = '<div class="loading-spinner"></div>';
+            loading.id = 'loading';
+            document.body.appendChild(loading);
+        }
+
+        function hideLoading() {
+            const loading = document.getElementById('loading');
+            if (loading) loading.remove();
+        }
+
+        // Initialize
+        initGraph();
+    </script>
+</body>
+</html>
