@@ -46,7 +46,8 @@ public class B<T> { }
         var aIri = minter.Type(aTp);
         var bIri = minter.Type(bTp);
 
-        Assert.Equal(aIri, bIri);
+        // KNOWN BUG: Type parameters from different owners should have distinct IRIs
+        Assert.NotEqual(aIri, bIri);
     }
 
     [Fact]
@@ -71,6 +72,7 @@ public class C
         var iri1 = minter.Member(methods[0]);
         var iri2 = minter.Member(methods[1]);
 
-        Assert.Equal(iri1, iri2);
+        // KNOWN BUG: ref and out parameters should produce different IRIs
+        Assert.NotEqual(iri1, iri2);
     }
 }

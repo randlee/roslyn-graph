@@ -7,11 +7,9 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RoslynToRdf.Core", "src\Ros
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RoslynToRdf.Cli", "src\RoslynToRdf.Cli\RoslynToRdf.Cli.csproj", "{B2C3D4E5-F6A7-8901-BCDE-F12345678901}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RoslynToRdf.Tests", "tests\RoslynToRdf.Tests\RoslynToRdf.Tests.csproj", "{C3D4E5F6-A7B8-9012-CDEF-123456789012}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RoslynToRdf.Tests", "tests\RoslynToRdf.Tests\RoslynToRdf.Tests.csproj", "{E8D15633-3A4E-4C6B-9408-97A0B999B46F}"
-EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Test", "Test", "{E771B334-677D-460D-999B-0B3A8400CA55}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RoslynToRdf.Tests", "tests\RoslynToRdf.Tests\RoslynToRdf.Tests.csproj", "{D4100107-EF0A-443B-8652-8B3507363E49}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -27,16 +25,12 @@ Global
 		{B2C3D4E5-F6A7-8901-BCDE-F12345678901}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B2C3D4E5-F6A7-8901-BCDE-F12345678901}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B2C3D4E5-F6A7-8901-BCDE-F12345678901}.Release|Any CPU.Build.0 = Release|Any CPU
-		{C3D4E5F6-A7B8-9012-CDEF-123456789012}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{C3D4E5F6-A7B8-9012-CDEF-123456789012}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{C3D4E5F6-A7B8-9012-CDEF-123456789012}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{C3D4E5F6-A7B8-9012-CDEF-123456789012}.Release|Any CPU.Build.0 = Release|Any CPU
-		{E8D15633-3A4E-4C6B-9408-97A0B999B46F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{E8D15633-3A4E-4C6B-9408-97A0B999B46F}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{E8D15633-3A4E-4C6B-9408-97A0B999B46F}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{E8D15633-3A4E-4C6B-9408-97A0B999B46F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D4100107-EF0A-443B-8652-8B3507363E49}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D4100107-EF0A-443B-8652-8B3507363E49}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D4100107-EF0A-443B-8652-8B3507363E49}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D4100107-EF0A-443B-8652-8B3507363E49}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
-		{E8D15633-3A4E-4C6B-9408-97A0B999B46F} = {E771B334-677D-460D-999B-0B3A8400CA55}
+		{D4100107-EF0A-443B-8652-8B3507363E49} = {E771B334-677D-460D-999B-0B3A8400CA55}
 	EndGlobalSection
 EndGlobal
