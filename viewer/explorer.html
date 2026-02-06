@@ -1157,9 +1157,15 @@
                     tooltipElement.textContent = tooltipText;
                     document.body.appendChild(tooltipElement);
 
-                    // Position tooltip - left-align with the item
+                    // Position tooltip - center on the item
                     const rect = item.getBoundingClientRect();
-                    tooltipElement.style.left = rect.left + 'px';
+                    const tooltipWidth = tooltipElement.offsetWidth;
+                    const itemCenter = rect.left + (rect.width / 2);
+                    const tooltipLeft = itemCenter - (tooltipWidth / 2);
+
+                    // Ensure tooltip doesn't go off-screen left
+                    const finalLeft = Math.max(10, tooltipLeft);
+                    tooltipElement.style.left = finalLeft + 'px';
                     tooltipElement.style.top = (rect.top - tooltipElement.offsetHeight - 8) + 'px';
                 });
 
