@@ -127,9 +127,9 @@ Source clones may be snapshot separately as source artifacts. They must not be l
 
 ## Completed P3 reference run
 
-The full evidence, commands, artifacts, and validation queries are recorded in [reference-run-2026-09-23.md](reference-run-2026-09-23.md). The implementation backlog derived from the run is [implementation-plan.md](implementation-plan.md).
+The full evidence, commands, artifacts, and validation queries are recorded in [reference-run-2026-09-23.md](reference-run-2026-09-23.md). The implementation plan is deliberately skill-first: [implementation-plan.md](implementation-plan.md).
 
-The two PowerShell files under `scripts/` are executable reference aids, not the production interface. They proved the artifact boundaries and failure handling that the .NET commands and skill must implement.
+The PowerShell files under `scripts/` are executable reference aids, not the production interface. The production interface is a `roslyn-graph` skill that invokes the workspace's known build and these small deterministic artifact operations. It must not attempt to become a universal .NET build engine.
 
 ## Change record
 

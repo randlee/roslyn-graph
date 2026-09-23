@@ -1,49 +1,94 @@
-# Phase A implementation plan
+# Phase A implementation plan: skill first
 
-## Outcome to implement
+## Decision
 
-`roslyn-graph` will maintain immutable assembly/package Oxigraph artifacts and immutable solution and analysis-view artifacts at the configured data root. On this machine, the persistent setting is `ROSLYN_GRAPH_DATA_ROOT=F:\`, so the root is `F:\.roslyn-graph`.
+Do not build a generalized .NET build/configuration engine. Projects own their build rules, imports, generators, and conditions. The `roslyn-graph` skill must run a known project build, use the outputs that build produced, and preserve the evidence of that execution.
 
-The system must answer both questions without conflating them:
+The durable data operations remain small and deterministic: extract one DLL, load an Oxigraph store, compose named graphs, and create an optional logical view. They may remain scripts initially. Promote only repeatedly stable, mechanical operations to .NET code.
 
-- **Build truth:** what exact types and relationships were present in a particular configured solution build?
-- **Analysis truth:** how do explicitly compatible physical package/source versions present as one logical type to queries and visualization?
+Code is appropriate for interpreting and validating the workspace contract. It is not appropriate for guessing how an arbitrary solution ought to build.
 
-## Product work
+## Inputs
 
-1. **Storage library and schema.** Add a tested .NET storage layer for root resolution, SHA-256 artifact identity, filesystem-safe path layout, manifests, staging, locks, atomic publication, integrity reopening, and retention/cleanup. Use a 20-hex identity prefix that expands to 32 then 64 on a detected manifest-ID collision; keep all full provenance in the manifest. Require a path budget before any Oxigraph write.
-2. **Workspace profile resolver.** Add a versioned TOML workspace file at `<workspace>\.roslyn-graph\workspace.toml`. Each named profile requires a repository-relative root, solution, explicit collection scope (`all_solution_projects` or a project list), and minimal build selectors. Collections refer to profiles by name to describe exact builds and optional overlays. Make `dataRoot` optional and default to `ROSLYN_GRAPH_DATA_ROOT`. Validate requested settings against evaluated MSBuild results rather than copying all derived constants into TOML.
-3. **Assembly and package snapshot commands.** Productize the reference PowerShell behavior as CLI commands. Accept exact DLL input plus build provenance; resolve NuGet package/asset provenance from restore assets and lock files; emit a manifest and Oxigraph store without retaining TTL by default.
-4. **Build capture.** Add an MSBuild logger/binlog reader that captures solution membership, output DLL path, evaluated target framework/configuration/platform/properties, imported condition files and hashes, dependency search paths, and project/repository provenance. Do not derive project membership by directory scanning.
-5. **Solution snapshot command.** Resolve the captured assembly artifact IDs, validate completeness, load each into its deterministic named graph, add a metadata graph, optimize, reopen/validate the published database, and expose the resulting solution artifact ID.
-6. **Derived analysis views.** Implement a policy-driven overlay command. It must declare the base solution artifact, additional artifacts, compatibility policy/version, logical-key algorithm, and generated graph. It must never alter the base solution store.
-7. **Logical-type policy.** Start with a reviewed allowlist for Radiant.Data and Radiant.Annotations. Compatibility must be an input and an auditable result, not an assumption from matching package names. Record unmatched, added, removed, and incompatible types in the view manifest.
-8. **Query and extraction API.** Add parameterized query templates and `CONSTRUCT` export for a viewer: graph membership, type/interface graph, inheritance, implementation, callers, and logical type projection. Return a filtered Turtle/N-Quads subgraph only after selecting distinct node/edge identities.
-9. **Viewer integration.** Make the HTML viewer consume N-Quads/Turtle through the already corrected N3 parser; add deterministic client-side deduplication and a graph-selection/filter model. The interface graph query must use the logical projection where selected, retain physical-version drill-down, and avoid duplicate cross-graph edges.
-10. **Skill and scripts.** Once commands and evidence formats are stable, create/update the `roslyn-graph` skill with the exact workflow: resolve profile → capture build → snapshot closure → compose solution → optionally derive view → query/export/view. The skill should be thin orchestration over the CLI, not a second implementation.
+The workspace provides `F:\_r2609\.roslyn-graph\workspace.toml`:
 
-## Required test coverage
+- named profiles identify a repository root, solution, explicit collection scope, and minimal build selectors;
+- P3 explicitly selects every solution project;
+- Data and Annotations explicitly select one project each; and
+- collections describe an exact P3 build and an optional current-dependency overlay.
 
-- Unit: root precedence, path budget, deterministic identity, manifest validation, N-Triples escaping, package asset selection, and compatibility-key generation.
-- Integration: a fixture solution with conditional compile symbols and multiple projects; verify its captured outputs are exactly the composed named graphs.
-- Failure/recovery: malformed Turtle, failed loader, interrupted stage, duplicate immutable destination, long destination path, and lock contention. Verify no partial publication.
-- Versioning: two compatible assembly versions produce distinct physical nodes and one logical node; an incompatible or unapproved version is not merged.
-- Query/viewer: interface query returns distinct edge identities; generated RDF parses in the viewer; physical provenance drill-down remains available.
-- Regression: Roslyn member/indexer IRI escaping and multi-assembly CLI aggregation already added on `develop` remain covered.
+The workspace omits `data_root`, so `ROSLYN_GRAPH_DATA_ROOT` resolves durable storage. A profile may later carry a project-specific build command override when `dotnet build` with the stated selectors is not sufficient. The skill executes that command; it does not try to infer or synthesize an equivalent command.
+
+## Skill workflow
+
+1. Read the selected workspace profile and validate that its explicit project selection is unambiguous.
+2. Run the profile's known build command (or the documented default) against its `.sln`. Stop on a failed build; do not extract stale binaries.
+3. Record the command, exit result, solution/profile values, selected output DLL paths, repository commits, and hashes of relevant target files such as `.build\tt3\Common.targets`.
+4. For every selected output, run the existing `roslyn2rdf` CLI and import the temporary RDF into an immutable per-assembly Oxigraph store with a manifest.
+5. Compose the selected assembly stores into an immutable solution store with one named graph per assembly plus a metadata graph.
+6. When a workspace collection names overlays, build their selected projects separately, preserve them as distinct source artifacts, and derive an immutable logical-type view from the exact base solution. Never mutate the base solution store.
+7. Run validation queries, report artifact paths/IDs, and optionally `CONSTRUCT` a small, deduplicated graph payload for the viewer.
+
+For P3, the skill runs the configured P3 solution build, records the effective TT3 target evidence, snapshots all 57 selected P3 outputs and the exact restored package assets, and then may create the Data/Annotations overlay view.
+
+## Small implementation surface
+
+### Workspace-profile code
+
+Add a small .NET `WorkspaceProfile` library and CLI surface. It should:
+
+- parse `workspace.toml` with a maintained TOML parser;
+- validate the schema and mutually exclusive collection modes;
+- resolve repository, solution, and selected-project paths relative to the workspace file;
+- resolve `dataRoot` using explicit option → TOML override → `ROSLYN_GRAPH_DATA_ROOT`;
+- select a named profile or collection and return a typed, serializable execution plan; and
+- reject missing paths, duplicate selections, or an unspecified collection scope before a build starts.
+
+It must not inspect arbitrary `.targets` files to invent a build, mutate profile settings, or substitute its own project selection. This code gives the skill a reliable typed contract and makes profile validation unit-testable.
+
+### Skill
+
+Create a concise `roslyn-graph` skill after the workspace TOML and reference workflow are accepted. It should contain only:
+
+- profile and collection selection rules;
+- build/run/stop-on-failure rules;
+- provenance and validation requirements;
+- paths to the artifact scripts and query templates; and
+- a reference for the workspace TOML schema and P3-specific evidence.
+
+Do not embed project-specific build logic in the skill. The workspace profile or an explicit user-provided command supplies it.
+
+### Scripts now
+
+Keep and harden the three reference operations:
+
+- `Invoke-AssemblySnapshot.ps1`;
+- `Invoke-SolutionComposition.ps1`; and
+- `Invoke-LogicalTypeView.ps1`.
+
+They need only accept already-built assembly paths/manifests, enforce immutable short-path publication, and validate their own output. They do not evaluate MSBuild, discover arbitrary package layouts, or decide which projects matter.
+
+Add a thin skill-owned orchestrator script only if the repeated shell plumbing becomes error-prone. It should obtain the typed profile plan from the profile CLI, invoke the build command, and pass explicit paths to the three operations.
+
+### Existing .NET code
+
+Continue using the existing `Roslyn2Rdf.Cli` for DLL-to-RDF extraction. Add the small TOML profile library/CLI, but no .NET build-evaluation framework is required for Phase A.
+
+Later, add .NET code only for a proven need—for example, a stable manifest library, a fast local query service, or a viewer API. Such code must not take ownership of building arbitrary customer solutions.
+
+## Required validation
+
+- The configured build succeeds in the current workspace before any extraction.
+- Every configured selected project has exactly one recorded output DLL for the requested build.
+- Every artifact has a manifest and passes a reopen/query check.
+- The solution metadata graph has the same membership as the configured selected outputs.
+- An overlay is visibly distinct from the base build and uses an explicit logical-type policy.
+- Interface graph export uses distinct node/edge identities before viewer rendering.
+- Repeating the same successful profile/build produces the same artifact IDs and does not overwrite data.
 
 ## Delivery sequence
 
-1. Land storage/manifests/path guard and tests.
-2. Land assembly/package snapshot with fixture tests.
-3. Land build capture and solution composition with an end-to-end fixture.
-4. Land logical view policy and version tests.
-5. Land query/export endpoints and viewer tests.
-6. Write the skill from the stabilized commands, then run this same P3 reference workflow through it.
-
-## Completion criteria
-
-- A new P3 build can be captured without manually preparing a DLL list.
-- Repeating identical inputs returns the same immutable artifact; changed build/package/source inputs produce new IDs.
-- The exact solution closure, all provenance, and an optimized/reopenable Oxigraph store are published under the configured root.
-- The logical view exposes one display/query resource per approved logical type while preserving every physical source/package version.
-- A query can generate a compact interface graph payload that the viewer renders without duplicate nodes or edges.
+1. Finalize and validate `workspace.toml` against the P3, Data, and Annotations reference builds.
+2. Create the skill and use the current scripts beneath it for one complete P3 reference run.
+3. Add unit tests for workspace profile parsing/path resolution and only the tests needed for scripts and P3 workflow failure boundaries.
+4. Improve or replace a helper with .NET code only after real repeated use demonstrates the need.
