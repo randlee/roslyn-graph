@@ -127,9 +127,9 @@ Source clones may be snapshot separately as source artifacts. They must not be l
 
 ## Completed P3 reference run
 
-The full evidence, commands, artifacts, and validation queries are recorded in [reference-run-2026-09-23.md](reference-run-2026-09-23.md). The implementation plan is deliberately skill-first: [implementation-plan.md](implementation-plan.md).
+The full evidence, commands, artifacts, and validation queries are recorded in [reference-run-2026-09-23.md](reference-run-2026-09-23.md). The reviewable workflow source is the [`roslyn-graph` plugin](../../../plugins/roslyn-graph); [implementation-plan.md](implementation-plan.md) is restricted to the small code backlog outside the plugin.
 
-The PowerShell files under `scripts/` are executable reference aids, not the production interface. The production interface is a `roslyn-graph` skill that invokes the workspace's known build and these small deterministic artifact operations. It must not attempt to become a universal .NET build engine.
+The PowerShell files under `scripts/` are executable reference aids, not the production interface. The plugin skills invoke the workspace's known build and these small deterministic artifact operations. They must not attempt to become a universal .NET build engine.
 
 ## Change record
 
