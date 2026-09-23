@@ -33,6 +33,16 @@ For P3, the skill runs the configured P3 solution build, records the effective T
 
 ## Two-skill design
 
+## Plugin packaging and marketplace
+
+Ship the skills as one `roslyn-graph` plugin, not as unversioned local instructions. The plugin contains `roslyn-graph-create` and `roslyn-graph-explore` beneath one shared version and release process.
+
+- Keep the skill bodies host-neutral and concise so the same workflow can be packaged for Codex and Claude.
+- Use host-specific plugin manifests only as adapters; do not fork the workflow or query knowledge by host.
+- Advertise the Codex package through a marketplace entry. The development installation is the personal marketplace; a repository/team marketplace can replace its source path when distribution is ready.
+- Version and validate the plugin package independently from the Roslyn RDF extractor. A plugin release changes workflow knowledge; an extractor release changes graph semantics.
+- Let the plugin depend on the existing `Roslyn2Rdf.Cli`, Oxigraph, and artifact helpers being available. Report a missing prerequisite explicitly rather than bundling a second implementation.
+
 ### `roslyn-graph-create`
 
 Use this skill to create or refresh assembly, solution, and optional overlay-view databases.
@@ -75,7 +85,7 @@ It must not inspect arbitrary `.targets` files to invent a build, mutate profile
 
 ### Skills
 
-Create two concise skills after the workspace TOML and reference workflow are accepted. The creation skill should contain only:
+Create two concise skills inside the plugin after the workspace TOML and reference workflow are accepted. The creation skill should contain only:
 
 - profile and collection selection rules;
 - build/run/stop-on-failure rules;
