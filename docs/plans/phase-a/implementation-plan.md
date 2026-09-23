@@ -19,7 +19,7 @@ The workspace provides `F:\_r2609\.roslyn-graph\workspace.toml`:
 
 The workspace omits `data_root`, so `ROSLYN_GRAPH_DATA_ROOT` resolves durable storage. A profile may later carry a project-specific build command override when `dotnet build` with the stated selectors is not sufficient. The skill executes that command; it does not try to infer or synthesize an equivalent command.
 
-## Skill workflow
+## Database-creation skill workflow
 
 1. Read the selected workspace profile and validate that its explicit project selection is unambiguous.
 2. Run the profile's known build command (or the documented default) against its `.sln`. Stop on a failed build; do not extract stale binaries.
@@ -30,6 +30,33 @@ The workspace omits `data_root`, so `ROSLYN_GRAPH_DATA_ROOT` resolves durable st
 7. Run validation queries, report artifact paths/IDs, and optionally `CONSTRUCT` a small, deduplicated graph payload for the viewer.
 
 For P3, the skill runs the configured P3 solution build, records the effective TT3 target evidence, snapshots all 57 selected P3 outputs and the exact restored package assets, and then may create the Data/Annotations overlay view.
+
+## Two-skill design
+
+### `roslyn-graph-create`
+
+Use this skill to create or refresh assembly, solution, and optional overlay-view databases.
+
+- Require a selected workspace profile and either its known build command or a user-confirmed already-successful build.
+- Never guess a build command, reconstruct conditional compilation rules, or silently use an old output after a failed build.
+- Validate that the profile's selected projects have the expected outputs before extraction.
+- Publish immutable stores only after reopen/query validation.
+- Report precise missing inputs when a new project has a nonstandard build, so the profile can add an explicit command rather than the skill growing special-case build logic.
+
+This maximizes success across real project variations: the project supplies the build; the skill supplies repeatable capture and storage.
+
+### `roslyn-graph-explore`
+
+Use this skill only after a published solution or view manifest is supplied or selected. It should understand the Roslyn Graph ontology and produce reliable SPARQL and visualization payloads.
+
+- Read solution/view manifests first to select exact named graphs, physical provenance, and available logical projections.
+- Inspect ontology terms present in the store when a database version may differ; do not assume a graph is complete or a view is logical by default.
+- Offer parameterized, bounded graph patterns: interfaces/implementations, inheritance, members, dependencies, callers, attributes, package/version provenance, and physical-to-logical type drill-down.
+- Use `SELECT DISTINCT` identity queries before `CONSTRUCT` so viewer payloads do not duplicate nodes or edges across named graphs.
+- Emit a compact Turtle/N-Quads subgraph and a graph-display contract, then use the viewer rather than attempting to render the full store.
+- Preserve a path from every displayed logical node/edge back to the physical assembly graph and manifest.
+
+The visualization roadmap belongs here: interface graph, type hierarchy, assembly/project dependency graph, call graph, attribute/annotation graph, and version-difference views. Each visualization is a tested query template plus a viewer mapping—not a bespoke database schema.
 
 ## Small implementation surface
 
@@ -46,17 +73,17 @@ Add a small .NET `WorkspaceProfile` library and CLI surface. It should:
 
 It must not inspect arbitrary `.targets` files to invent a build, mutate profile settings, or substitute its own project selection. This code gives the skill a reliable typed contract and makes profile validation unit-testable.
 
-### Skill
+### Skills
 
-Create a concise `roslyn-graph` skill after the workspace TOML and reference workflow are accepted. It should contain only:
+Create two concise skills after the workspace TOML and reference workflow are accepted. The creation skill should contain only:
 
 - profile and collection selection rules;
 - build/run/stop-on-failure rules;
 - provenance and validation requirements;
-- paths to the artifact scripts and query templates; and
+- paths to the artifact scripts; and
 - a reference for the workspace TOML schema and P3-specific evidence.
 
-Do not embed project-specific build logic in the skill. The workspace profile or an explicit user-provided command supplies it.
+The explore skill should contain ontology/query/visualization routing and links to compact query-template references. Do not embed project-specific build logic in either skill. The workspace profile or an explicit user-provided command supplies the build.
 
 ### Scripts now
 
@@ -89,6 +116,7 @@ Later, add .NET code only for a proven need—for example, a stable manifest lib
 ## Delivery sequence
 
 1. Finalize and validate `workspace.toml` against the P3, Data, and Annotations reference builds.
-2. Create the skill and use the current scripts beneath it for one complete P3 reference run.
+2. Create `roslyn-graph-create` and use the current scripts beneath it for one complete P3 reference run.
 3. Add unit tests for workspace profile parsing/path resolution and only the tests needed for scripts and P3 workflow failure boundaries.
-4. Improve or replace a helper with .NET code only after real repeated use demonstrates the need.
+4. Create `roslyn-graph-explore` with tested bounded query templates for the initial interface and type-hierarchy graphs.
+5. Improve or replace a helper with .NET code only after real repeated use demonstrates the need.
