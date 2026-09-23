@@ -12,6 +12,9 @@ nupkg/
 .nuget/
 packages/
 
+# Viewer test dependencies
+node_modules/
+
 # IDE
 .vs/
 .vscode/

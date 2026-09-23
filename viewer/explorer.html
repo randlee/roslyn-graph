@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RDF Explorer - Assembly Type Graph Viewer</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+    <script src="https://unpkg.com/n3@1.17.2/browser/n3.min.js"></script>
+    <script src="rdf-graph-parser.js"></script>
     <style>
         * {
             margin: 0;
@@ -676,17 +678,20 @@
             if (!file) return;
 
             showLoading();
-            const text = await file.text();
-            await parseRDF(text);
-            buildGraph();
-            updateUI();
-            hideLoading();
-
-            // Add to MRU
-            addToMRU(file.name, file.size);
-
-            // Reset file input so same file can be loaded again
-            fileInput.value = '';
+            try {
+                const text = await file.text();
+                await parseRDF(text);
+                buildGraph();
+                updateUI();
+                addToMRU(file.name, file.size);
+            } catch (error) {
+                console.error('Failed to parse RDF file:', error);
+                alert(`Could not load ${file.name}: ${error.message}`);
+            } finally {
+                hideLoading();
+                // Reset file input so the same file can be loaded again.
+                fileInput.value = '';
+            }
         });
 
         searchBox.addEventListener('input', (e) => {
@@ -695,169 +700,7 @@
         });
 
         async function parseRDF(text) {
-            graphData = {
-                types: new Map(),
-                namespaces: new Map(),
-                relationships: [],
-                members: new Map(),
-                parameters: new Map()
-            };
-
-            const lines = text.split('\n').filter(l => l.trim() && !l.startsWith('#'));
-            const dtOntology = 'http://dotnet.example/ontology/';
-            const rdfType = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
-
-            // Parse triples
-            for (const line of lines) {
-                const match = line.match(/<([^>]+)>\s+<([^>]+)>\s+(<([^>]+)>|"([^"]*)")/);
-                if (!match) continue;
-
-                const subject = match[1];
-                const predicate = match[2];
-                const objectIri = match[4];
-                const objectLiteral = match[5];
-
-                // Extract type information
-                if (predicate === rdfType && objectIri) {
-                    const typeName = objectIri.replace(dtOntology, '');
-                    if (['Class', 'Interface', 'Struct', 'Enum'].includes(typeName)) {
-                        if (!graphData.types.has(subject)) {
-                            graphData.types.set(subject, {
-                                iri: subject,
-                                kind: typeName.toLowerCase(),
-                                name: '',
-                                namespace: '',
-                                members: [],
-                                inherits: [],
-                                implements: []
-                            });
-                        }
-                        graphData.types.get(subject).kind = typeName.toLowerCase();
-                    }
-                    // Extract member types
-                    if (['Method', 'Property', 'Field', 'Event', 'Constructor'].includes(typeName)) {
-                        if (!graphData.members.has(subject)) {
-                            graphData.members.set(subject, {
-                                iri: subject,
-                                kind: typeName.toLowerCase(),
-                                name: '',
-                                returnType: '',
-                                parameters: []
-                            });
-                        }
-                        graphData.members.get(subject).kind = typeName.toLowerCase();
-                    }
-                    // Extract parameter types
-                    if (typeName === 'Parameter') {
-                        if (!graphData.parameters.has(subject)) {
-                            graphData.parameters.set(subject, {
-                                iri: subject,
-                                name: '',
-                                parameterType: '',
-                                ordinal: 0
-                            });
-                        }
-                    }
-                }
-
-                // Extract name
-                if (predicate === dtOntology + 'name' && objectLiteral) {
-                    if (graphData.types.has(subject)) {
-                        graphData.types.get(subject).name = objectLiteral;
-                    }
-                    if (graphData.members.has(subject)) {
-                        graphData.members.get(subject).name = objectLiteral;
-                    }
-                    if (graphData.parameters.has(subject)) {
-                        graphData.parameters.get(subject).name = objectLiteral;
-                    }
-                }
-
-                // Extract return type for members
-                if (predicate === dtOntology + 'returnType' && objectIri) {
-                    if (graphData.members.has(subject)) {
-                        graphData.members.get(subject).returnType = objectIri;
-                    }
-                }
-
-                // Extract parameter type
-                if (predicate === dtOntology + 'parameterType' && objectIri) {
-                    if (graphData.parameters.has(subject)) {
-                        graphData.parameters.get(subject).parameterType = objectIri;
-                    }
-                }
-
-                // Extract parameter ordinal
-                if (predicate === dtOntology + 'ordinal' && objectLiteral) {
-                    if (graphData.parameters.has(subject)) {
-                        graphData.parameters.get(subject).ordinal = parseInt(objectLiteral);
-                    }
-                }
-
-                // Extract hasParameter relationship
-                if (predicate === dtOntology + 'hasParameter' && objectIri) {
-                    if (graphData.members.has(subject)) {
-                        graphData.members.get(subject).parameters.push(objectIri);
-                    }
-                }
-
-                // Extract namespace
-                if (predicate === dtOntology + 'inNamespace' && objectIri) {
-                    if (graphData.types.has(subject)) {
-                        const ns = objectIri;
-                        graphData.types.get(subject).namespace = ns;
-                        if (!graphData.namespaces.has(ns)) {
-                            graphData.namespaces.set(ns, { iri: ns, name: '', types: [] });
-                        }
-                        graphData.namespaces.get(ns).types.push(subject);
-                    }
-                }
-
-                // Extract relationships
-                if (predicate === dtOntology + 'inherits') {
-                    if (graphData.types.has(subject)) {
-                        graphData.types.get(subject).inherits.push(objectIri);
-                        graphData.relationships.push({
-                            from: subject,
-                            to: objectIri,
-                            type: 'inherits'
-                        });
-                    }
-                }
-
-                if (predicate === dtOntology + 'implements') {
-                    if (graphData.types.has(subject)) {
-                        graphData.types.get(subject).implements.push(objectIri);
-                        graphData.relationships.push({
-                            from: subject,
-                            to: objectIri,
-                            type: 'implements'
-                        });
-                    }
-                }
-
-                // Extract members
-                if (predicate === dtOntology + 'hasMember') {
-                    if (graphData.types.has(subject)) {
-                        graphData.types.get(subject).members.push(objectIri);
-                    }
-                }
-            }
-
-            // Get namespace names
-            for (const line of lines) {
-                const match = line.match(/<([^>]+)>\s+<([^>]+)>\s+"([^"]*)"/);
-                if (!match) continue;
-                const subject = match[1];
-                const predicate = match[2];
-                const literal = match[3];
-
-                if (predicate === dtOntology + 'name' && graphData.namespaces.has(subject)) {
-                    graphData.namespaces.get(subject).name = literal;
-                }
-            }
-
-            // Initialize all namespaces as visible
+            graphData = await RdfGraphParser.parse(text, window.N3);
             visibleNamespaces.clear();
             graphData.namespaces.forEach((ns, iri) => visibleNamespaces.add(iri));
         }
