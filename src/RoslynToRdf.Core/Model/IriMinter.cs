@@ -63,7 +63,7 @@ public partial class IriMinter
     {
         var typeIri = Type(member.ContainingType);
         var sig = GetMemberSignature(member);
-        return $"{typeIri}/member/{Escape(member.Name)}{sig}";
+        return $"{typeIri}/member/{Escape(member.Name + sig)}";
     }
 
     /// <summary>
@@ -73,6 +73,20 @@ public partial class IriMinter
     {
         var methodIri = Member(method);
         return $"{methodIri}/param/{param.Ordinal}";
+    }
+
+    /// <summary>
+    /// IRI for a parameter owned by a method or an indexer property.
+    /// </summary>
+    public string Parameter(ISymbol owner, IParameterSymbol param)
+    {
+        var ownerIri = owner switch
+        {
+            IMethodSymbol method => Member(method),
+            IPropertySymbol property => Member(property),
+            _ => throw new ArgumentException($"Unexpected parameter owner type: {owner.GetType()}")
+        };
+        return $"{ownerIri}/param/{param.Ordinal}";
     }
 
     /// <summary>
@@ -102,7 +116,7 @@ public partial class IriMinter
             IPropertySymbol prop => Member(prop),
             IFieldSymbol field => Member(field),
             IEventSymbol evt => Member(evt),
-            IParameterSymbol param => Parameter((IMethodSymbol)param.ContainingSymbol, param),
+            IParameterSymbol param => Parameter(param.ContainingSymbol, param),
             _ => throw new ArgumentException($"Unexpected target type: {target.GetType()}")
         };
         return $"{targetIri}/attr/{index}";
