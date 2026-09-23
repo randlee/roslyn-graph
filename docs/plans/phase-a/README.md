@@ -33,6 +33,12 @@ All durable artifacts reside beneath `<data-root>\.roslyn-graph`. The source che
 
 Phase A uses the persistent user environment variable `ROSLYN_GRAPH_DATA_ROOT=F:\`, which resolves the artifact root to `F:\.roslyn-graph`. New shells inherit this setting; reference commands in an existing shell pass `-DataRoot F:\` explicitly.
 
+## Workspace analysis profile
+
+Build selection belongs in one small workspace-local TOML file, not in the data root and not in an invocation full of copied command-line properties. The P3, Data, and Annotations profiles plus their collection relationship are in [`F:\_r2609\.roslyn-graph\workspace.toml`](F:\_r2609\.roslyn-graph\workspace.toml). Each `profiles.<name>.collect` table belongs unambiguously to its named profile: P3 selects all solution projects, while Data and Annotations select only their respective `Radiant.Data.csproj` and `Radiant.Annotations.csproj` outputs.
+
+There is deliberately no output-root field: this workspace uses `ROSLYN_GRAPH_DATA_ROOT`. The product command resolves paths relative to the workspace file, evaluates MSBuild with the selected profile, and records the resulting effective configuration and symbols. For P3, `.build\tt3\Common.targets` makes the effective configuration `Debug-Net10-TT3X`; the profile does not duplicate derived constants such as `TRUETEST3X`.
+
 ```text
 <data-root>\.roslyn-graph\
   assemblies\
