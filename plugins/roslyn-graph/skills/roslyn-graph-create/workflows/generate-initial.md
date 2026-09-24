@@ -11,9 +11,18 @@ Follow [../reference/setup.md](../reference/setup.md) once per machine. Before r
 ## 2. Solution builds
 
 For each solution profile in the collection (base and overlays), make sure a successful build of the
-recorded configuration exists and that the repositories are committed. The skill refuses outputs older
-than their sources (`BUILD_OUTPUT_STALE`) and uncommitted repositories (`SOURCE_DIRTY`). Only pass
-`--allow-dirty` when the user explicitly wants an uncommitted state captured.
+recorded configuration exists and that the repositories are committed.
+
+**You are responsible for the build matching the profile.** Build with exactly the configuration,
+platform, target framework and conditions that `[profiles.<name>.build]` records, following the
+repository's own build instructions, immediately before generating. The skill cannot prove this: it
+checks that each output exists where the TOML says, is newer than its sources and fingerprint files
+(`BUILD_OUTPUT_STALE`), and comes from committed repositories (`SOURCE_DIRTY`), but a newer build made with
+different settings (another platform, other compile constants) would pass those checks and be recorded
+under the profile's settings. If you are not certain the outputs came from the configured build, rebuild
+before planning.
+
+Only pass `--allow-dirty` when the user explicitly wants an uncommitted state captured.
 
 ## 3. Plan
 

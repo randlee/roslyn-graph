@@ -23,8 +23,10 @@ JSON object whose `type` is the result type or `"error"`. On `"error"`, read eac
 
 ## Preconditions
 
-- **Solution profiles** need a successful build that *you* produce first. Building a solution is outside
-  this skill: follow the repository's own build instructions. The skill only verifies the result.
+- **Solution profiles** need a successful build that *you* produce first, with exactly the settings the
+  profile records. Building a solution is outside this skill: follow the repository's own build
+  instructions. The skill checks that outputs exist, are fresh and come from committed sources; it cannot
+  prove they were built with the recorded configuration or platform. That is your responsibility.
 - **NuGet profiles** need nothing: the TOML plus this skill hold everything required.
 - Tools: see [reference/setup.md](reference/setup.md) (Oxigraph, the RoslynToRdf extractor, .NET SDK,
   `ROSLYN_GRAPH_DATA_ROOT`).

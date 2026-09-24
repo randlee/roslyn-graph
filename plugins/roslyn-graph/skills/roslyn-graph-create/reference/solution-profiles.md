@@ -26,6 +26,11 @@ The skill never evaluates or runs MSBuild. It reads:
 
 After extraction the assembly's own name must equal the expected output name (check `S5`).
 
+**What the build check does not prove.** It does not show that the outputs were built with the profile's
+configuration, platform or compile constants; `[profiles.<name>.build]` describes the build, and the
+manifests record those values as stated. Producing a build that matches them is the responsibility of the
+agent using the skill (see generate-initial, step 2).
+
 ## Choosing fingerprint_files
 
 The fingerprint must change whenever the build *definition* changes in a way the commit of a project's
