@@ -38,6 +38,7 @@ def test_rendered_page_loads_the_embedded_graph(tmp_path):
         lines += [f"<{iri}> <{RDF_TYPE}> <{DT}{kind}> .", f'<{iri}> <{DT}name> "{name}" .', f"<{iri}> <{DT}inNamespace> <{ns}> ."]
     data = tmp_path / "graph.nt"
     data.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    explore.write_context(data, {"generator": "graph", "source": {"manifest": "views/x/manifest.json"}})
     page = tmp_path / "graph.html"
     explore.render("explorer", data, page, "browser test")
 
@@ -53,3 +54,6 @@ def test_rendered_page_loads_the_embedded_graph(tmp_path):
     type_count = re.search(r'id="type-count"[^>]*>([^<]*)<', dom)
     assert type_count and type_count.group(1).strip() == "3", f"type-count shows {type_count.group(1) if type_count else None!r}"
     assert "Load an RDF file to explore types" not in dom.split('id="roslyn-graph-data"')[0]
+    copy_button = re.search(r'<button[^>]*id="copy-graph-btn"[^>]*>', dom)
+    assert copy_button and "disabled" not in copy_button.group(0), "Copy for Claude stays disabled after the graph loads"
+    assert "roslyn-graph-context" in dom

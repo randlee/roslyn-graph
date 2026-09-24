@@ -370,6 +370,13 @@ def run(definition_path: Path, data_root: str | None, output_dir: Path | None, o
     data = out_dir / f"{stem}.nt"
     out_dir.mkdir(parents=True, exist_ok=True)
     data.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+    explore.write_context(data, {
+        "generator": "graph",
+        "source": explore.source_info(manifest_path, manifest),
+        "definition": {"path": str(d.path), "title": d.title, "text": d.path.read_text(encoding="utf-8")},
+        "result": {"seeds": sorted(set(seeds.values())), "implementations": len(implementations), "types": len(types),
+                   "referenceEdges": len(edges), "truncated": truncated, "logical": d.logical},
+    })
     page = explore.render(d.visualizer, data, out_dir / f"{stem}.html", d.title)
     if open_page:
         import webbrowser

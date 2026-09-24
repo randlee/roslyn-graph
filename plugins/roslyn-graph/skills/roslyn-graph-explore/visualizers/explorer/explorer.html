@@ -7,6 +7,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
     <script src="https://unpkg.com/n3@1.17.2/browser/n3.min.js"></script>
     <script src="rdf-graph-parser.js"></script>
+    <script src="graph-selection.js"></script>
     <style>
         * {
             margin: 0;
@@ -51,6 +52,38 @@
         }
         .upload-btn:hover {
             background: #1177bb;
+        }
+        .upload-btn:disabled {
+            background: #3e3e42;
+            color: #858585;
+            cursor: default;
+        }
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .copy-type-btn {
+            margin: 4px 0 12px;
+            padding: 5px 10px;
+            font-size: 0.85em;
+        }
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #0e639c;
+            color: #fff;
+            padding: 10px 18px;
+            border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+            z-index: 2000;
+            font-size: 0.9em;
+            max-width: 80vw;
+        }
+        .toast.error {
+            background: #a1260d;
         }
         input[type="file"] {
             display: none;
@@ -386,6 +419,10 @@
     <div class="container">
         <header>
             <h1>🔍 RDF Explorer - Assembly Type Graph</h1>
+            <div class="header-actions">
+            <button class="upload-btn" id="copy-graph-btn" disabled
+                    title="Copy the types on the graph, their members, the edges and the applied filters as JSON to paste into a chat with Claude">📋 Copy for Claude</button>
+            <button class="upload-btn" id="download-graph-btn" disabled title="Download the same JSON as a file">⬇ JSON</button>
             <div class="menu-button">
                 <button class="upload-btn" id="load-menu-btn">▼ Load RDF File</button>
                 <div class="menu-dropdown" id="load-menu" style="display:none">
@@ -398,6 +435,7 @@
                     <div class="menu-item single-line" id="clear-history">🗑️ Clear history</div>
                 </div>
                 <input type="file" id="file-input" accept=".nt,.ttl" style="display: none;">
+            </div>
             </div>
         </header>
 
@@ -444,6 +482,8 @@
             parameters: new Map() // Store parameter details
         };
         let visibleNamespaces = new Set(); // Track checked namespaces
+        let selectedTypeIri = null; // Type shown in the details panel
+        let loadedFrom = null; // Provenance of a graph loaded from a file (embedded pages carry their own)
         let settings = {
             mruFiles: []
         };
@@ -693,6 +733,8 @@
                 buildGraph();
                 updateUI();
                 addToMRU(file.name, file.size);
+                loadedFrom = { generator: 'file', fileName: file.name };
+                selectedTypeIri = null;
             } catch (error) {
                 console.error('Failed to parse RDF file:', error);
                 alert(`Could not load ${file.name}: ${error.message}`);
@@ -772,6 +814,8 @@
             document.getElementById('type-count').textContent = nonCompilerTypes.length;
             document.getElementById('ns-count').textContent = graphData.namespaces.size;
             statsGrid.style.display = 'grid';
+            copyGraphBtn.disabled = graphData.types.size === 0;
+            downloadGraphBtn.disabled = graphData.types.size === 0;
 
             // Update namespace list with checkboxes
             const sorted = Array.from(graphData.namespaces.values())
@@ -852,6 +896,7 @@
         function showTypeDetails(typeIri) {
             const type = graphData.types.get(typeIri);
             if (!type) return;
+            selectedTypeIri = typeIri;
 
             const kindIcon = {
                 'class': '🏛️',
@@ -878,6 +923,8 @@
 
             let html = `
                 <h2>${kindIcon} ${type.name}</h2>
+                <button class="upload-btn copy-type-btn" onclick="copySelection('type')"
+                        title="Copy this type, its members and its edges as JSON for a chat with Claude">📋 Copy this type</button>
                 <div class="detail-section">
                     <h3>Type Information</h3>
                     <div class="detail-item"><strong>Kind:</strong> ${type.kind}</div>
@@ -1185,6 +1232,98 @@
             const loading = document.getElementById('loading');
             if (loading) loading.remove();
         }
+
+        // "Copy for Claude": the drawn types (or the selected one), their members and edges, the filters applied
+        // here, and the provenance of the graph, as JSON a chat can act on (see graph-selection.js).
+        const copyGraphBtn = document.getElementById('copy-graph-btn');
+        const downloadGraphBtn = document.getElementById('download-graph-btn');
+
+        function currentContext() {
+            const embedded = document.getElementById('roslyn-graph-context');
+            if (embedded) {
+                try {
+                    return JSON.parse(embedded.textContent);
+                } catch (error) {
+                    console.error('Unreadable embedded context:', error);
+                }
+            }
+            return loadedFrom;
+        }
+
+        function currentView() {
+            const namespaces = Array.from(graphData.namespaces.values()).filter(ns => ns.name);
+            const search = searchBox.value.trim();
+            const matches = search
+                ? Array.from(graphData.types.values())
+                    .filter(t => t.name && t.name.toLowerCase().includes(search.toLowerCase()))
+                    .map(t => t.fullName || t.name).sort()
+                : [];
+            return {
+                visibleNamespaces: namespaces.filter(ns => visibleNamespaces.has(ns.iri)).map(ns => ns.name).sort(),
+                hiddenNamespaces: namespaces.filter(ns => !visibleNamespaces.has(ns.iri)).map(ns => ns.name).sort(),
+                search,
+                searchMatches: matches,
+                selectedType: selectedTypeIri ? (graphData.types.get(selectedTypeIri)?.fullName || getTypeName(selectedTypeIri)) : null
+            };
+        }
+
+        function buildSelection(scope) {
+            const typeIris = scope === 'type' ? [selectedTypeIri] : cy.nodes().map(node => node.id());
+            return RoslynGraphSelection.build(graphData, {
+                typeIris, scope, context: currentContext(), view: currentView(), typeName: getTypeName
+            });
+        }
+
+        async function writeClipboard(text) {
+            try {
+                await navigator.clipboard.writeText(text);
+                return true;
+            } catch (error) {
+                // file:// pages and older browsers: fall back to a hidden textarea
+                const area = document.createElement('textarea');
+                area.value = text;
+                area.style.position = 'fixed';
+                area.style.opacity = '0';
+                document.body.appendChild(area);
+                area.select();
+                const copied = document.execCommand('copy');
+                area.remove();
+                return copied;
+            }
+        }
+
+        function showToast(message, isError = false) {
+            const toast = document.createElement('div');
+            toast.className = isError ? 'toast error' : 'toast';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 4000);
+        }
+
+        async function copySelection(scope) {
+            if (scope === 'type' && !selectedTypeIri) return;
+            const selection = buildSelection(scope);
+            const text = RoslynGraphSelection.toText(selection);
+            const copied = await writeClipboard(text);
+            const { types, members, edges } = selection.summary;
+            if (copied) {
+                showToast(`Copied ${types} type(s), ${members} members, ${edges} edges (${Math.max(1, Math.round(text.length / 1024))} KB). Paste it into a chat with Claude.`);
+            } else {
+                showToast('The browser blocked the clipboard. Use ⬇ JSON instead.', true);
+            }
+        }
+
+        function downloadSelection() {
+            const text = RoslynGraphSelection.toText(buildSelection('graph'));
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+            link.download = `${(document.title || 'roslyn-graph').replace(/[^\w.-]+/g, '-')}.selection.json`;
+            link.click();
+            URL.revokeObjectURL(link.href);
+        }
+
+        copyGraphBtn.addEventListener('click', () => copySelection('graph'));
+        downloadGraphBtn.addEventListener('click', downloadSelection);
 
         // Pages generated by the roslyn-graph plugin embed their RDF in this element. It is placed after this
         // script, so it only exists once the document has been parsed (see the call below).

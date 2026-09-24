@@ -16,6 +16,7 @@ and types searched.
 | Groups by | `dt:inNamespace` → namespace `dt:name` (export the namespace's full name as `dt:name`) |
 | Edges | `dt:implements`, `dt:inherits` — only between drawn types |
 | Details panel | `dt:hasMember` with member `dt:name`, `dt:returnType`, `dt:hasParameter`, `dt:parameterType`, `dt:ordinal` |
+| Copy | **📋 Copy for Claude** (header) copies the drawn types, members, edges, filters and the page's provenance as `roslyn-graph-selection/1` JSON; **📋 Copy this type** (details panel) copies one type; **⬇ JSON** downloads it ([selection-format.md](selection-format.md)) |
 | Size | responsive to roughly 1,500 type nodes |
 | Needs | a browser with network access to cdnjs and unpkg (Cytoscape, N3) |
 

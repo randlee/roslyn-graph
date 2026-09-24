@@ -34,12 +34,14 @@ Read the manifest first: `components` / `overlayComponents` say which assemblies
 | A question with a textual answer (which types, how many, where defined, what changed between versions) | [query](workflows/query.md) |
 | "Show", "draw", "visualize", "graph" anything, including graphs grown from seeds ("these interfaces, their implementations and everything they reference") | [visualize](workflows/visualize.md) |
 | List, run, save, update or check the user's saved queries and graphs | [saved-queries](workflows/saved-queries.md) |
+| The user pastes explorer JSON (`"format": "roslyn-graph-selection/1"`) or a `*.selection.json`, and wants a deep dive | [deep-dive](workflows/deep-dive.md) |
 
 References, loaded when a workflow step needs them:
 - [reference/ontology.md](reference/ontology.md): every class and predicate (generated from the plugin ontology);
 - [reference/query-design.md](reference/query-design.md): store structure, the rules that keep queries fast, patterns;
 - [reference/graph-definitions.md](reference/graph-definitions.md): saved `.rq` queries and `.graph.toml` traversal graphs in the workspace;
 - [reference/visualizers.md](reference/visualizers.md): available visualizers and what each needs;
+- [reference/selection-format.md](reference/selection-format.md): the JSON the explorer's copy buttons produce;
 - [queries/](queries/): tested queries to copy or adapt (parameters are `{{NAME}}`, passed with `--param NAME=VALUE`).
 
 Users keep their own queries and graph definitions in the workspace: `<workspace>/.roslyn-graph/queries/*.rq`

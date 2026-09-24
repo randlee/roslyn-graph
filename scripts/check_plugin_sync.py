@@ -6,7 +6,8 @@ authored elsewhere in this repository:
 
     tools/rg/rg.py, tools/rg/roslyn_graph/*.py  ->  <every skill>/scripts/        (master CLI; tests stay in tools/rg)
     ontology/*.ttl                              ->  roslyn-graph-explore/ontology/
-    viewer/explorer.html, rdf-graph-parser.js   ->  roslyn-graph-explore/visualizers/explorer/
+    viewer/explorer.html, rdf-graph-parser.js,  ->  roslyn-graph-explore/visualizers/explorer/
+      graph-selection.js
 
 The check fails when a copy differs from its master (compared as git blobs, so line-ending conversion does
 not matter), when a skill's scripts/ holds a file the master does not, when the generated ontology reference
@@ -47,7 +48,7 @@ def copies() -> dict[Path, Path]:
             mapping[SKILLS / skill / "scripts" / master.relative_to(MASTER)] = master
     for ttl in sorted((REPO / "ontology").glob("*.ttl")):
         mapping[EXPLORE / "ontology" / ttl.name] = ttl
-    for name in ("explorer.html", "rdf-graph-parser.js"):
+    for name in ("explorer.html", "rdf-graph-parser.js", "graph-selection.js"):
         mapping[EXPLORE / "visualizers" / "explorer" / name] = REPO / "viewer" / name
     return mapping
 

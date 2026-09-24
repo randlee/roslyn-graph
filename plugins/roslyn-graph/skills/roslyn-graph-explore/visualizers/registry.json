@@ -3,7 +3,10 @@
     "description": "Interactive type-relationship graph (Cytoscape): types grouped by namespace, implements and inherits edges, member details on click.",
     "render": "embed-rdf",
     "template": "explorer.html",
-    "inlineScripts": ["rdf-graph-parser.js"],
+    "inlineScripts": [
+      "rdf-graph-parser.js",
+      "graph-selection.js"
+    ],
     "input": "N-Triples or Turtle using the dt: ontology",
     "reads": {
       "nodes": "subjects typed dt:Class, dt:Interface, dt:Struct or dt:Enum",
@@ -13,6 +16,7 @@
       "details": "dt:hasMember; member dt:name and dt:returnType / dt:propertyType / dt:fieldType / dt:eventType; dt:hasParameter, dt:parameterType, dt:ordinal"
     },
     "limits": "Stays responsive to roughly 1,500 type nodes. Types without an rdf:type in the export are not drawn, and edges to them are dropped.",
-    "requiresNetwork": "Loads cytoscape and n3 from public CDNs when opened."
+    "requiresNetwork": "Loads cytoscape and n3 from public CDNs when opened.",
+    "copy": "\"Copy for Claude\" copies the drawn types (or the selected type), their members and edges, the applied filters and the page context as roslyn-graph-selection/1 JSON; \"JSON\" downloads it."
   }
 }
