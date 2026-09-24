@@ -1,0 +1,151 @@
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix dt: <http://dotnet.example/ontology/> .
+
+dt: a owl:Ontology ;
+    rdfs:label ".NET Type Graph Ontology" ;
+    rdfs:comment "An ontology for representing .NET assembly type information as RDF." .
+
+# Classes
+dt:Assembly a rdfs:Class ; rdfs:label "Assembly" .
+dt:Namespace a rdfs:Class ; rdfs:label "Namespace" .
+dt:Type a rdfs:Class ; rdfs:label "Type" .
+dt:Class a rdfs:Class ; rdfs:subClassOf dt:Type ; rdfs:label "Class" .
+dt:Struct a rdfs:Class ; rdfs:subClassOf dt:Type ; rdfs:label "Struct" .
+dt:Interface a rdfs:Class ; rdfs:subClassOf dt:Type ; rdfs:label "Interface" .
+dt:Enum a rdfs:Class ; rdfs:subClassOf dt:Type ; rdfs:label "Enum" .
+dt:Delegate a rdfs:Class ; rdfs:subClassOf dt:Type ; rdfs:label "Delegate" .
+dt:Record a rdfs:Class ; rdfs:subClassOf dt:Type ; rdfs:label "Record" .
+dt:Member a rdfs:Class ; rdfs:label "Member" .
+dt:Method a rdfs:Class ; rdfs:subClassOf dt:Member ; rdfs:label "Method" .
+dt:Constructor a rdfs:Class ; rdfs:subClassOf dt:Member ; rdfs:label "Constructor" .
+dt:Property a rdfs:Class ; rdfs:subClassOf dt:Member ; rdfs:label "Property" .
+dt:Field a rdfs:Class ; rdfs:subClassOf dt:Member ; rdfs:label "Field" .
+dt:Event a rdfs:Class ; rdfs:subClassOf dt:Member ; rdfs:label "Event" .
+dt:Parameter a rdfs:Class ; rdfs:label "Parameter" .
+dt:TypeParameter a rdfs:Class ; rdfs:label "TypeParameter" .
+dt:Attribute a rdfs:Class ; rdfs:label "Attribute" .
+
+# Type Properties
+dt:name a rdf:Property ; rdfs:label "name" ; rdfs:range xsd:string .
+dt:fullName a rdf:Property ; rdfs:label "fullName" ; rdfs:range xsd:string .
+dt:typeKind a rdf:Property ; rdfs:label "typeKind" ; rdfs:domain dt:Type ; rdfs:range xsd:string .
+dt:accessibility a rdf:Property ; rdfs:label "accessibility" ; rdfs:range xsd:string .
+dt:isAbstract a rdf:Property ; rdfs:label "isAbstract" ; rdfs:range xsd:boolean .
+dt:isSealed a rdf:Property ; rdfs:label "isSealed" ; rdfs:range xsd:boolean .
+dt:isStatic a rdf:Property ; rdfs:label "isStatic" ; rdfs:range xsd:boolean .
+dt:isGeneric a rdf:Property ; rdfs:label "isGeneric" ; rdfs:range xsd:boolean .
+dt:isValueType a rdf:Property ; rdfs:label "isValueType" ; rdfs:range xsd:boolean .
+dt:isRecord a rdf:Property ; rdfs:label "isRecord" ; rdfs:range xsd:boolean .
+
+# Type Relationships
+dt:definedInAssembly a rdf:Property ; rdfs:label "definedInAssembly" ; rdfs:domain dt:Type ; rdfs:range dt:Assembly .
+dt:inNamespace a rdf:Property ; rdfs:label "inNamespace" ; rdfs:domain dt:Type ; rdfs:range dt:Namespace .
+dt:inherits a rdf:Property ; rdfs:label "inherits" ; rdfs:domain dt:Type ; rdfs:range dt:Type .
+dt:implements a rdf:Property ; rdfs:label "implements" ; rdfs:domain dt:Type ; rdfs:range dt:Interface .
+dt:nestedIn a rdf:Property ; rdfs:label "nestedIn" ; rdfs:domain dt:Type ; rdfs:range dt:Type .
+dt:hasMember a rdf:Property ; rdfs:label "hasMember" ; rdfs:domain dt:Type ; rdfs:range dt:Member .
+dt:hasTypeParameter a rdf:Property ; rdfs:label "hasTypeParameter" ; rdfs:range dt:TypeParameter .
+dt:hasAttribute a rdf:Property ; rdfs:label "hasAttribute" ; rdfs:range dt:Attribute .
+dt:genericDefinition a rdf:Property ; rdfs:label "genericDefinition" ; rdfs:domain dt:Type ; rdfs:range dt:Type .
+dt:typeArgument a rdf:Property ; rdfs:label "typeArgument" ; rdfs:domain dt:Type .
+dt:arrayElementType a rdf:Property ; rdfs:label "arrayElementType" ; rdfs:domain dt:Type ; rdfs:range dt:Type .
+dt:throws a rdf:Property ; rdfs:label "throws" ; rdfs:comment "Exception type from XML docs" ; rdfs:range dt:Type .
+dt:relatedTo a rdf:Property ; rdfs:label "relatedTo" ; rdfs:comment "Related symbol from seealso" .
+
+# Member Properties
+dt:isVirtual a rdf:Property ; rdfs:label "isVirtual" ; rdfs:range xsd:boolean .
+dt:isOverride a rdf:Property ; rdfs:label "isOverride" ; rdfs:range xsd:boolean .
+dt:isAsync a rdf:Property ; rdfs:label "isAsync" ; rdfs:range xsd:boolean .
+dt:isConst a rdf:Property ; rdfs:label "isConst" ; rdfs:range xsd:boolean .
+dt:isReadOnly a rdf:Property ; rdfs:label "isReadOnly" ; rdfs:range xsd:boolean .
+dt:hasGetter a rdf:Property ; rdfs:label "hasGetter" ; rdfs:domain dt:Property ; rdfs:range xsd:boolean .
+dt:hasSetter a rdf:Property ; rdfs:label "hasSetter" ; rdfs:domain dt:Property ; rdfs:range xsd:boolean .
+dt:constValue a rdf:Property ; rdfs:label "constValue" ; rdfs:domain dt:Field ; rdfs:range xsd:string .
+dt:isExtensionMethod a rdf:Property ; rdfs:label "isExtensionMethod" ; rdfs:domain dt:Method ; rdfs:range xsd:boolean .
+dt:methodKind a rdf:Property ; rdfs:label "methodKind" ; rdfs:domain dt:Method ; rdfs:range xsd:string .
+
+# Member Relationships
+dt:memberOf a rdf:Property ; rdfs:label "memberOf" ; rdfs:domain dt:Member ; rdfs:range dt:Type .
+dt:returnType a rdf:Property ; rdfs:label "returnType" ; rdfs:domain dt:Method ; rdfs:range dt:Type .
+dt:propertyType a rdf:Property ; rdfs:label "propertyType" ; rdfs:domain dt:Property ; rdfs:range dt:Type .
+dt:fieldType a rdf:Property ; rdfs:label "fieldType" ; rdfs:domain dt:Field ; rdfs:range dt:Type .
+dt:eventType a rdf:Property ; rdfs:label "eventType" ; rdfs:domain dt:Event ; rdfs:range dt:Type .
+dt:hasParameter a rdf:Property ; rdfs:label "hasParameter" ; rdfs:domain dt:Method ; rdfs:range dt:Parameter .
+dt:overridesMethod a rdf:Property ; rdfs:label "overridesMethod" ; rdfs:domain dt:Member ; rdfs:range dt:Member .
+
+# Parameter Properties
+dt:ordinal a rdf:Property ; rdfs:label "ordinal" ; rdfs:range xsd:integer .
+dt:isOptional a rdf:Property ; rdfs:label "isOptional" ; rdfs:domain dt:Parameter ; rdfs:range xsd:boolean .
+dt:isParams a rdf:Property ; rdfs:label "isParams" ; rdfs:domain dt:Parameter ; rdfs:range xsd:boolean .
+dt:refKind a rdf:Property ; rdfs:label "refKind" ; rdfs:domain dt:Parameter ; rdfs:range xsd:string .
+dt:defaultValue a rdf:Property ; rdfs:label "defaultValue" ; rdfs:domain dt:Parameter ; rdfs:range xsd:string .
+dt:parameterType a rdf:Property ; rdfs:label "parameterType" ; rdfs:domain dt:Parameter ; rdfs:range dt:Type .
+dt:parameterOf a rdf:Property ; rdfs:label "parameterOf" ; rdfs:domain dt:Parameter ; rdfs:range dt:Method .
+
+# Type Parameter Properties
+dt:variance a rdf:Property ; rdfs:label "variance" ; rdfs:domain dt:TypeParameter ; rdfs:range xsd:string .
+dt:hasReferenceTypeConstraint a rdf:Property ; rdfs:domain dt:TypeParameter ; rdfs:range xsd:boolean .
+dt:hasValueTypeConstraint a rdf:Property ; rdfs:domain dt:TypeParameter ; rdfs:range xsd:boolean .
+dt:hasConstructorConstraint a rdf:Property ; rdfs:domain dt:TypeParameter ; rdfs:range xsd:boolean .
+dt:typeParameterOf a rdf:Property ; rdfs:label "typeParameterOf" ; rdfs:domain dt:TypeParameter .
+dt:constrainedToType a rdf:Property ; rdfs:domain dt:TypeParameter ; rdfs:range dt:Type .
+
+# Attribute Properties
+dt:attributeOf a rdf:Property ; rdfs:label "attributeOf" ; rdfs:domain dt:Attribute .
+dt:attributeType a rdf:Property ; rdfs:domain dt:Attribute ; rdfs:range dt:Type .
+dt:constructorArguments a rdf:Property ; rdfs:domain dt:Attribute ; rdfs:range xsd:string .
+dt:namedArguments a rdf:Property ; rdfs:domain dt:Attribute ; rdfs:range xsd:string .
+
+# Assembly Properties
+dt:version a rdf:Property ; rdfs:label "version" ; rdfs:domain dt:Assembly ; rdfs:range xsd:string .
+dt:culture a rdf:Property ; rdfs:label "culture" ; rdfs:domain dt:Assembly ; rdfs:range xsd:string .
+dt:publicKeyToken a rdf:Property ; rdfs:domain dt:Assembly ; rdfs:range xsd:string .
+
+# Namespace Relationships
+dt:parentNamespace a rdf:Property ; rdfs:domain dt:Namespace ; rdfs:range dt:Namespace .
+
+# Terms emitted by the extractor that were previously undeclared.
+# Every term the extractor emits must be declared in this file; plugins/roslyn-graph/scripts check it.
+
+# Type properties
+dt:isRefLikeType a rdf:Property ; rdfs:label "isRefLikeType" ; rdfs:domain dt:Type ; rdfs:range xsd:boolean .
+dt:isUnmanagedType a rdf:Property ; rdfs:label "isUnmanagedType" ; rdfs:domain dt:Type ; rdfs:range xsd:boolean .
+dt:specialType a rdf:Property ; rdfs:label "specialType" ; rdfs:comment "Roslyn SpecialType name for built-in types, such as System_Int32" ; rdfs:domain dt:Type ; rdfs:range xsd:string .
+dt:enumUnderlyingType a rdf:Property ; rdfs:label "enumUnderlyingType" ; rdfs:domain dt:Enum ; rdfs:range dt:Type .
+dt:pointerElementType a rdf:Property ; rdfs:label "pointerElementType" ; rdfs:domain dt:Type ; rdfs:range dt:Type .
+dt:arrayRank a rdf:Property ; rdfs:label "arrayRank" ; rdfs:domain dt:Type ; rdfs:range xsd:integer .
+
+# Generic type arguments: dt:typeArgument points at an argument node <type>/typearg/<i> carrying dt:index and dt:type.
+dt:index a rdf:Property ; rdfs:label "index" ; rdfs:comment "Zero-based position of a generic type argument node" ; rdfs:range xsd:integer .
+dt:type a rdf:Property ; rdfs:label "type" ; rdfs:comment "Type supplied by a generic type argument node" ; rdfs:range dt:Type .
+
+# Member properties
+dt:isExtern a rdf:Property ; rdfs:label "isExtern" ; rdfs:domain dt:Member ; rdfs:range xsd:boolean .
+dt:isVolatile a rdf:Property ; rdfs:label "isVolatile" ; rdfs:domain dt:Field ; rdfs:range xsd:boolean .
+dt:isRequired a rdf:Property ; rdfs:label "isRequired" ; rdfs:domain dt:Member ; rdfs:range xsd:boolean .
+dt:isInitOnly a rdf:Property ; rdfs:label "isInitOnly" ; rdfs:domain dt:Property ; rdfs:range xsd:boolean .
+dt:getterAccessibility a rdf:Property ; rdfs:label "getterAccessibility" ; rdfs:domain dt:Property ; rdfs:range xsd:string .
+dt:setterAccessibility a rdf:Property ; rdfs:label "setterAccessibility" ; rdfs:domain dt:Property ; rdfs:range xsd:string .
+dt:isPartialDefinition a rdf:Property ; rdfs:label "isPartialDefinition" ; rdfs:domain dt:Method ; rdfs:range xsd:boolean .
+dt:explicitInterfaceImplementation a rdf:Property ; rdfs:label "explicitInterfaceImplementation" ; rdfs:domain dt:Member ; rdfs:range dt:Member .
+
+# Parameter properties
+dt:isThis a rdf:Property ; rdfs:label "isThis" ; rdfs:domain dt:Parameter ; rdfs:range xsd:boolean .
+dt:isDiscard a rdf:Property ; rdfs:label "isDiscard" ; rdfs:domain dt:Parameter ; rdfs:range xsd:boolean .
+dt:hasExplicitDefaultValue a rdf:Property ; rdfs:label "hasExplicitDefaultValue" ; rdfs:domain dt:Parameter ; rdfs:range xsd:boolean .
+
+# Type parameter properties
+dt:hasUnmanagedTypeConstraint a rdf:Property ; rdfs:label "hasUnmanagedTypeConstraint" ; rdfs:domain dt:TypeParameter ; rdfs:range xsd:boolean .
+dt:hasNotNullConstraint a rdf:Property ; rdfs:label "hasNotNullConstraint" ; rdfs:domain dt:TypeParameter ; rdfs:range xsd:boolean .
+
+# Attribute properties
+dt:attributeClass a rdf:Property ; rdfs:label "attributeClass" ; rdfs:domain dt:Attribute ; rdfs:range dt:Type .
+
+# Assembly properties
+dt:isInteractive a rdf:Property ; rdfs:label "isInteractive" ; rdfs:domain dt:Assembly ; rdfs:range xsd:boolean .
+
+# Namespace relationships
+dt:containsType a rdf:Property ; rdfs:label "containsType" ; rdfs:domain dt:Namespace ; rdfs:range dt:Type .

@@ -38,6 +38,7 @@ node_modules/
 *.nt
 *.ttl
 !ontology/*.ttl
+!plugins/roslyn-graph/ontology/*.ttl
 
 # Test Results and Coverage
 TestResults/
