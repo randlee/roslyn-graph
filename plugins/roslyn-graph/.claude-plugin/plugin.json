@@ -1,0 +1,14 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "roslyn-graph",
+  "version": "0.1.0",
+  "description": "Create immutable Roslyn Graph databases and explore them with ontology-aware queries and visualizations.",
+  "author": {
+    "name": "rand.lee",
+    "email": "rand.lee@radiantvs.com"
+  },
+  "skills": [
+    "./skills/roslyn-graph-create",
+    "./skills/roslyn-graph-explore"
+  ]
+}

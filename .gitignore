@@ -38,6 +38,7 @@ node_modules/
 *.nt
 *.ttl
 !ontology/*.ttl
+!plugins/roslyn-graph/ontology/*.ttl
 
 # Test Results and Coverage
 TestResults/
@@ -45,3 +46,8 @@ coverage/
 coverage-*/
 *.trx
 *.coverage
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/

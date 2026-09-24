@@ -1,0 +1,18 @@
+# Title: Members of a type
+# Description: members of every physical version with kind, accessibility, static flag and member type.
+# Parameters:
+#   TYPE  full name of the type (example: Contoso.Data.Record)
+PREFIX dt: <http://dotnet.example/ontology/>
+SELECT ?version ?kind ?member ?accessibility ?isStatic ?memberType WHERE {
+  GRAPH ?g {
+    ?asm a dt:Assembly ; dt:version ?version .
+    ?t dt:definedInAssembly ?asm ; dt:fullName "{{TYPE}}" ; dt:hasMember ?m .
+    ?m a ?class ; dt:name ?member .
+    FILTER(?class != dt:Member)
+    BIND(STRAFTER(STR(?class), STR(dt:)) AS ?kind)
+    OPTIONAL { ?m dt:accessibility ?accessibility }
+    OPTIONAL { ?m dt:isStatic ?isStatic }
+    OPTIONAL { ?m dt:returnType|dt:propertyType|dt:fieldType|dt:eventType ?mt . ?mt dt:fullName ?memberType }
+  }
+}
+ORDER BY ?version ?kind ?member

@@ -39,3 +39,18 @@ test('parses compact Turtle even when names precede rdf:type', async () => {
 test('reports invalid RDF instead of producing a partial graph', async () => {
     await assert.rejects(() => parse('@prefix broken:', N3));
 });
+
+test('reads rg:references as a references relationship between types', async () => {
+    const graph = await parse(`
+@prefix dt: <http://dotnet.example/ontology/> .
+@prefix rg: <http://roslyn-graph.example/ontology/> .
+@prefix ex: <http://example.test/> .
+ex:Service a dt:Class ; dt:name "Service" ; rg:references ex:Options .
+ex:Options a dt:Class ; dt:name "Options" .
+`, N3);
+    assert.deepEqual(graph.relationships, [{
+        from: 'http://example.test/Service',
+        to: 'http://example.test/Options',
+        type: 'references'
+    }]);
+});

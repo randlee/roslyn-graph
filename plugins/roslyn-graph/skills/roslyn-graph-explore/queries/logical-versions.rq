@@ -1,0 +1,12 @@
+# Title: Types reconciled across versions
+# Description: views only; logical types with more than one physical version, and those versions.
+PREFIX dt: <http://dotnet.example/ontology/>
+PREFIX rg: <http://roslyn-graph.example/ontology/>
+SELECT ?assembly ?fullName (COUNT(DISTINCT ?physical) AS ?versions) (GROUP_CONCAT(DISTINCT ?version; separator=", ") AS ?assemblyVersions) WHERE {
+  GRAPH ?lg { ?physical rg:logicalType ?logical . ?logical rg:assemblyName ?assembly ; dt:fullName ?fullName . }
+  GRAPH ?g { ?asm a dt:Assembly ; dt:version ?version . ?physical dt:definedInAssembly ?asm . }
+}
+GROUP BY ?assembly ?fullName
+HAVING (COUNT(DISTINCT ?physical) > 1)
+ORDER BY ?assembly ?fullName
+LIMIT 500

@@ -1,0 +1,20 @@
+{
+  "name": "roslyn-graph",
+  "description": "Roslyn Graph database creation and exploration plugins for configured .NET workspaces.",
+  "owner": {
+    "name": "rand.lee",
+    "email": "rand.lee@radiantvs.com"
+  },
+  "plugins": [
+    {
+      "name": "roslyn-graph",
+      "source": "./plugins/roslyn-graph",
+      "description": "Create immutable Roslyn Graph databases and explore them with ontology-aware queries and visualizations.",
+      "version": "0.1.0",
+      "author": {
+        "name": "rand.lee",
+        "email": "rand.lee@radiantvs.com"
+      }
+    }
+  ]
+}

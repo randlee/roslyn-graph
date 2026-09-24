@@ -54,6 +54,89 @@ public class C
     }
 
     [Fact]
+    public void Extract_TypeReferencedBeforeItIsVisited_IsStillFullyExtracted()
+    {
+        // First references ISecond (base interface and field type) before the traversal reaches ISecond.
+        // The reference emits a stub; the later full extraction must still emit its class, flags and members.
+        var source = @"
+namespace Sample;
+public class First : ISecond
+{
+    public ISecond? Other;
+    public void Do() { }
+}
+public interface ISecond
+{
+    void Do();
+}
+";
+
+        var compilation = TestUtilities.CreateCompilation(source, "ExtractorReferencedFirst");
+        var emitter = new TestEmitter();
+        var options = new ExtractionOptions
+        {
+            BaseUri = "http://test.example/",
+            IncludePrivate = true,
+            IncludeInternal = true,
+            IncludeAttributes = false,
+            IncludeExternalTypes = true,
+            ExtractExceptions = false,
+            ExtractSeeAlso = false
+        };
+
+        new AssemblyGraphExtractor(emitter, options).Extract(compilation, compilation.Assembly);
+
+        var minter = new IriMinter("http://test.example/");
+        var second = compilation.GetTypeByMetadataName("Sample.ISecond")!;
+        var secondIri = minter.Type(second);
+        var doIri = minter.Member(second.GetMembers("Do").Single());
+
+        Assert.Contains(emitter.Triples, t => t.Subject == secondIri && t.Predicate == DotNetOntology.Rdf + "type"
+            && t.Object == minter.OntologyPrefix + DotNetOntology.Classes.Interface);
+        Assert.Contains(emitter.Triples, t => t.Subject == secondIri && t.Predicate == minter.OntologyPrefix + DotNetOntology.TypeProps.Accessibility);
+        Assert.Contains(emitter.Triples, t => t.Subject == secondIri && t.Predicate == minter.OntologyPrefix + DotNetOntology.TypeRels.HasMember
+            && t.Object == doIri);
+
+        // The nullable reference (ISecond? Other) must not produce a second name for the same IRI.
+        var fullNames = emitter.Triples
+            .Where(t => t.Subject == secondIri && t.Predicate == minter.OntologyPrefix + DotNetOntology.TypeProps.FullName)
+            .Select(t => t.Object).Distinct().ToList();
+        Assert.Equal(new[] { "Sample.ISecond" }, fullNames);
+    }
+
+    [Fact]
+    public void Extract_GenericConstructedOverTypeParameters_KeepsTheDefinitionName()
+    {
+        // Worker<TOut> implements IOperation<TOut>: that construction shares IOperation<T>'s IRI.
+        var source = @"
+namespace Sample;
+public class Worker<TOut> : IOperation<TOut>
+{
+    public IOperation<TOut>? Next;
+}
+public interface IOperation<T>
+{
+    T Run();
+}
+";
+
+        var compilation = TestUtilities.CreateCompilation(source, "ExtractorOpenGeneric");
+        var emitter = new TestEmitter();
+        var options = new ExtractionOptions { BaseUri = "http://test.example/", IncludePrivate = true, IncludeAttributes = false };
+        new AssemblyGraphExtractor(emitter, options).Extract(compilation, compilation.Assembly);
+
+        var minter = new IriMinter("http://test.example/");
+        var operationIri = minter.Type(compilation.GetTypeByMetadataName("Sample.IOperation`1")!);
+        var fullNames = emitter.Triples
+            .Where(t => t.Subject == operationIri && t.Predicate == minter.OntologyPrefix + DotNetOntology.TypeProps.FullName)
+            .Select(t => t.Object).Distinct().ToList();
+
+        Assert.Equal(new[] { "Sample.IOperation<T>" }, fullNames);
+        Assert.DoesNotContain(emitter.Triples, t => t.Subject == operationIri
+            && t.Predicate == minter.OntologyPrefix + DotNetOntology.TypeRels.TypeArgument);
+    }
+
+    [Fact]
     public void Extract_ExternalTypes_AreReferencedButNotEmitted_WhenDisabled()
     {
         var source = @"
