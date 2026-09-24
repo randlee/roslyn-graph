@@ -139,3 +139,9 @@ def test_missing_file(tmp_path):
     with pytest.raises(RgError) as info:
         config.load(tmp_path / "nope.toml")
     assert info.value.problems[0].code == "WORKSPACE_NOT_FOUND"
+
+
+def test_a_package_listed_twice_is_rejected(tmp_path):
+    with pytest.raises(RgError) as info:
+        config.load(write(tmp_path, VALID.replace('packages = ["lib_1_0"]', 'packages = ["lib_1_0", "lib_1_0"]')))
+    assert any("more than once" in m for m in codes(info.value))

@@ -52,6 +52,7 @@ commands that crash natively (for example Windows exit code 0xC0000005) are retr
 | `PACKAGE_VERSION_DRIFT` | the solution restored another version than the nuget profile pins; update the profile |
 | `PACKAGE_OUTPUT_DIFFERS` | the package DLL in the build output is not the package's DLL; rebuild after restore |
 | `OVERLAY_NOT_IN_POLICY` | add the overlay's assembly to the policy, or remove the overlay |
+| `DUPLICATE_OUTPUT` | two selected projects (or a package listed twice) resolve to the same DLL; give the projects distinct `outputs` entries or exclude all but one; never merged silently |
 
 ## NuGet
 
@@ -77,6 +78,7 @@ commands that crash natively (for example Windows exit code 0xC0000005) are retr
 | `ARTIFACT_DESTINATION_TAKEN` | a different artifact appeared at the destination during the run; re-run |
 | `ASSEMBLY_NODE_COUNT` | the extraction produced zero or several `dt:Assembly` nodes |
 | `IDENTITY_DRIFT` | inputs changed between planning and extraction (for example a rebuild); re-run |
+| `PROJECTION_TYPE_UNNAMED` | a projected component has own types without `dt:fullName`; the component store is incomplete; validate it (S8) and regenerate |
 | `PHYSICAL_IDENTITY_AMBIGUOUS` | two components define the same type IRI (same assembly name and version from different builds); bump one assembly version |
 | `VALIDATION_FAILED` | one or more checks failed; `context.failed` lists them (see validation.md) |
 | `NOT_IDEMPOTENT` | inputs changed during the run; generate again |
@@ -99,6 +101,9 @@ commands that crash natively (for example Windows exit code 0xC0000005) are retr
 | `QUERY_ARGUMENT`, `QUERY_FILE` | pass exactly one readable `--query` or `--query-file` |
 | `QUERY_PARAM_MISSING`, `QUERY_PARAM_INVALID` | pass every `{{NAME}}` placeholder as `--param NAME=VALUE` (upper-case name) |
 | `EXPORT_NEEDS_CONSTRUCT`, `EXPORT_EMPTY`, `EXPORT_UNSAFE` | exports need a CONSTRUCT query that returns triples without `</script` |
+| `QUERY_NOT_SELECT` | `query` runs SELECT queries; use `export` for CONSTRUCT |
+| `QUERY_TIMEOUT` | the query ran past `--timeout` (default 120 s); restructure it (query-design.md) or narrow it; raise the timeout only for a deliberate large query |
+| `EXPORT_TOO_LARGE` | the export exceeded 500,000 triples; narrow the CONSTRUCT, or pass `--unbounded` for a deliberate full export (no cap, no timeout) |
 | `LOGICAL_NEEDS_VIEW` | `--logical` works only on view manifests |
 | `GRAPH_DEFINITION_NOT_FOUND`, `GRAPH_DEFINITION_INVALID` | fix the `.graph.toml` path or the key named in `context.key` (see the explore skill's graph-definitions.md) |
 | `GRAPH_SOURCE_NOT_FOUND` | the definition's collection or manifest has no published artifact; generate it first |

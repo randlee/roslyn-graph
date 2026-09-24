@@ -214,6 +214,10 @@ def parse(data: dict[str, Any], path: Path) -> Workspace:
 
     for profile in profiles.values():
         if isinstance(profile, SolutionProfile):
+            repeated = sorted({p for p in profile.packages if profile.packages.count(p) > 1})
+            if repeated:
+                problems.add("TOML_INVALID", f"profiles.{profile.name}.collect.packages lists {repeated} more than once", "List each package once.",
+                             key=f"profiles.{profile.name}.collect.packages")
             for package in profile.packages:
                 target = profiles.get(package)
                 if not isinstance(target, NugetProfile):

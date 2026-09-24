@@ -35,8 +35,10 @@ Save the query in a scratch file and run it:
 python <plugin>/scripts/rg.py query --manifest <manifest.json> --query-file <file.rq> [--param NAME=VALUE ...] [--limit N]
 ```
 
-The result has `rowCount`, `truncated` and `rows` (values as strings). If a query takes more than a few
-seconds, stop and restructure it rather than waiting.
+The result has `rowCount`, `truncated` and `rows` (values as strings). `--limit` (default 2000) is enforced
+inside Oxigraph: the query runs as a subquery of `SELECT * ... LIMIT limit+1`, so a broad query stops early
+and `truncated: true` says more rows exist. Queries stop after `--timeout` seconds (default 120) with
+`QUERY_TIMEOUT`; if a query takes more than a few seconds, restructure it rather than raising the timeout.
 
 ## 4. Answer
 

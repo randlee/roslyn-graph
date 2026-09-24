@@ -44,9 +44,11 @@ Graph IRIs are `urn:roslyn-graph:<kind>:<first 32 hex of the ID>`; solutions add
   graph describing the `rg:SolutionBuild` (profile, repository, branch, commit, fingerprint, framework,
   configuration, platform, `rg:includesGraph`, `rg:includesArtifact`). The default graph is empty.
 - **View store**: an exact copy of the base solution's graphs, one graph per overlay component, and the
-  logical-type graph: `rg:LogicalTypeView`, and for every type defined by a policy assembly
-  `<physical type> rg:logicalType <logical type>`, with `rg:LogicalType`, `rg:assemblyName`,
-  `dt:fullName` and `dt:name` on the logical node. `owl:sameAs` is never written.
+  logical-type graph: `rg:LogicalTypeView`, and for every own, fully extracted type of a policy assembly
+  (projection domain v2: defined by the assembly, with `dt:accessibility`; constructed generics are not
+  projected) `<physical type> rg:logicalType <logical type>`, with `rg:LogicalType`, `rg:assemblyName`,
+  `dt:fullName` and `dt:name` on the logical node. The manifest records the domain size per component
+  (`projection.domain`) and check V9 recounts it. `owl:sameAs` is never written.
 
 ## Manifests
 

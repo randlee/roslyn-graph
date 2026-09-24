@@ -19,7 +19,7 @@ from .result import RgError
 from .util import sha256_text
 
 MANIFEST_SCHEMA = 2
-PROJECTION_VERSION = "logical-types/v1"
+PROJECTION_VERSION = "logical-types/v2"  # v2: domain = own, fully extracted types only
 MAX_CURRENT_PATH = 240
 
 

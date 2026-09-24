@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 import sys
 import tempfile
 import time
@@ -41,11 +42,20 @@ def crashed(returncode: int) -> bool:
     return returncode < 0 or returncode >= 0xC0000000
 
 
-def invoke(args: list[str], what: str, trace: str = "") -> str:
+def invoke(args: list[str], what: str, trace: str = "", timeout: int | None = None) -> str:
     started = time.monotonic()
-    completed = run([command(), *args])
-    if crashed(completed.returncode) and args[0] in READ_ONLY:
-        completed = run([command(), *args])  # read-only commands are safe to retry once after a crash
+    try:
+        completed = run([command(), *args], timeout=timeout)
+        if crashed(completed.returncode) and args[0] in READ_ONLY:
+            completed = run([command(), *args], timeout=timeout)  # read-only commands are safe to retry once after a crash
+    except subprocess.TimeoutExpired as exc:
+        raise RgError.of(
+            "QUERY_TIMEOUT",
+            f"oxigraph {args[0]} did not finish within {timeout} s while {what}.",
+            "Restructure the query (reference/query-design.md: scope to GRAPH ?g, no VALUES with UNION/OPTIONAL) or narrow it; "
+            "raise --timeout only for a deliberate large query.",
+            query=" ".join((trace or what).split())[:300],
+        ) from exc
     if os.environ.get("ROSLYN_GRAPH_TRACE"):
         detail = " ".join((trace or what).split())[:160]
         print(f"[oxigraph {time.monotonic() - started:7.2f}s] {args[0]}: {detail}", file=sys.stderr, flush=True)
@@ -104,13 +114,13 @@ def _query_args(query: str, scratch: list[Path]) -> list[str]:
     return ["--query-file", handle.name]
 
 
-def select(store: Path, query: str, union: bool = False) -> list[dict[str, str]]:
+def select(store: Path, query: str, union: bool = False, timeout: int | None = None) -> list[dict[str, str]]:
     scratch: list[Path] = []
     args = ["query", "--location", str(store), *_query_args(query, scratch), "--results-format", "json"]
     if union:
         args.append("--union-default-graph")
     try:
-        output = invoke(args, "running a SELECT query", trace=query)
+        output = invoke(args, "running a SELECT query", trace=query, timeout=timeout)
     finally:
         for path in scratch:
             path.unlink(missing_ok=True)
@@ -121,13 +131,13 @@ def select(store: Path, query: str, union: bool = False) -> list[dict[str, str]]
     return [{name: term["value"] for name, term in row.items()} for row in document["results"]["bindings"]]
 
 
-def construct(store: Path, query: str, target: Path, union: bool = False) -> None:
+def construct(store: Path, query: str, target: Path, union: bool = False, timeout: int | None = None) -> None:
     scratch: list[Path] = []
     args = ["query", "--location", str(store), *_query_args(query, scratch), "--results-format", "nt", "--results-file", str(target)]
     if union:
         args.append("--union-default-graph")
     try:
-        invoke(args, "running a CONSTRUCT query", trace=query)
+        invoke(args, "running a CONSTRUCT query", trace=query, timeout=timeout)
     finally:
         for path in scratch:
             path.unlink(missing_ok=True)

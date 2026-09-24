@@ -110,11 +110,11 @@ def cmd_remove(a) -> dict:
 
 
 def cmd_query(a) -> dict:
-    return explore.query(Path(a.manifest), explore.read_query(a.query, a.query_file, a.param), union=a.union, limit=a.limit)
+    return explore.query(Path(a.manifest), explore.read_query(a.query, a.query_file, a.param), union=a.union, limit=a.limit, timeout=a.timeout)
 
 
 def cmd_export(a) -> dict:
-    return explore.export(Path(a.manifest), explore.read_query(a.query, a.query_file, a.param), Path(a.output), union=a.union, logical=a.logical)
+    return explore.export(Path(a.manifest), explore.read_query(a.query, a.query_file, a.param), Path(a.output), union=a.union, logical=a.logical, unbounded=a.unbounded, timeout=a.timeout)
 
 
 def cmd_render(a) -> dict:
@@ -213,6 +213,7 @@ def parser() -> argparse.ArgumentParser:
         p.add_argument("--query")
         p.add_argument("--query-file")
         p.add_argument("--param", action="append", default=[], help="NAME=VALUE for a {{NAME}} placeholder in the query; repeatable.")
+        p.add_argument("--timeout", type=int, default=explore.QUERY_TIMEOUT, help="Seconds before the query is stopped (default %(default)s).")
         p.add_argument("--union", action="store_true",
                        help="Treat the union of all named graphs as the default graph (slow on large stores; prefer GRAPH ?g).")
         if name == "query":
@@ -220,6 +221,7 @@ def parser() -> argparse.ArgumentParser:
         else:
             p.add_argument("--output", required=True)
             p.add_argument("--logical", action="store_true", help="Collapse physical type versions to logical types (views only).")
+            p.add_argument("--unbounded", action="store_true", help="Deliberate full export: no timeout and no triple cap.")
 
     p = add("render", cmd_render, "Build a self-contained page for a registered visualizer.")
     p.add_argument("--visualizer", default="explorer")

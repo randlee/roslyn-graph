@@ -139,3 +139,18 @@ def test_missing_fingerprint_file(git_repo):
     with pytest.raises(RgError) as info:
         plan.fingerprint(profile(git_repo, fingerprint_files=[git_repo / "nope.targets"]))
     assert info.value.problems[0].code == "FINGERPRINT_FILE_MISSING"
+
+
+def test_two_projects_with_the_same_output_are_an_error(git_repo):
+    make_solution(git_repo)
+    build_outputs(git_repo, names=("Alpha",))
+    p = profile(git_repo, assembly_names={"src/Beta/Beta.csproj": "Alpha"})  # Beta also builds Alpha.dll
+    problems = ProblemList()
+    components = plan._solution_components(p, "base", TOOL, True, problems)
+    fake = plan.Plan(workspace=None, collection=None, root=git_repo, extractor=TOOL, oxigraph_version="0", components=components)
+    with pytest.raises(RgError) as info:
+        plan._check_duplicates(fake)
+    problem = info.value.problems[0]
+    assert problem.code == "DUPLICATE_OUTPUT"
+    assert any("src/Alpha/Alpha.csproj" in s for s in problem.context["sources"])
+    assert any("src/Beta/Beta.csproj" in s for s in problem.context["sources"])

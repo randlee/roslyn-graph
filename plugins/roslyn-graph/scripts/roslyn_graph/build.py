@@ -235,11 +235,21 @@ def build_view(plan: Plan) -> dict[str, Any] | None:
         projected = [e for e in base["components"] + overlays if e["assembly"]["name"] in policy_assemblies]
         projected.sort(key=lambda e: e["artifactId"])
         rows_by_component = []
+        domain = []
         for entry in projected:
             asm = assembly_iri(entry["assembly"]["name"], entry["assembly"]["version"])
+            # The projection domain is every own, fully extracted type of the component. A type in the domain
+            # without a full name is an error, never silently skipped.
             rows = oxigraph.select(store, f"PREFIX dt: <{DT}> SELECT ?type ?fullName ?name WHERE {{ GRAPH <{entry['graphIri']}> {{ "
-                                          f"?type a dt:Type ; dt:fullName ?fullName ; dt:definedInAssembly <{asm}> . OPTIONAL {{ ?type dt:name ?name }} }} }}")
+                                          f"?type dt:definedInAssembly <{asm}> ; dt:accessibility ?access . "
+                                          f"OPTIONAL {{ ?type dt:fullName ?fullName }} OPTIONAL {{ ?type dt:name ?name }} }} }}")
+            unnamed = sorted({r["type"] for r in rows if not r.get("fullName")})
+            if unnamed:
+                raise RgError.of("PROJECTION_TYPE_UNNAMED", f"{len(unnamed)} type(s) of {entry['assembly']['name']} have no dt:fullName.",
+                                 "The component store is incomplete; revalidate it (check S8) and regenerate it.", types=unnamed[:10])
             rows_by_component.append((entry["assembly"]["name"], sorted(rows, key=lambda r: r["type"])))
+            domain.append({"artifactId": entry["artifactId"], "graphIri": entry["graphIri"], "assembly": entry["assembly"]["name"],
+                           "version": entry["assembly"]["version"], "types": len({r["type"] for r in rows})})
         view_iri = artifacts.graph_iri("view", v["artifactId"])
         logical_graph = f"{view_iri}:logical-types"
         lines, links, logical_count = projection_lines(view_iri, base["solutionIri"], plan.collection.policy, rows_by_component)
@@ -257,8 +267,7 @@ def build_view(plan: Plan) -> dict[str, Any] | None:
             "baseSolution": {"artifactId": base["artifactId"], "manifestPath": artifacts.relative(plan.root, base_dir / "manifest.json"),
                              "solutionIri": base["solutionIri"], "graphs": base["store"]["graphs"]},
             "overlayComponents": overlays,
-            "projection": {"physicalTypeLinks": links, "logicalTypes": logical_count,
-                           "projectedComponents": [e["artifactId"] for e in projected]},
+            "projection": {"physicalTypeLinks": links, "logicalTypes": logical_count, "domain": domain},
             "store": {"format": "oxigraph", "oxigraphVersion": plan.oxigraph_version, "tripleCount": sum(graphs.values()),
                       "namedGraphCount": len(graphs), "graphs": graphs},
         }

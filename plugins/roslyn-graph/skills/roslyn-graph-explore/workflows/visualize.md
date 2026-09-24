@@ -50,6 +50,9 @@ python <plugin>/scripts/rg.py export --manifest <manifest.json> --query-file <fi
 - `--logical` (views only) merges physical versions of policy assemblies into one node per logical type,
   so a type present in both the packaged and the current source build is drawn once. Use it when the user
   asks about the combined solution; omit it to compare versions side by side.
+- Exports are never truncated silently: more than 500,000 triples fails with `EXPORT_TOO_LARGE`, and a
+  query running past `--timeout` (120 s) fails with `QUERY_TIMEOUT`. `--unbounded` lifts both, only for a
+  deliberate full export.
 - Check `summary.nodesByKind` and `summary.edges` against the visualizer's limit (explorer: about 1,500
   type nodes). If it is larger, narrow the query (a namespace, an assembly, one interface's implementers)
   and tell the user what was left out.

@@ -59,10 +59,29 @@ def read_query(query: str | None, query_file: str | None, params: list[str] | No
     return _PARAM.sub(lambda m: values[m.group(1)], text)
 
 
-def query(manifest_path: Path, text: str, union: bool, limit: int = MAX_ROWS) -> dict[str, Any]:
+MAX_EXPORT_TRIPLES = 500_000
+QUERY_TIMEOUT = 120  # seconds; exploration queries fail loudly instead of running unbounded
+_PROLOGUE = re.compile(r"^(\s*(?:#[^\n]*\n|PREFIX\s+\w*:\s*<[^>]*>|BASE\s+<[^>]*>|\s+))*", re.IGNORECASE)
+
+
+def split_prologue(text: str) -> tuple[str, str]:
+    """(PREFIX/BASE/comment prologue, query form starting at SELECT/CONSTRUCT/...)."""
+    end = _PROLOGUE.match(text).end()
+    return text[:end], text[end:]
+
+
+def bounded_select(text: str, limit: int) -> str:
+    """Make Oxigraph stop after limit+1 rows: the query becomes a subquery of SELECT * ... LIMIT limit+1."""
+    prologue, body = split_prologue(text)
+    if not re.match(r"SELECT\b", body, re.IGNORECASE):
+        raise RgError.of("QUERY_NOT_SELECT", "The query command runs SELECT queries.", "Use export for CONSTRUCT queries.")
+    return f"{prologue}SELECT * WHERE {{\n{body}\n}}\nLIMIT {limit + 1}\n"
+
+
+def query(manifest_path: Path, text: str, union: bool, limit: int = MAX_ROWS, timeout: int = QUERY_TIMEOUT) -> dict[str, Any]:
     store, manifest = store_for(manifest_path)
-    rows = oxigraph.select(store, text, union=union)
-    return {"type": "query", "manifest": str(manifest_path), "kind": manifest["kind"], "rowCount": len(rows),
+    rows = oxigraph.select(store, bounded_select(text, limit), union=union, timeout=timeout)
+    return {"type": "query", "manifest": str(manifest_path), "kind": manifest["kind"], "rowCount": min(len(rows), limit),
             "truncated": len(rows) > limit, "rows": rows[:limit]}
 
 
@@ -107,15 +126,29 @@ def summarize(lines: list[str]) -> dict[str, Any]:
     return {"triples": len(lines), "nodesByKind": kinds, "edges": edges}
 
 
-def export(manifest_path: Path, text: str, output: Path, union: bool, logical: bool) -> dict[str, Any]:
+def export(manifest_path: Path, text: str, output: Path, union: bool, logical: bool, unbounded: bool = False,
+           max_triples: int = MAX_EXPORT_TRIPLES, timeout: int = QUERY_TIMEOUT) -> dict[str, Any]:
+    """Run a CONSTRUCT. Results are never truncated silently: an oversized export or a runaway query fails with
+    EXPORT_TOO_LARGE or QUERY_TIMEOUT unless --unbounded asks for a deliberate full export."""
     if not re.search(r"\bCONSTRUCT\b", text, re.IGNORECASE):
         raise RgError.of("EXPORT_NEEDS_CONSTRUCT", "Exports use a CONSTRUCT query.", "See reference/query-design.md for the viewer-ready CONSTRUCT patterns.")
     store, manifest = store_for(manifest_path)
     output.parent.mkdir(parents=True, exist_ok=True)
     raw = output.with_suffix(".raw.nt")
-    oxigraph.construct(store, text, raw, union=union)
-    lines = [line.strip() for line in raw.read_text(encoding="utf-8").splitlines() if line.strip()]
-    raw.unlink()
+    oxigraph.construct(store, text, raw, union=union, timeout=None if unbounded else timeout)
+    lines: list[str] = []
+    try:
+        with open(raw, encoding="utf-8") as handle:  # streamed: never read an unbounded result at once
+            for line in handle:
+                line = line.strip()
+                if line:
+                    lines.append(line)
+                    if not unbounded and len(lines) > max_triples:
+                        raise RgError.of("EXPORT_TOO_LARGE", f"The export exceeds {max_triples:,} triples.",
+                                         "Narrow the CONSTRUCT (a namespace, an assembly, one type's neighbourhood); "
+                                         "pass --unbounded only for a deliberate full export.", maxTriples=max_triples)
+    finally:
+        raw.unlink(missing_ok=True)
     collapsed = 0
     if logical:
         before = len(lines)

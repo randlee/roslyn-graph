@@ -142,7 +142,7 @@ def build_plan(workspace: Workspace, collection_name: str, data_root: str | None
             problems.extend(exc)
 
     problems.raise_if_any()
-    _dedupe(plan)
+    _check_duplicates(plan)
     for component in plan.components:
         _finalize_component(root, component)
     _plan_solution(plan)
@@ -326,15 +326,30 @@ def _package_components(pkg: nuget.ResolvedPackage, role: str, tool: extractor.E
 # ---- identities ----------------------------------------------------------------------------
 
 
-def _dedupe(plan: Plan) -> None:
-    seen: dict[str, Component] = {}
-    unique = []
+def _source_of(c: Component) -> str:
+    if c.manifest["origin"]["kind"] == "source":
+        return f"project {c.manifest['build']['project']} (profile {c.profile})"
+    return f"package {c.manifest['package']['id']} {c.manifest['package']['version']} (profile {c.profile})"
+
+
+def _check_duplicates(plan: Plan) -> None:
+    """Two selections that resolve to the same DLL are an error, never silently merged into one component:
+    a merged component would drop a project the user asked for."""
+    problems = ProblemList()
+    by_path: dict[str, list[Component]] = {}
     for component in plan.components:
-        key = f"{component.role}|{component.assembly_path}"
-        if key not in seen:
-            seen[key] = component
-            unique.append(component)
-    plan.components = unique
+        by_path.setdefault(f"{component.role}|{str(component.assembly_path).lower()}", []).append(component)
+    for group in by_path.values():
+        if len(group) > 1:
+            sources = [_source_of(c) for c in group]
+            problems.add(
+                "DUPLICATE_OUTPUT",
+                f"{len(group)} selections resolve to the same output {group[0].assembly_path}: {'; '.join(sources)}.",
+                "Projects with the same AssemblyName need distinct outputs entries, or exclude all but one; "
+                "a package listed twice in collect.packages should be listed once.",
+                sources=sources,
+            )
+    problems.raise_if_any()
 
 
 def _finalize_component(root: Path, c: Component) -> None:

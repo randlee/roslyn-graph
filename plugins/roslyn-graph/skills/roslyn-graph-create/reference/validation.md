@@ -24,6 +24,7 @@ when every applicable check passes.
 | S5 | the assembly's name equals the expected output name (project AssemblyName or package asset file name) | the DLL at that path is not the project's output |
 | S6 | the assembly defines at least one type | empty or failed extraction |
 | S7 | every type has exactly one `dt:fullName` | the extractor named one type two ways (for example with and without a nullable annotation); queries by name would return duplicates |
+| S8 | every own type (defined by the assembly, not a constructed generic) has exactly one `dt:fullName`, `dt:typeKind` and `dt:accessibility` | a type was written as a reference stub instead of being fully extracted (missing members, class and flags) |
 
 ## Solution stores
 
@@ -50,6 +51,7 @@ when every applicable check passes.
 | V6 | link and logical-type counts equal the manifest's projection | projection changed after creation |
 | V7 | the total triple count matches the manifest | modified store |
 | V8 | (`--deep`) the base solution manifest exists; with D1 for overlays | the base was removed |
+| V9 | in every projected component, the own types counted from the store equal the recorded domain and every one has a logical link | a type fell out of the projection (V5/V6 only see links that exist) |
 
 ## Run-level guarantees of `generate`
 

@@ -91,6 +91,13 @@ def assembly(directory: Path, m: dict[str, Any], published: bool = True) -> Chec
         oxigraph.scalar(store, f"PREFIX dt: <{DT}> SELECT (COUNT(DISTINCT ?t) AS ?n) WHERE {{ ?t dt:definedInAssembly <{iri}> }}")))
     checks.run("S7", "every type has exactly one full name", lambda: _eq(oxigraph.scalar(
         store, f"PREFIX dt: <{DT}> SELECT (COUNT(*) AS ?n) WHERE {{ {{ SELECT ?t WHERE {{ ?t dt:fullName ?f }} GROUP BY ?t HAVING (COUNT(DISTINCT ?f) > 1) }} }}"), 0))
+    checks.run("S8", "every own type is fully extracted (one full name, kind and accessibility)", lambda: _eq(oxigraph.scalar(
+        store, f"""PREFIX dt: <{DT}> SELECT (COUNT(*) AS ?n) WHERE {{
+          {{ SELECT ?t (COUNT(DISTINCT ?f) AS ?fc) (COUNT(DISTINCT ?k) AS ?kc) (COUNT(DISTINCT ?a) AS ?ac) WHERE {{
+               ?t dt:definedInAssembly <{iri}> . FILTER NOT EXISTS {{ ?t dt:genericDefinition ?d }}
+               OPTIONAL {{ ?t dt:fullName ?f }} OPTIONAL {{ ?t dt:typeKind ?k }} OPTIONAL {{ ?t dt:accessibility ?a }}
+             }} GROUP BY ?t }}
+          FILTER(?fc != 1 || ?kc != 1 || ?ac != 1) }}"""), 0))
     return checks
 
 
@@ -144,6 +151,7 @@ def view(directory: Path, m: dict[str, Any], root: Path, published: bool = True,
          oxigraph.scalar(store, f"PREFIX rg: <{RG}> SELECT (COUNT(*) AS ?n) WHERE {{ GRAPH <{lg}> {{ ?l a rg:LogicalType }} }}")),
         (m["projection"]["physicalTypeLinks"], m["projection"]["logicalTypes"])))
     checks.add("V7", "store triple count matches the manifest", sum(graphs.values()) == m["store"]["tripleCount"])
+    checks.run("V9", "every own type of every projected component is linked", lambda: _projection_domain(store, lg, m["projection"].get("domain")))
     if deep:
         base_manifest = root / m["baseSolution"]["manifestPath"]
         checks.add("V8", "base solution manifest exists", base_manifest.is_file(), str(base_manifest))
@@ -178,6 +186,23 @@ def _deep_components(checks: Checks, root: Path, components: list[dict[str, Any]
         if result is None or not result.passed:
             failed.append(component["manifestPath"])
     checks.add("D1", "every component artifact validates", not failed, f"failed={failed[:10]}")
+
+
+def _projection_domain(store: Path, logical_graph: str, domain: list[dict[str, Any]] | None) -> tuple[bool, str]:
+    """Count each projected component's own types in the store (independently of the manifest) and require
+    that the manifest recorded the same number and that every one of them carries a logical link."""
+    if not domain:
+        return False, "manifest has no projection.domain (created before projection v2); regenerate the view"
+    wrong = []
+    for entry in domain:
+        asm = assembly_iri(entry["assembly"], entry["version"])
+        own = f"GRAPH <{entry['graphIri']}> {{ ?t dt:definedInAssembly <{asm}> ; dt:accessibility ?a }}"
+        total = oxigraph.scalar(store, f"PREFIX dt: <{DT}> SELECT (COUNT(DISTINCT ?t) AS ?n) WHERE {{ {own} }}")
+        linked = oxigraph.scalar(store, f"PREFIX dt: <{DT}> PREFIX rg: <{RG}> SELECT (COUNT(DISTINCT ?t) AS ?n) WHERE {{ {own} "
+                                        f"GRAPH <{logical_graph}> {{ ?t rg:logicalType ?l }} }}")
+        if total != entry["types"] or linked != total:
+            wrong.append(f"{entry['assembly']} {entry['version']}: own={total} recorded={entry['types']} linked={linked}")
+    return not wrong, "; ".join(wrong[:5])
 
 
 def _assembly_node(store: Path, iri: str) -> tuple[bool, str]:
