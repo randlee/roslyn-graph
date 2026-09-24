@@ -19,9 +19,10 @@ and types searched.
 | Size | responsive to roughly 1,500 type nodes |
 | Needs | a browser with network access to cdnjs and unpkg (Cytoscape, N3) |
 
-To include member details, add to the CONSTRUCT template
-`?t dt:hasMember ?m . ?m a ?memberClass ; dt:name ?memberName .` (and return/parameter types as needed);
-this grows the export quickly, so do it only for small type sets.
+`rg.py graph` exports members by default (see graph-definitions.md). For a hand-written CONSTRUCT, add
+`?t dt:hasMember ?m . ?m a ?memberClass ; dt:name ?memberName .` plus the member type and parameter
+triples above; without them every type shows zero members. This grows the export quickly, so do it only
+for bounded type sets.
 
 ## Adding a visualizer
 

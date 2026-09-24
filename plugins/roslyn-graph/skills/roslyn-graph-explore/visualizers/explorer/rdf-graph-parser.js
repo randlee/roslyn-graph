@@ -19,6 +19,7 @@
         };
         const dtOntology = 'http://dotnet.example/ontology/';
         const rgReferences = 'http://roslyn-graph.example/ontology/references';
+        const memberTypePredicates = new Set(['returnType', 'propertyType', 'fieldType', 'eventType'].map(p => dtOntology + p));
         const rdfType = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
         const parser = new N3.Parser();
         const quads = [];
@@ -106,7 +107,8 @@
                 if (graphData.members.has(subjectIri)) graphData.members.get(subjectIri).name = objectLiteral;
                 if (graphData.parameters.has(subjectIri)) graphData.parameters.get(subjectIri).name = objectLiteral;
                 if (graphData.namespaces.has(subjectIri)) graphData.namespaces.get(subjectIri).name = objectLiteral;
-            } else if (predicateIri === dtOntology + 'returnType' && objectIri && graphData.members.has(subjectIri)) {
+            } else if (memberTypePredicates.has(predicateIri) && objectIri && graphData.members.has(subjectIri)) {
+                // Methods use dt:returnType; properties, fields and events carry their type in their own predicate.
                 graphData.members.get(subjectIri).returnType = objectIri;
             } else if (predicateIri === dtOntology + 'parameterType' && objectIri && graphData.parameters.has(subjectIri)) {
                 graphData.parameters.get(subjectIri).parameterType = objectIri;

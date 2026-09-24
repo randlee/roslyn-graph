@@ -91,18 +91,30 @@ def logical_map(store: Path, manifest: dict[str, Any]) -> dict[str, str]:
 
 
 def collapse(lines: list[str], mapping: dict[str, str]) -> list[str]:
-    """Rewrite physical type IRIs to their logical IRI and drop duplicate triples."""
-    wrapped = {f"<{k}>": f"<{v}>" for k, v in mapping.items()}
+    """Rewrite physical type IRIs to their logical IRI and drop duplicate triples.
+
+    Members and parameters (<type>/member/..., <type>/member/.../param/n) follow their type, so a member present
+    in two versions of a type becomes one member of the logical type instead of two.
+    """
+
+    def rewrite(token: str) -> str:
+        if not token.startswith("<"):
+            return token
+        iri = token[1:-1]
+        if iri in mapping:
+            return f"<{mapping[iri]}>"
+        cut = iri.find("/member/")
+        if cut > 0 and iri[:cut] in mapping:
+            return f"<{mapping[iri[:cut]]}{iri[cut:]}>"
+        return token
+
     out: dict[str, None] = {}
     for line in lines:
         match = _NT_LINE.match(line.strip())
         if not match:
             continue
         subject, predicate, obj = match.groups()
-        subject = wrapped.get(subject, subject)
-        if obj.startswith("<"):
-            obj = wrapped.get(obj, obj)
-        out[f"{subject} {predicate} {obj} ."] = None
+        out[f"{rewrite(subject)} {predicate} {rewrite(obj)} ."] = None
     return list(out)
 
 

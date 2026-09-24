@@ -186,3 +186,14 @@ def test_import_chain_honors_empty_guards(tmp_path):
     found, unresolved = discover.import_chain(project, sln)
     assert found == [(sln / "Common.targets").resolve(), (tmp_path / "Shared" / "Real.targets").resolve()]
     assert unresolved == {"$(Unknown)X.targets"}
+
+
+def test_collapse_merges_members_of_a_type_across_versions():
+    m1, m2 = f"{P1}/member/Run%28%29", f"{P2}/member/Run%28%29"
+    lines = [f"<{P1}> <{DT}hasMember> <{m1}> .", f"<{P2}> <{DT}hasMember> <{m2}> .",
+             f'<{m1}> <{DT}name> "Run" .', f'<{m2}> <{DT}name> "Run" .',
+             f"<{m1}/param/0> <{DT}parameterType> <{P2}> ."]
+    out = explore.collapse(lines, {P1: "urn:l", P2: "urn:l"})
+    assert out == [f"<urn:l> <{DT}hasMember> <urn:l/member/Run%28%29> .",
+                   '<urn:l/member/Run%28%29> <http://dotnet.example/ontology/name> "Run" .',
+                   f"<urn:l/member/Run%28%29/param/0> <{DT}parameterType> <urn:l> ."]
