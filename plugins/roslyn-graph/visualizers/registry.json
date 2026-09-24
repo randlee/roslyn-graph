@@ -1,0 +1,18 @@
+{
+  "explorer": {
+    "description": "Interactive type-relationship graph (Cytoscape): types grouped by namespace, implements and inherits edges, member details on click.",
+    "render": "embed-rdf",
+    "template": "explorer.html",
+    "inlineScripts": ["rdf-graph-parser.js"],
+    "input": "N-Triples or Turtle using the dt: ontology",
+    "reads": {
+      "nodes": "subjects typed dt:Class, dt:Interface, dt:Struct or dt:Enum",
+      "labels": "dt:name on types, namespaces, members and parameters",
+      "grouping": "dt:inNamespace plus dt:name on the namespace",
+      "edges": "dt:implements and dt:inherits between exported types",
+      "details": "dt:hasMember, dt:returnType, dt:hasParameter, dt:parameterType, dt:ordinal"
+    },
+    "limits": "Stays responsive to roughly 1,500 type nodes. Types without an rdf:type in the export are not drawn, and edges to them are dropped.",
+    "requiresNetwork": "Loads cytoscape and n3 from public CDNs when opened."
+  }
+}

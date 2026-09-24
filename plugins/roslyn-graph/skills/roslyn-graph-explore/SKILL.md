@@ -1,14 +1,53 @@
 ---
 name: roslyn-graph-explore
-description: Explore published Roslyn Graph/Oxigraph solution and view databases using ontology-aware SPARQL, bounded RDF extraction, and relationship visualizations. Use when asked to query a Roslyn Graph database, inspect types/interfaces/inheritance/members/dependencies, compare logical and physical versions, generate a graph payload, or render a Roslyn Graph visualization.
+description: Query and visualize published Roslyn Graph (Oxigraph) solution and view databases using the .NET type ontology. Use when asked about types, interfaces, inheritance, implementers, members, namespaces, assemblies or package versions in a Roslyn Graph database, to compare physical and logical versions, or to draw/visualize any part of it (for example "visualize all interfaces in the solution").
 ---
 
 # Roslyn Graph Explore
 
-Require a solution or view manifest/store path. Read its manifest first to identify membership, named graphs, source/package provenance, and whether a logical-type view is available.
+Answers questions about .NET code captured by the roslyn-graph-create skill, and draws the answer in a
+visualizer. The work is always: **understand the store → design a query against the ontology → run it →
+(optionally) export a bounded subgraph and open it in a visualizer.**
 
-Inspect ontology predicates used by the store when its schema version is uncertain. Treat physical assembly graphs as provenance truth. Use a logical view only when the requested analysis intentionally reconciles approved versions.
+## The one command
 
-Build bounded SPARQL queries for interfaces and implementations, inheritance, members, dependencies, callers, attributes, assembly/package provenance, and physical-to-logical drill-down. Select distinct node and edge identities before constructing RDF for a viewer, because types can occur in multiple named graphs.
+```
+python <plugin>/scripts/rg.py <command> ...
+```
 
-Export only the requested subgraph as Turtle or N-Quads, include physical provenance for every logical item, and render it through the viewer. Do not dump or visualize the entire database by default.
+`<plugin>` is two directories above this skill. Every command prints one JSON object whose `type` is the
+result or `"error"` (with `code`, `message`, `hint`).
+
+## Starting point
+
+A **solution** or **view** `manifest.json` under `<data-root>/.roslyn-graph/` (the create skill reports
+them; `rg.py inventory` lists them with status `latest`). Prefer the view when the user asks about the
+solution *together with* newer builds of some assemblies; prefer the solution for "what was built".
+Read the manifest first: `components` / `overlayComponents` say which assemblies and versions are in it.
+
+## Pick a workflow
+
+| Request | Workflow |
+|---|---|
+| A question with a textual answer (which types, how many, where defined, what changed between versions) | [query](workflows/query.md) |
+| "Show", "draw", "visualize", "graph" anything, including graphs grown from seeds ("these interfaces, their implementations and everything they reference") | [visualize](workflows/visualize.md) |
+| List, run, save, update or check the user's saved queries and graphs | [saved-queries](workflows/saved-queries.md) |
+
+References, loaded when a workflow step needs them:
+- [reference/ontology.md](reference/ontology.md): every class and predicate (generated from the plugin ontology);
+- [reference/query-design.md](reference/query-design.md): store structure, the rules that keep queries fast, patterns;
+- [reference/graph-definitions.md](reference/graph-definitions.md): saved `.rq` queries and `.graph.toml` traversal graphs in the workspace;
+- [reference/visualizers.md](reference/visualizers.md): available visualizers and what each needs;
+- [queries/](queries/): tested queries to copy or adapt (parameters are `{{NAME}}`, passed with `--param NAME=VALUE`).
+
+Users keep their own queries and graph definitions in the workspace: `<workspace>/.roslyn-graph/queries/*.rq`
+and `<workspace>/.roslyn-graph/graphs/*.graph.toml`. Check there first (`rg.py saved list`); offer to save
+a new one when a request is likely to be repeated ([saved-queries](workflows/saved-queries.md)).
+
+## Rules
+
+- Physical assembly graphs are the truth about what was built. Use the logical projection (`--logical`,
+  views only) only when the user wants versions reconciled, and say so in the answer.
+- Never dump or draw the whole database. Scope every export; check the export `summary` against the
+  visualizer's limits before rendering.
+- Stores are read-only artifacts. Write query files and outputs outside `<data-root>/.roslyn-graph`.

@@ -1,0 +1,17 @@
+# Title: Interfaces with their base interfaces
+# Description: viewer-ready; every interface the store's component assemblies define, grouped by namespace.
+#   Edges to interfaces outside the export (for example System.IDisposable) are dropped by the viewer.
+PREFIX dt: <http://dotnet.example/ontology/>
+CONSTRUCT {
+  ?i a dt:Interface ; dt:name ?name ; dt:fullName ?full ; dt:inNamespace ?ns .
+  ?ns dt:name ?nsFull .
+  ?i dt:implements ?base .
+}
+WHERE {
+  GRAPH ?g {
+    ?asm a dt:Assembly .
+    ?i dt:definedInAssembly ?asm ; a dt:Interface ; dt:name ?name ; dt:fullName ?full .
+    OPTIONAL { ?i dt:inNamespace ?ns . ?ns dt:fullName ?nsFull }
+    OPTIONAL { ?i dt:implements ?base }
+  }
+}

@@ -1,16 +1,48 @@
 ---
 name: roslyn-graph-create
-description: Create or refresh immutable Roslyn Graph/Oxigraph assembly, solution, and overlay-view databases from a configured .NET workspace. Use when asked to build a configured solution into a graph database, capture a known successful build, snapshot selected assemblies or packages, compose a solution store, or create a logical dependency overlay.
+description: Design workspace.toml for .NET solutions and NuGet packages, generate immutable validated Roslyn Graph (Oxigraph) databases from it, and maintain them when sources or packages change. Use when asked to set up Roslyn Graph for a solution or package, build or rebuild its graph databases, capture a new version, check that stores are valid, or clean up old artifacts.
 ---
 
 # Roslyn Graph Create
 
-Read `<workspace>/.roslyn-graph/workspace.toml` and select the requested profile or collection. Require an explicit collection scope for every profile.
+Turns `.NET` build outputs and NuGet packages into immutable Oxigraph stores: one per assembly, one per
+solution build, and optional logical-type views that reconcile compatible versions. Everything is driven
+by one `workspace.toml`; every store is validated before and after it is published.
 
-Run the project-owned build command from the profile, or require the user to confirm a successful build and its exact outputs. Do not invent a command, reinterpret arbitrary MSBuild targets, or extract stale output after a failed build.
+## The one command
 
-Capture the exact selected DLLs, repository commits, build command/result, and hashes of relevant target files. Use the Roslyn Graph extraction and Oxigraph artifact helpers to create immutable assembly stores, then compose a named-graph solution store. Validate every published store by reopening it and running a query.
+All work goes through the plugin CLI (Python 3.11+, standard library only):
 
-For a collection with overlays, keep the base solution closure immutable. Build and snapshot overlay profiles independently, then create a new logical-type view with an explicit compatibility policy.
+```
+python <plugin>/scripts/rg.py <command> ...
+```
 
-Report the manifest path, artifact ID, graph count, triple count, and any missing build/output prerequisite. Use `ROSLYN_GRAPH_DATA_ROOT` unless the workspace profile explicitly overrides it.
+`<plugin>` is two directories above this skill (`<this skill>/../..`). Every command prints exactly one
+JSON object whose `type` is the result type or `"error"`. On `"error"`, read each entry's `code`,
+`message` and `hint`; the hint says what to change. Never parse progress text on stderr.
+
+## Preconditions
+
+- **Solution profiles** need a successful build that *you* produce first. Building a solution is outside
+  this skill: follow the repository's own build instructions. The skill only verifies the result.
+- **NuGet profiles** need nothing: the TOML plus this skill hold everything required.
+- Tools: see [reference/setup.md](reference/setup.md) (Oxigraph, the RoslynToRdf extractor, .NET SDK,
+  `ROSLYN_GRAPH_DATA_ROOT`).
+
+## Pick a workflow
+
+| Situation | Workflow |
+|---|---|
+| No `workspace.toml`, or a solution/package must be added to it | [a) design-toml](workflows/design-toml.md) |
+| `workspace.toml` exists and the collection has never been generated | [b) generate-initial](workflows/generate-initial.md) |
+| Databases exist and sources, packages, the extractor or the TOML changed; or validation/cleanup is requested | [c) maintain](workflows/maintain.md) |
+
+Load only the workflow you need; each one links the reference pages it uses at the step that needs them.
+
+## Rules
+
+- Never hand-edit or delete anything under `<data-root>/.roslyn-graph` except through `rg.py remove`,
+  and only after the user approves the specific paths.
+- Never publish a store that has not passed validation; `generate` enforces this. Report failures with
+  their check IDs ([reference/validation.md](reference/validation.md)).
+- Never put secrets in `workspace.toml`. Feeds that need credentials name an environment variable.
