@@ -34,7 +34,7 @@ Read the manifest first: `components` / `overlayComponents` say which assemblies
 | A question with a textual answer (which types, how many, where defined, what changed between versions) | [query](workflows/query.md) |
 | "Show", "draw", "visualize", "graph" anything, including graphs grown from seeds ("these interfaces, their implementations and everything they reference") | [visualize](workflows/visualize.md) |
 | List, run, save, update or check the user's saved queries and graphs | [saved-queries](workflows/saved-queries.md) |
-| The user pastes explorer JSON (`"format": "roslyn-graph-selection/1"`) or a `*.selection.json`, and wants a deep dive | [deep-dive](workflows/deep-dive.md) |
+| The user pastes explorer JSON (`"format": "roslyn-graph-selection/2"`) or a `*.selection.json`, and wants a deep dive | [deep-dive](workflows/deep-dive.md) |
 
 References, loaded when a workflow step needs them:
 - [reference/ontology.md](reference/ontology.md): every class and predicate (generated from the plugin ontology);

@@ -421,7 +421,7 @@
             <h1>🔍 RDF Explorer - Assembly Type Graph</h1>
             <div class="header-actions">
             <button class="upload-btn" id="copy-graph-btn" disabled
-                    title="Copy the types on the graph, their members, the edges and the applied filters as JSON to paste into a chat with Claude">📋 Copy for Claude</button>
+                    title="Copy the types on the graph and where they came from (database and query) as JSON to paste into a chat with Claude">📋 Copy for Claude</button>
             <button class="upload-btn" id="download-graph-btn" disabled title="Download the same JSON as a file">⬇ JSON</button>
             <div class="menu-button">
                 <button class="upload-btn" id="load-menu-btn">▼ Load RDF File</button>
@@ -924,7 +924,7 @@
             let html = `
                 <h2>${kindIcon} ${type.name}</h2>
                 <button class="upload-btn copy-type-btn" onclick="copySelection('type')"
-                        title="Copy this type, its members and its edges as JSON for a chat with Claude">📋 Copy this type</button>
+                        title="Copy this type and where it came from (database and query) as JSON for a chat with Claude">📋 Copy this type</button>
                 <div class="detail-section">
                     <h3>Type Information</h3>
                     <div class="detail-item"><strong>Kind:</strong> ${type.kind}</div>
@@ -1233,8 +1233,8 @@
             if (loading) loading.remove();
         }
 
-        // "Copy for Claude": the drawn types (or the selected one), their members and edges, the filters applied
-        // here, and the provenance of the graph, as JSON a chat can act on (see graph-selection.js).
+        // "Copy for Claude": the drawn types (or the selected one) plus the database and query they came from,
+        // as JSON a fresh chat can act on (see graph-selection.js).
         const copyGraphBtn = document.getElementById('copy-graph-btn');
         const downloadGraphBtn = document.getElementById('download-graph-btn');
 
@@ -1250,28 +1250,10 @@
             return loadedFrom;
         }
 
-        function currentView() {
-            const namespaces = Array.from(graphData.namespaces.values()).filter(ns => ns.name);
-            const search = searchBox.value.trim();
-            const matches = search
-                ? Array.from(graphData.types.values())
-                    .filter(t => t.name && t.name.toLowerCase().includes(search.toLowerCase()))
-                    .map(t => t.fullName || t.name).sort()
-                : [];
-            return {
-                visibleNamespaces: namespaces.filter(ns => visibleNamespaces.has(ns.iri)).map(ns => ns.name).sort(),
-                hiddenNamespaces: namespaces.filter(ns => !visibleNamespaces.has(ns.iri)).map(ns => ns.name).sort(),
-                search,
-                searchMatches: matches,
-                selectedType: selectedTypeIri ? (graphData.types.get(selectedTypeIri)?.fullName || getTypeName(selectedTypeIri)) : null
-            };
-        }
-
         function buildSelection(scope) {
+            // The types drawn right now (namespace filters applied), or the one selected type.
             const typeIris = scope === 'type' ? [selectedTypeIri] : cy.nodes().map(node => node.id());
-            return RoslynGraphSelection.build(graphData, {
-                typeIris, scope, context: currentContext(), view: currentView(), typeName: getTypeName
-            });
+            return RoslynGraphSelection.build(graphData, { typeIris, context: currentContext() });
         }
 
         async function writeClipboard(text) {
@@ -1305,9 +1287,9 @@
             const selection = buildSelection(scope);
             const text = RoslynGraphSelection.toText(selection);
             const copied = await writeClipboard(text);
-            const { types, members, edges } = selection.summary;
             if (copied) {
-                showToast(`Copied ${types} type(s), ${members} members, ${edges} edges (${Math.max(1, Math.round(text.length / 1024))} KB). Paste it into a chat with Claude.`);
+                const where = selection.store ? '' : ' (no database recorded: this graph was loaded from a file)';
+                showToast(`Copied ${selection.types.length} type(s) and the query/database reference${where}. Paste it into a chat with Claude.`);
             } else {
                 showToast('The browser blocked the clipboard. Use ⬇ JSON instead.', true);
             }

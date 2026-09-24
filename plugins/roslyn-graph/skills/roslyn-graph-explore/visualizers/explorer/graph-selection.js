@@ -1,7 +1,6 @@
-// Builds the "Copy for Claude" payload: the types currently on the graph, their members, the edges between
-// them, the filters applied in the explorer, and the provenance (store, query or graph definition) the page
-// was generated from, so a chat can re-query the same store. Format documented in the roslyn-graph-explore
-// skill: reference/selection-format.md.
+// Builds the "Copy for Claude" payload: the types on the graph plus a pointer to the database and the query
+// that produced it, so a fresh chat can locate both and look everything else up itself. Format documented
+// in the roslyn-graph-explore skill: reference/selection-format.md.
 (function (root, factory) {
     const api = factory();
     if (typeof module === 'object' && module.exports) {
@@ -9,86 +8,49 @@
     }
     root.RoslynGraphSelection = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
-    const FORMAT = 'roslyn-graph-selection/1';
-    const MEMBER_ORDER = ['constructor', 'property', 'method', 'field', 'event'];
+    const FORMAT = 'roslyn-graph-selection/2';
 
-    function parameterList(graphData, parameterIris, typeName) {
-        return (parameterIris || [])
-            .map(iri => graphData.parameters.get(iri))
-            .filter(p => p)
-            .sort((a, b) => a.ordinal - b.ordinal)
-            .map(p => `${typeName(p.parameterType)} ${p.name}`.trim())
-            .join(', ');
-    }
-
-    function memberSignature(graphData, member, typeName) {
-        const type = member.returnType ? typeName(member.returnType) : '';
-        switch (member.kind) {
-            case 'constructor':
-                return `${member.name}(${parameterList(graphData, member.parameters, typeName)})`;
-            case 'method':
-                return `${type || 'void'} ${member.name}(${parameterList(graphData, member.parameters, typeName)})`;
-            case 'event':
-                return `event ${type} ${member.name}`.replace(/\s+/g, ' ').trim();
-            default:
-                return `${type} ${member.name}`.trim();
+    // context: the provenance embedded in the page (roslyn-graph-context/1), or { generator: 'file', fileName }.
+    function queryReference(context) {
+        if (!context) return null;
+        if (context.generator === 'graph' && context.definition) {
+            return { kind: 'graph', title: context.definition.title, definition: context.definition.path };
         }
+        if (context.generator === 'export' && context.query) {
+            const reference = { kind: 'export' };
+            if (context.query.file) reference.file = context.query.file;
+            else reference.text = context.query.text; // inline query: nothing else to point to
+            if (context.query.params && context.query.params.length) reference.params = context.query.params;
+            if (context.query.logical) reference.logical = true;
+            return reference;
+        }
+        if (context.generator === 'file') return { kind: 'file', fileName: context.fileName };
+        return null;
     }
 
-    function describeType(graphData, iri, typeName) {
-        const type = graphData.types.get(iri);
-        const namespace = type.namespace ? graphData.namespaces.get(type.namespace) : null;
-        const members = (type.members || [])
-            .map(m => graphData.members.get(m))
-            .filter(m => m && m.name)
-            .sort((a, b) => MEMBER_ORDER.indexOf(a.kind) - MEMBER_ORDER.indexOf(b.kind) || a.name.localeCompare(b.name))
-            .map(m => ({ kind: m.kind, signature: memberSignature(graphData, m, typeName) }));
-        return {
-            fullName: type.fullName || type.name,
-            name: type.name,
-            kind: type.kind,
-            namespace: namespace ? namespace.name : '',
-            inherits: (type.inherits || []).map(typeName),
-            implements: (type.implements || []).map(typeName),
-            members,
-            iri
-        };
-    }
-
-    // options: {
-    //   typeIris: IRIs to include (the drawn nodes, or one selected type),
-    //   scope: 'graph' | 'type',
-    //   context: provenance object embedded in the page (or null),
-    //   view: { visibleNamespaces, hiddenNamespaces, search, selectedType },
-    //   typeName: iri -> display name (the explorer's getTypeName)
-    // }
+    // options: { typeIris: drawn nodes or the one selected type, context: page provenance or null }
     function build(graphData, options) {
-        const typeName = options.typeName;
-        const included = new Set(options.typeIris.filter(iri => graphData.types.has(iri)));
-        const types = [...included]
-            .map(iri => describeType(graphData, iri, typeName))
-            .sort((a, b) => a.fullName.localeCompare(b.fullName));
-        const edges = graphData.relationships
-            .filter(r => included.has(r.from) && (included.has(r.to) || options.scope === 'type'))
-            .map(r => ({ from: typeName(r.from), to: typeName(r.to), kind: r.type }))
-            .sort((a, b) => (a.from + a.kind + a.to).localeCompare(b.from + b.kind + b.to));
-        const memberCount = types.reduce((sum, t) => sum + t.members.length, 0);
-        return {
-            format: FORMAT,
-            note: 'Copied from the Roslyn Graph explorer. Paste into a chat and ask Claude to deep-dive these types '
-                + '(roslyn-graph-explore skill, deep-dive workflow); context.source identifies the store to query.',
-            scope: options.scope,
-            context: options.context || null,
-            view: options.view || {},
-            summary: { types: types.length, members: memberCount, edges: edges.length },
-            types,
-            edges
-        };
+        const context = options.context || null;
+        const source = context && context.source;
+        const types = options.typeIris
+            .map(iri => graphData.types.get(iri))
+            .filter(t => t)
+            .map(t => t.fullName || t.name)
+            .sort();
+        const selection = { format: FORMAT };
+        if (source) {
+            selection.store = source.manifest;
+            if (source.collection) selection.collection = source.collection;
+        }
+        const query = queryReference(context);
+        if (query) selection.query = query;
+        selection.types = [...new Set(types)];
+        return selection;
     }
 
     function toText(selection) {
         return JSON.stringify(selection, null, 1);
     }
 
-    return { FORMAT, build, memberSignature, toText };
+    return { FORMAT, build, queryReference, toText };
 });

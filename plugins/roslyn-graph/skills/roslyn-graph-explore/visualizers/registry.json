@@ -17,6 +17,6 @@
     },
     "limits": "Stays responsive to roughly 1,500 type nodes. Types without an rdf:type in the export are not drawn, and edges to them are dropped.",
     "requiresNetwork": "Loads cytoscape and n3 from public CDNs when opened.",
-    "copy": "\"Copy for Claude\" copies the drawn types (or the selected type), their members and edges, the applied filters and the page context as roslyn-graph-selection/1 JSON; \"JSON\" downloads it."
+    "copy": "\"Copy for Claude\" copies the drawn types (or the selected type) plus the database and query they came from as roslyn-graph-selection/2 JSON; \"JSON\" downloads it."
   }
 }
