@@ -1,10 +1,8 @@
 name: CI
 
 on:
+  # Every pull request, whatever its base (main, develop, feature/skill/stacked branches)
   pull_request:
-    branches:
-      - main
-      - develop
   push:
     branches:
       - main
