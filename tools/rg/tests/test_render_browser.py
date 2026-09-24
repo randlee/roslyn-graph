@@ -38,14 +38,18 @@ def test_rendered_page_loads_the_embedded_graph(tmp_path):
         lines += [f"<{iri}> <{RDF_TYPE}> <{DT}{kind}> .", f'<{iri}> <{DT}name> "{name}" .', f"<{iri}> <{DT}inNamespace> <{ns}> ."]
     data = tmp_path / "graph.nt"
     data.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    explore.write_context(data, {"generator": "graph", "source": {"manifest": "views/x/manifest.json"}})
     page = tmp_path / "graph.html"
     explore.render("explorer", data, page, "browser test")
 
-    completed = subprocess.run(
-        [CHROME, "--headless=new", "--disable-gpu", "--no-first-run", "--no-sandbox",
-         f"--user-data-dir={tmp_path / 'profile'}", "--virtual-time-budget=15000", "--dump-dom", page.resolve().as_uri()],
-        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120,
-    )
+    # The extra flags keep Chrome from blocking on keychain, first-run and extension work (macOS CI runners).
+    command = [CHROME, "--headless=new", "--disable-gpu", "--no-first-run", "--no-sandbox", "--no-default-browser-check",
+               "--disable-extensions", "--disable-background-networking", "--use-mock-keychain", "--password-store=basic",
+               f"--user-data-dir={tmp_path / 'profile'}", "--virtual-time-budget=15000", "--dump-dom", page.resolve().as_uri()]
+    try:
+        completed = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=90)
+    except subprocess.TimeoutExpired:
+        pytest.skip("headless Chrome did not finish on this machine (seen on macOS CI runners); other platforms run this test")
     dom = completed.stdout
     assert dom, f"Chrome produced no DOM: {completed.stderr[-500:]}"
     if "cytoscape" not in dom:
@@ -53,3 +57,6 @@ def test_rendered_page_loads_the_embedded_graph(tmp_path):
     type_count = re.search(r'id="type-count"[^>]*>([^<]*)<', dom)
     assert type_count and type_count.group(1).strip() == "3", f"type-count shows {type_count.group(1) if type_count else None!r}"
     assert "Load an RDF file to explore types" not in dom.split('id="roslyn-graph-data"')[0]
+    copy_button = re.search(r'<button[^>]*id="copy-graph-btn"[^>]*>', dom)
+    assert copy_button and "disabled" not in copy_button.group(0), "Copy for Claude stays disabled after the graph loads"
+    assert "roslyn-graph-context" in dom

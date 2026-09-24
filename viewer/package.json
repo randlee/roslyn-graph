@@ -1,7 +1,7 @@
 {
   "private": true,
   "scripts": {
-    "test": "node --test rdf-graph-parser.test.js"
+    "test": "node --test rdf-graph-parser.test.js graph-selection.test.js"
   },
   "devDependencies": {
     "n3": "1.17.2"
