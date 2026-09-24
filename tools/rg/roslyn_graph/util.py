@@ -57,6 +57,29 @@ def nt_iri(value: str) -> str:
     return f"<{value}>"
 
 
+def skill_root() -> Path:
+    """The skill folder running this copy of rg.py (<skill>/scripts/roslyn_graph/util.py -> <skill>).
+
+    Each skill ships its own copy, so resources (ontology/, visualizers/) are found beside it whatever way
+    the skill was installed. ROSLYN_GRAPH_RESOURCES overrides it; the master copy in tools/rg uses it to
+    point at the explore skill.
+    """
+    override = os.environ.get("ROSLYN_GRAPH_RESOURCES")
+    return Path(override).resolve() if override else Path(__file__).resolve().parents[2]
+
+
+def resource(*parts: str) -> Path:
+    path = skill_root().joinpath(*parts)
+    if not path.exists():
+        raise RgError.of(
+            "RESOURCE_MISSING",
+            f"{'/'.join(parts)} is not part of this skill ({skill_root()}).",
+            "Run this command with the roslyn-graph-explore skill's copy of rg.py, which carries the ontology and visualizers.",
+            path=str(path),
+        )
+    return path
+
+
 def full_path(path: str | Path, base: Path | None = None) -> Path:
     candidate = Path(path)
     if not candidate.is_absolute() and base is not None:

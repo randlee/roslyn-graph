@@ -19,7 +19,7 @@ Unsure what a store contains? Inspect one real node before writing a larger quer
 [../queries/find-type.rq](../queries/find-type.rq):
 
 ```
-python <plugin>/scripts/rg.py query --manifest <manifest.json> --query-file <skill>/queries/find-type.rq --param NAME=Repository
+python <skill>/scripts/rg.py query --manifest <manifest.json> --query-file <skill>/queries/find-type.rq --param NAME=Repository
 ```
 
 ## 3. Write the query
@@ -32,7 +32,7 @@ of graphs can take minutes instead of milliseconds.
 Save the query in a scratch file and run it:
 
 ```
-python <plugin>/scripts/rg.py query --manifest <manifest.json> --query-file <file.rq> [--param NAME=VALUE ...] [--limit N]
+python <skill>/scripts/rg.py query --manifest <manifest.json> --query-file <file.rq> [--param NAME=VALUE ...] [--limit N]
 ```
 
 The result has `rowCount`, `truncated` and `rows` (values as strings). `--limit` (default 2000) is enforced

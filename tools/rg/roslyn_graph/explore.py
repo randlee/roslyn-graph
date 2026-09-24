@@ -10,10 +10,8 @@ from typing import Any
 
 from . import artifacts, oxigraph
 from .result import RgError
-from .util import DT, RDF_TYPE, RG
+from .util import DT, RDF_TYPE, RG, resource
 
-PLUGIN_ROOT = Path(__file__).resolve().parents[2]
-VISUALIZERS = PLUGIN_ROOT / "visualizers"
 MAX_ROWS = 2000
 _NT_LINE = re.compile(r'^(<[^>]*>|_:\S+) (<[^>]*>) (.*) \.$')
 
@@ -164,7 +162,7 @@ def export(manifest_path: Path, text: str, output: Path, union: bool, logical: b
 
 
 def registry() -> dict[str, Any]:
-    return json.loads((VISUALIZERS / "registry.json").read_text(encoding="utf-8"))
+    return json.loads(resource("visualizers", "registry.json").read_text(encoding="utf-8"))
 
 
 def render(visualizer: str, data: Path, output: Path, title: str) -> dict[str, Any]:
@@ -174,7 +172,7 @@ def render(visualizer: str, data: Path, output: Path, title: str) -> dict[str, A
     entry = entries[visualizer]
     if entry["render"] != "embed-rdf":
         raise RgError.of("VISUALIZER_UNSUPPORTED", f"Visualizer '{visualizer}' uses render mode {entry['render']!r}, which this version cannot build.")
-    folder = VISUALIZERS / visualizer
+    folder = resource("visualizers", visualizer)
     page = (folder / entry["template"]).read_text(encoding="utf-8")
     for script in entry.get("inlineScripts", []):
         tag = f'<script src="{script}"></script>'

@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from roslyn_graph import artifacts, build, config, discover, explore, maintain, ontology, plan, saved, traverse, validate  # noqa: E402
 from roslyn_graph.result import Problem, RgError, emit, error_payload  # noqa: E402
+from roslyn_graph.util import skill_root  # noqa: E402
 
 
 def _progress(message: str) -> None:
@@ -143,7 +144,7 @@ def cmd_visualizers(a) -> dict:
 
 def cmd_ontology_doc(a) -> dict:
     text = ontology.markdown()
-    target = Path(a.output)
+    target = Path(a.output) if a.output else skill_root() / "reference" / "ontology.md"
     if a.check:
         current = target.read_text(encoding="utf-8") if target.is_file() else ""
         if current.replace("\r\n", "\n") != text:
@@ -245,7 +246,7 @@ def parser() -> argparse.ArgumentParser:
     add("visualizers", cmd_visualizers, "List registered visualizers and their input contracts.")
 
     p = add("ontology-doc", cmd_ontology_doc, "Regenerate the ontology reference from the plugin ontology files.")
-    p.add_argument("--output", default=str(explore.PLUGIN_ROOT / "skills" / "roslyn-graph-explore" / "reference" / "ontology.md"))
+    p.add_argument("--output", help="Defaults to reference/ontology.md of the explore skill running this copy.")
     p.add_argument("--check", action="store_true")
     return root
 

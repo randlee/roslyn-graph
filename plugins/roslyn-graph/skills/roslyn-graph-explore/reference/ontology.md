@@ -1,6 +1,6 @@
 # Ontology reference
 
-<!-- Generated from plugins/roslyn-graph/ontology/*.ttl by `python scripts/rg.py ontology-doc`. Do not edit by hand. -->
+<!-- Generated from the ontology/ files beside this skill by `python scripts/rg.py ontology-doc` (repository: python scripts/check_plugin_sync.py --fix). Do not edit by hand. -->
 
 ## Prefixes
 

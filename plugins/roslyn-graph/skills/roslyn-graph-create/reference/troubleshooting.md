@@ -109,6 +109,7 @@ commands that crash natively (for example Windows exit code 0xC0000005) are retr
 | `GRAPH_SOURCE_NOT_FOUND` | the definition's collection or manifest has no published artifact; generate it first |
 | `GRAPH_SEED_NOT_FOUND` | a seed name or pattern matches no component type; look names up with find-type.rq |
 | `VISUALIZER_UNKNOWN`, `VISUALIZER_UNSUPPORTED`, `VISUALIZER_TEMPLATE` | the visualizer name or its template is wrong; list them with `rg.py visualizers` |
+| `RESOURCE_MISSING` | the command needs the ontology or visualizers, which only the roslyn-graph-explore skill carries; run that skill's `scripts/rg.py` |
 | `ONTOLOGY_DOC_STALE`, `ONTOLOGY_PARSE` | (maintainers) regenerate the ontology reference or fix the ontology file |
 
 ## Always

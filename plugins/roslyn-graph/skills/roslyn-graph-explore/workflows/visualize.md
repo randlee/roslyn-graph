@@ -16,7 +16,7 @@ Use a `.graph.toml` definition ([../reference/graph-definitions.md](../reference
 2. Run it:
 
    ```
-   python <plugin>/scripts/rg.py graph --definition <workspace>/.roslyn-graph/graphs/<name>.graph.toml --open
+   python <skill>/scripts/rg.py graph --definition <workspace>/.roslyn-graph/graphs/<name>.graph.toml --open
    ```
 
 3. Report from the `type: "graph"` result: seeds, implementations, growth per depth (`expansion`), total
@@ -29,7 +29,7 @@ Use a `.graph.toml` definition ([../reference/graph-definitions.md](../reference
 
 - Store: the view that combines the solution with the overlays (or the solution when no overlays are
   involved). See the query workflow, step 1.
-- Visualizer: run `python <plugin>/scripts/rg.py visualizers` and pick the one whose description fits; read
+- Visualizer: run `python <skill>/scripts/rg.py visualizers` and pick the one whose description fits; read
   its entry in [../reference/visualizers.md](../reference/visualizers.md) for the input it needs
   (for `explorer`: typed nodes with `dt:name`, namespaces with `dt:name`, `dt:implements`/`dt:inherits`
   edges) and its size limit.
@@ -44,7 +44,7 @@ the namespace's `dt:fullName` as its label). Follow [../reference/query-design.m
 ## 3. Export
 
 ```
-python <plugin>/scripts/rg.py export --manifest <manifest.json> --query-file <file.rq> [--param NAME=VALUE ...] --output <out>.nt [--logical]
+python <skill>/scripts/rg.py export --manifest <manifest.json> --query-file <file.rq> [--param NAME=VALUE ...] --output <out>.nt [--logical]
 ```
 
 - `--logical` (views only) merges physical versions of policy assemblies into one node per logical type,
@@ -60,7 +60,7 @@ python <plugin>/scripts/rg.py export --manifest <manifest.json> --query-file <fi
 ## 4. Render and open
 
 ```
-python <plugin>/scripts/rg.py render --visualizer explorer --data <out>.nt --output <out>.html --title "<what it shows>" --open
+python <skill>/scripts/rg.py render --visualizer explorer --data <out>.nt --output <out>.html --title "<what it shows>" --open
 ```
 
 The page is self-contained apart from the libraries it loads from public CDNs. Tell the user the file

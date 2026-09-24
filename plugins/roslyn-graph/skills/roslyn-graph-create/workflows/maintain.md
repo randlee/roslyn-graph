@@ -18,7 +18,7 @@ IDs; anything unchanged is reused by ID.
 2. Plan and review what will be new:
 
    ```
-   python <plugin>/scripts/rg.py plan --workspace <workspace.toml> --collection <name>
+   python <skill>/scripts/rg.py plan --workspace <workspace.toml> --collection <name>
    ```
 
    `summary.new` counts components that will be extracted; `summary.reused` those already published.
@@ -30,13 +30,13 @@ IDs; anything unchanged is reused by ID.
 To compare any two solution stores directly:
 
 ```
-python <plugin>/scripts/rg.py diff --old <old manifest.json> --new <new manifest.json>
+python <skill>/scripts/rg.py diff --old <old manifest.json> --new <new manifest.json>
 ```
 
 ## Validate what exists
 
 ```
-python <plugin>/scripts/rg.py validate [--manifest <manifest.json>] [--deep]
+python <skill>/scripts/rg.py validate [--manifest <manifest.json>] [--deep]
 ```
 
 Without `--manifest` every schema-2 artifact under the data root is checked. Report failures by check ID
@@ -46,7 +46,7 @@ in place: regenerate it (remove it first, with approval, then `generate`).
 ## Clean up
 
 ```
-python <plugin>/scripts/rg.py inventory
+python <skill>/scripts/rg.py inventory
 ```
 
 Each artifact has a `status`: `latest`, `in-use` (referenced by another artifact), `superseded` (an older
@@ -58,8 +58,8 @@ legacy, then assemblies).
 2. Preview, then remove, one path at a time:
 
    ```
-   python <plugin>/scripts/rg.py remove --path <artifact path>
-   python <plugin>/scripts/rg.py remove --path <artifact path> --confirm
+   python <skill>/scripts/rg.py remove --path <artifact path>
+   python <skill>/scripts/rg.py remove --path <artifact path> --confirm
    ```
 
    `remove` refuses anything still referenced (`REMOVE_REFERENCED`) and anything that is not a published

@@ -129,7 +129,7 @@ Source clones may be snapshot separately as source artifacts. They must not be l
 
 The full evidence, commands, artifacts, and validation queries are recorded in [reference-run-2026-09-23.md](reference-run-2026-09-23.md). The reviewable workflow source is the [`roslyn-graph` plugin](../../../plugins/roslyn-graph); [implementation-plan.md](implementation-plan.md) is restricted to the small code backlog outside the plugin.
 
-> **Superseded.** The `roslyn-graph` plugin (`plugins/roslyn-graph`, `scripts/rg.py`) now implements this
+> **Superseded.** The `roslyn-graph` plugin (`plugins/roslyn-graph`; CLI master copy in `tools/rg`) now implements this
 > workflow end to end: workspace design, validated generation, maintenance, exploration and
 > visualization. The PowerShell scripts below are kept as the historical record of the manual run. Do not
 > use them for new artifacts: their artifact identity omits commit, DLL hash and extractor version, they

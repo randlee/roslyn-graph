@@ -16,7 +16,7 @@ Names are lower-case, hyphenated and describe the result (`measurement-database-
 ## List
 
 ```
-python <plugin>/scripts/rg.py saved list --workspace <workspace>/.roslyn-graph/workspace.toml
+python <skill>/scripts/rg.py saved list --workspace <workspace>/.roslyn-graph/workspace.toml
 ```
 
 Returns (`type: "saved"`) every query with its title, store, kind (`select`/`construct`), parameters
@@ -70,7 +70,7 @@ For a traversal ("these types, their implementations and everything they referen
 ## Check after regeneration or ontology changes
 
 ```
-python <plugin>/scripts/rg.py saved check --workspace <workspace>/.roslyn-graph/workspace.toml
+python <skill>/scripts/rg.py saved check --workspace <workspace>/.roslyn-graph/workspace.toml
 ```
 
 Runs every saved query with its example parameters and every graph definition against the latest store

@@ -85,6 +85,7 @@ def test_glob_regex(pattern, name, matches):
 
 
 def test_every_follow_relation_is_documented():
-    doc = (Path(__file__).resolve().parents[2] / "skills" / "roslyn-graph-explore" / "reference" / "graph-definitions.md").read_text(encoding="utf-8")
+    from conftest import EXPLORE_SKILL
+    doc = (EXPLORE_SKILL / "reference" / "graph-definitions.md").read_text(encoding="utf-8")
     for relation in traverse.FOLLOW:
         assert f"`{relation}`" in doc

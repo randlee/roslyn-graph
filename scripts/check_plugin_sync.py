@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
-"""Guarantee the roslyn-graph plugin carries exactly the repository's ontology and viewer.
+"""Guarantee every roslyn-graph skill carries exact copies of its master sources.
 
-The plugin must be self-contained, so it holds copies of files that are authored elsewhere in this
-repository. This check fails when a copy differs from its source (compared as git blobs, so line-ending
-conversion does not matter), when the generated ontology reference is stale, or when the extractor emits
-an ontology term the ontology does not declare.
+Each skill is self-contained (it works when its folder is installed alone), so it carries copies of files
+authored elsewhere in this repository:
+
+    tools/rg/rg.py, tools/rg/roslyn_graph/*.py  ->  <every skill>/scripts/        (master CLI; tests stay in tools/rg)
+    ontology/*.ttl                              ->  roslyn-graph-explore/ontology/
+    viewer/explorer.html, rdf-graph-parser.js   ->  roslyn-graph-explore/visualizers/explorer/
+
+The check fails when a copy differs from its master (compared as git blobs, so line-ending conversion does
+not matter), when a skill's scripts/ holds a file the master does not, when the generated ontology reference
+is stale, or when the extractor emits an ontology term the ontology does not declare.
 
     python scripts/check_plugin_sync.py          # check (CI and the pre-commit hook)
-    python scripts/check_plugin_sync.py --fix    # copy sources into the plugin and regenerate the reference
+    python scripts/check_plugin_sync.py --fix    # copy masters into the skills and regenerate the reference
 
 Prints one JSON object: {"type": "plugin-sync", "inSync": true} or {"type": "error", "errors": [...]}.
 """
@@ -16,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -23,15 +30,26 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-PLUGIN = REPO / "plugins" / "roslyn-graph"
-COPIES = {
-    "ontology/dotnet-types.ttl": "plugins/roslyn-graph/ontology/dotnet-types.ttl",
-    "ontology/roslyn-graph.ttl": "plugins/roslyn-graph/ontology/roslyn-graph.ttl",
-    "viewer/explorer.html": "plugins/roslyn-graph/visualizers/explorer/explorer.html",
-    "viewer/rdf-graph-parser.js": "plugins/roslyn-graph/visualizers/explorer/rdf-graph-parser.js",
-}
+MASTER = REPO / "tools" / "rg"
+SKILLS = REPO / "plugins" / "roslyn-graph" / "skills"
+SKILLS_WITH_CLI = ["roslyn-graph-create", "roslyn-graph-explore"]
+EXPLORE = SKILLS / "roslyn-graph-explore"
 EXTRACTOR_SOURCES = ["src/RoslynToRdf.Core/Model/DotNetOntology.cs", "src/RoslynToRdf.Core/Extraction"]
 _STANDARD_PREFIXES = {"dt", "http"}
+
+
+def copies() -> dict[Path, Path]:
+    """copy -> master, for every file a skill must carry."""
+    mapping: dict[Path, Path] = {}
+    masters = [MASTER / "rg.py", *sorted((MASTER / "roslyn_graph").glob("*.py"))]
+    for skill in SKILLS_WITH_CLI:
+        for master in masters:
+            mapping[SKILLS / skill / "scripts" / master.relative_to(MASTER)] = master
+    for ttl in sorted((REPO / "ontology").glob("*.ttl")):
+        mapping[EXPLORE / "ontology" / ttl.name] = ttl
+    for name in ("explorer.html", "rdf-graph-parser.js"):
+        mapping[EXPLORE / "visualizers" / "explorer" / name] = REPO / "viewer" / name
+    return mapping
 
 
 def blob(path: Path) -> str:
@@ -56,39 +74,51 @@ def emitted_terms() -> set[str]:
     return terms
 
 
+def _problem(code: str, message: str, hint: str = "Run: python scripts/check_plugin_sync.py --fix", **context) -> dict:
+    return {"code": code, "message": message, "hint": hint, "context": context}
+
+
 def check(fix: bool) -> list[dict]:
     problems = []
-    for source, copy in COPIES.items():
-        src, dst = REPO / source, REPO / copy
-        if not src.is_file():
-            problems.append({"code": "SYNC_SOURCE_MISSING", "message": f"{source} does not exist", "hint": "", "context": {}})
+    mapping = copies()
+    for copy, master in mapping.items():
+        if not master.is_file():
+            problems.append(_problem("SYNC_SOURCE_MISSING", f"{master.relative_to(REPO).as_posix()} does not exist", ""))
             continue
-        if not dst.is_file() or blob(src) != blob(dst):
+        if not copy.is_file() or blob(master) != blob(copy):
             if fix:
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(src, dst)
+                copy.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(master, copy)
             else:
-                problems.append({"code": "SYNC_COPY_DIFFERS", "message": f"{copy} differs from {source}",
-                                 "hint": "Run: python scripts/check_plugin_sync.py --fix", "context": {"source": source, "copy": copy}})
+                problems.append(_problem("SYNC_COPY_DIFFERS", f"{copy.relative_to(REPO).as_posix()} differs from {master.relative_to(REPO).as_posix()}"))
 
-    sys.path.insert(0, str(PLUGIN / "scripts"))
+    expected = set(mapping)
+    for skill in SKILLS_WITH_CLI:
+        scripts = SKILLS / skill / "scripts"
+        for path in sorted(scripts.rglob("*")) if scripts.is_dir() else []:
+            if path.is_file() and "__pycache__" not in path.parts and path not in expected:
+                if fix:
+                    path.unlink()
+                else:
+                    problems.append(_problem("SYNC_STRAY_FILE", f"{path.relative_to(REPO).as_posix()} has no master in tools/rg"))
+
+    os.environ["ROSLYN_GRAPH_RESOURCES"] = str(EXPLORE)
+    sys.path.insert(0, str(MASTER))
     from roslyn_graph import ontology  # noqa: E402  (after the copies are fixed)
 
-    declared = ontology.declared()
-    undeclared = sorted(emitted_terms() - declared)
+    undeclared = sorted(emitted_terms() - ontology.declared())
     if undeclared:
-        problems.append({"code": "ONTOLOGY_TERM_UNDECLARED", "message": f"the extractor emits undeclared dt: terms: {undeclared}",
-                         "hint": "Declare them in ontology/dotnet-types.ttl, then run with --fix.", "context": {"terms": undeclared}})
+        problems.append(_problem("ONTOLOGY_TERM_UNDECLARED", f"the extractor emits undeclared dt: terms: {undeclared}",
+                                 "Declare them in ontology/dotnet-types.ttl, then run with --fix.", terms=undeclared))
 
-    reference = PLUGIN / "skills" / "roslyn-graph-explore" / "reference" / "ontology.md"
+    reference = EXPLORE / "reference" / "ontology.md"
     generated = ontology.markdown()
     current = reference.read_text(encoding="utf-8").replace("\r\n", "\n") if reference.is_file() else ""
     if current != generated:
         if fix:
             reference.write_text(generated, encoding="utf-8", newline="\n")
         else:
-            problems.append({"code": "SYNC_ONTOLOGY_DOC_STALE", "message": f"{reference.relative_to(REPO).as_posix()} is out of date",
-                             "hint": "Run: python scripts/check_plugin_sync.py --fix", "context": {}})
+            problems.append(_problem("SYNC_ONTOLOGY_DOC_STALE", f"{reference.relative_to(REPO).as_posix()} is out of date"))
     return problems
 
 
@@ -99,7 +129,7 @@ def main() -> int:
     try:
         problems = check(args.fix)
     except Exception as exc:  # noqa: BLE001 - always one JSON object
-        problems = [{"code": "SYNC_INTERNAL", "message": str(exc), "hint": "", "context": {}}]
+        problems = [_problem("SYNC_INTERNAL", str(exc), "")]
     payload = {"type": "error", "errors": problems} if problems else {"type": "plugin-sync", "inSync": True, "fixed": args.fix}
     print(json.dumps(payload, indent=2))
     return 1 if problems else 0

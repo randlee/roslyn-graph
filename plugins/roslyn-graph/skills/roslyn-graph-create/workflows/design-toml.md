@@ -18,7 +18,7 @@ unless the user wants it versioned there.
 2. Run discovery:
 
    ```
-   python <plugin>/scripts/rg.py discover --solution <path.sln> --tfm <target framework> [--root <dir>]
+   python <skill>/scripts/rg.py discover --solution <path.sln> --tfm <target framework> [--root <dir>]
    ```
 
    Use `--root` for multi-repository layouts where projects live beside the solution's folder (for
@@ -56,8 +56,8 @@ dependencies in `dependency_sources` (normally `https://api.nuget.org/v3/index.j
 ## 5. Check before handing over
 
 ```
-python <plugin>/scripts/rg.py check-workspace --workspace <workspace.toml>
-python <plugin>/scripts/rg.py plan --workspace <workspace.toml> --collection <name>
+python <skill>/scripts/rg.py check-workspace --workspace <workspace.toml>
+python <skill>/scripts/rg.py plan --workspace <workspace.toml> --collection <name>
 ```
 
 `check-workspace` reports every schema problem at once. `plan` resolves every DLL, runs the build checks

@@ -12,10 +12,12 @@ visualizer. The work is always: **understand the store → design a query agains
 ## The one command
 
 ```
-python <plugin>/scripts/rg.py <command> ...
+python <skill>/scripts/rg.py <command> ...
 ```
 
-`<plugin>` is two directories above this skill. Every command prints one JSON object whose `type` is the
+`<skill>` is this skill's folder (the one containing this SKILL.md); it carries its own copy of the CLI in
+`<skill>/scripts/`, plus the ontology (`<skill>/ontology/`) and visualizers (`<skill>/visualizers/`). Every
+command prints one JSON object whose `type` is the
 result or `"error"` (with `code`, `message`, `hint`).
 
 ## Starting point

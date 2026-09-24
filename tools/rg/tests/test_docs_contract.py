@@ -6,11 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from conftest import SCRIPTS
+from conftest import PLUGIN, SCRIPTS
 from roslyn_graph import explore
 from roslyn_graph.result import RgError
 
-PLUGIN = SCRIPTS.parent
 CREATE = PLUGIN / "skills" / "roslyn-graph-create"
 EXPLORE = PLUGIN / "skills" / "roslyn-graph-explore"
 SOURCES = sorted((SCRIPTS / "roslyn_graph").glob("*.py")) + [SCRIPTS / "rg.py"]

@@ -14,10 +14,11 @@ by one `workspace.toml`; every store is validated before and after it is publish
 All work goes through the plugin CLI (Python 3.11+, standard library only):
 
 ```
-python <plugin>/scripts/rg.py <command> ...
+python <skill>/scripts/rg.py <command> ...
 ```
 
-`<plugin>` is two directories above this skill (`<this skill>/../..`). Every command prints exactly one
+`<skill>` is this skill's folder (the one containing this SKILL.md); the skill carries its own copy of the
+CLI in `<skill>/scripts/`, so it works however it was installed. Every command prints exactly one
 JSON object whose `type` is the result type or `"error"`. On `"error"`, read each entry's `code`,
 `message` and `hint`; the hint says what to change. Never parse progress text on stderr.
 

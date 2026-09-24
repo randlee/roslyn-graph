@@ -1,6 +1,6 @@
 # Visualizers
 
-Visualizers live in `<plugin>/visualizers/<name>/` and are declared in `<plugin>/visualizers/registry.json`.
+Visualizers live in `<skill>/visualizers/<name>/` and are declared in `<skill>/visualizers/registry.json`.
 `rg.py visualizers` prints the registry; `rg.py render --visualizer <name>` builds a page for one.
 
 ## explorer
@@ -25,12 +25,13 @@ this grows the export quickly, so do it only for small type sets.
 
 ## Adding a visualizer
 
-1. Create `<plugin>/visualizers/<name>/` with its page and scripts.
+1. Create `<skill>/visualizers/<name>/` with its page and scripts.
 2. Add an entry to `registry.json`: `description`, `render` (a mode `rg.py render` supports; today
    `embed-rdf`), `template`, `inlineScripts`, `input`, `reads`, `limits`, `requiresNetwork`.
 3. A template for `embed-rdf` must reference each inline script as `<script src="<file>"></script>` and
    load the graph from `<script type="text/turtle" id="roslyn-graph-data">` when present.
-4. Document it in this file; the plugin tests check every registered visualizer's files exist.
+4. Document it in this file; the repository tests check every registered visualizer's files exist.
 
 A visualizer that needs another input shape (for example JSON nodes and edges) needs a new render mode in
-`scripts/roslyn_graph/explore.py`, with tests.
+the CLI. Its master copy is `tools/rg/roslyn_graph/explore.py` in the roslyn-graph repository (with tests);
+`scripts/check_plugin_sync.py --fix` copies it into the skills.

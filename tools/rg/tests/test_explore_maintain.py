@@ -77,7 +77,7 @@ def test_render_rejects_unknown_visualizers_and_unsafe_data(tmp_path):
 
 def test_every_registered_visualizer_has_its_files():
     for name, entry in explore.registry().items():
-        folder = explore.VISUALIZERS / name
+        folder = explore.resource("visualizers", name)
         assert (folder / entry["template"]).is_file()
         for script in entry.get("inlineScripts", []):
             assert (folder / script).is_file()

@@ -12,9 +12,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .result import RgError
+from .util import resource
 
-PLUGIN_ROOT = Path(__file__).resolve().parents[2]
-ONTOLOGY_DIR = PLUGIN_ROOT / "ontology"
 FILES = ["dotnet-types.ttl", "roslyn-graph.ttl"]
 _PREFIX = re.compile(r"^@prefix\s+(\w*):\s+<([^>]+)>\s*\.$")
 
@@ -103,7 +102,8 @@ def parse(text: str, source: str) -> tuple[dict[str, str], list[Term]]:
     return prefixes, terms
 
 
-def load(directory: Path = ONTOLOGY_DIR) -> tuple[dict[str, str], list[Term]]:
+def load(directory: Path | None = None) -> tuple[dict[str, str], list[Term]]:
+    directory = directory or resource("ontology")
     prefixes: dict[str, str] = {}
     terms: list[Term] = []
     for name in FILES:
@@ -113,16 +113,16 @@ def load(directory: Path = ONTOLOGY_DIR) -> tuple[dict[str, str], list[Term]]:
     return prefixes, terms
 
 
-def declared(directory: Path = ONTOLOGY_DIR, prefix: str = "dt") -> set[str]:
+def declared(directory: Path | None = None, prefix: str = "dt") -> set[str]:
     return {t.name for t in load(directory)[1] if t.prefix == prefix and t.kind != "ontology" and t.name}
 
 
-def markdown(directory: Path = ONTOLOGY_DIR) -> str:
+def markdown(directory: Path | None = None) -> str:
     prefixes, terms = load(directory)
     out = [
         "# Ontology reference",
         "",
-        "<!-- Generated from plugins/roslyn-graph/ontology/*.ttl by `python scripts/rg.py ontology-doc`. Do not edit by hand. -->",
+        "<!-- Generated from the ontology/ files beside this skill by `python scripts/rg.py ontology-doc` (repository: python scripts/check_plugin_sync.py --fix). Do not edit by hand. -->",
         "",
         "## Prefixes",
         "",

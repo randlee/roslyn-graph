@@ -27,7 +27,7 @@ Only pass `--allow-dirty` when the user explicitly wants an uncommitted state ca
 ## 3. Plan
 
 ```
-python <plugin>/scripts/rg.py plan --workspace <workspace.toml> --collection <name>
+python <skill>/scripts/rg.py plan --workspace <workspace.toml> --collection <name>
 ```
 
 On `type: "error"`, fix every listed problem (each has a hint; codes are explained in
@@ -37,7 +37,7 @@ confirm `summary.components` matches what the user expects (for example "57 proj
 ## 4. Generate
 
 ```
-python <plugin>/scripts/rg.py generate --workspace <workspace.toml> --collection <name>
+python <skill>/scripts/rg.py generate --workspace <workspace.toml> --collection <name>
 ```
 
 This runs long (minutes for ~60 assemblies); run it in the background and wait. For every component it
@@ -58,7 +58,7 @@ From the `type: "generate"` result, report to the user:
 ## 6. Optional full re-validation
 
 ```
-python <plugin>/scripts/rg.py validate --manifest <solution or view manifest.json> --deep
+python <skill>/scripts/rg.py validate --manifest <solution or view manifest.json> --deep
 ```
 
 `passed: true` means every check in [../reference/validation.md](../reference/validation.md) passed for
