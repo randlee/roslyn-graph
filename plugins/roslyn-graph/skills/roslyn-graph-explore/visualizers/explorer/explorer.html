@@ -682,8 +682,12 @@
                 layout: {
                     name: 'cose',
                     padding: 50,
-                    nodeRepulsion: 8000,
-                    idealEdgeLength: 100
+                    // Type names are rendered outside the fixed node shape. Include
+                    // their bounds so the force layout does not place labels over
+                    // neighbouring nodes.
+                    nodeDimensionsIncludeLabels: true,
+                    nodeRepulsion: 10000,
+                    idealEdgeLength: 140
                 }
             });
 
@@ -799,8 +803,11 @@
             cy.layout({
                 name: 'cose',
                 padding: 50,
-                nodeRepulsion: 8000,
-                idealEdgeLength: 100,
+                // Keep this in sync with the initial layout above: rebuilt graphs
+                // must reserve space for their rendered type labels as well.
+                nodeDimensionsIncludeLabels: true,
+                nodeRepulsion: 10000,
+                idealEdgeLength: 140,
                 animate: true
             }).run();
         }
