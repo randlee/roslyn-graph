@@ -862,6 +862,25 @@
             graphData.namespaces.forEach((ns, iri) => visibleNamespaces.add(iri));
         }
 
+        // Keep the source name intact in node data; this is only the label Cytoscape draws.
+        function formatTypeLabel(name) {
+            if (name.length <= 20) return name;
+
+            const midpoint = name.length / 2;
+            let bestIndex = -1;
+            let bestDistance = Infinity;
+            for (let index = 1; index < name.length; index++) {
+                if (/[a-z]/.test(name[index - 1]) && /[A-Z]/.test(name[index])) {
+                    const distance = Math.abs(index - midpoint);
+                    if (distance < bestDistance) {
+                        bestIndex = index;
+                        bestDistance = distance;
+                    }
+                }
+            }
+            return bestIndex === -1 ? name : `${name.slice(0, bestIndex)}\n${name.slice(bestIndex)}`;
+        }
+
         function buildGraph() {
             const elements = [];
 
@@ -876,7 +895,8 @@
                     elements.push({
                         data: {
                             id: iri,
-                            label: type.name,
+                            label: formatTypeLabel(type.name),
+                            name: type.name,
                             kind: type.kind,
                             namespace: type.namespace
                         },
@@ -1323,8 +1343,8 @@
             }
 
             cy.nodes().forEach(node => {
-                const label = node.data('label').toLowerCase();
-                const opacity = label.includes(query) ? 1 : 0.2;
+                const name = node.data('name').toLowerCase();
+                const opacity = name.includes(query) ? 1 : 0.2;
                 node.style('opacity', opacity);
             });
         }

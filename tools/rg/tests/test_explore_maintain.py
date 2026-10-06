@@ -1,5 +1,7 @@
 import json
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -100,6 +102,29 @@ def test_explorer_hides_edge_labels_without_losing_relationship_styles():
         assert f"'line-color': '{color}'" in style.group("style")
         if line_style:
             assert f"'line-style': '{line_style}'" in style.group("style")
+
+
+def test_explorer_wraps_only_long_camel_case_labels_and_keeps_source_names():
+    page = (explore.resource("visualizers", "explorer") / "explorer.html").read_text(encoding="utf-8")
+    function = re.search(r"function formatTypeLabel\(name\) \{.*?(?=\n\s*function buildGraph)", page, re.DOTALL)
+    assert function, "the explorer has a display-only type label formatter"
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node.js is not installed")
+    cases = {
+        "ShortTypeName": "ShortTypeName",
+        "abcdefghijklmnopqrst": "abcdefghijklmnopqrst",  # exactly 20 characters stays unwrapped
+        "alllowercaselongtypename": "alllowercaselongtypename",
+        "aaaaaaBbbbbbbbbbbCcccccccccccc": "aaaaaaBbbbbbbbbbb\nCcccccccccccc",
+    }
+    script = function.group(0) + "\n" + "\n".join(
+        f"if (formatTypeLabel({name!r}) !== {expected!r}) process.exit(1);" for name, expected in cases.items()
+    )
+    completed = subprocess.run([node, "-e", script], capture_output=True, text=True, encoding="utf-8")
+    assert completed.returncode == 0, completed.stderr
+    assert "label: formatTypeLabel(type.name)," in page
+    assert "name: type.name," in page
+    assert "const name = node.data('name').toLowerCase();" in page
 
 
 def test_export_requires_construct(tmp_path):
