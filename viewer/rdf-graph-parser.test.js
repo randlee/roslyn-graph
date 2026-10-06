@@ -54,3 +54,24 @@ ex:Options a dt:Class ; dt:name "Options" .
         type: 'references'
     }]);
 });
+
+test('reads member types from returnType, propertyType, fieldType and eventType', async () => {
+    const graph = await parse(`
+@prefix dt: <http://dotnet.example/ontology/> .
+@prefix ex: <http://example.test/> .
+ex:T a dt:Interface ; dt:name "IThing" ; dt:hasMember ex:M, ex:P, ex:F, ex:E .
+ex:M a dt:Method ; dt:name "Run" ; dt:returnType ex:Result ; dt:hasParameter ex:M0 .
+ex:M0 a dt:Parameter ; dt:name "count" ; dt:ordinal 0 ; dt:parameterType ex:Int .
+ex:P a dt:Property ; dt:name "Name" ; dt:propertyType ex:String .
+ex:F a dt:Field ; dt:name "value" ; dt:fieldType ex:Int .
+ex:E a dt:Event ; dt:name "Changed" ; dt:eventType ex:Handler .
+`, N3);
+    const type = graph.types.get('http://example.test/T');
+    assert.equal(type.members.length, 4);
+    assert.equal(graph.members.get('http://example.test/M').returnType, 'http://example.test/Result');
+    assert.equal(graph.members.get('http://example.test/P').returnType, 'http://example.test/String');
+    assert.equal(graph.members.get('http://example.test/F').returnType, 'http://example.test/Int');
+    assert.equal(graph.members.get('http://example.test/E').returnType, 'http://example.test/Handler');
+    assert.deepEqual(graph.members.get('http://example.test/M').parameters, ['http://example.test/M0']);
+    assert.equal(graph.parameters.get('http://example.test/M0').ordinal, 0);
+});

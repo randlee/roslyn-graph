@@ -115,7 +115,8 @@ def cmd_query(a) -> dict:
 
 
 def cmd_export(a) -> dict:
-    return explore.export(Path(a.manifest), explore.read_query(a.query, a.query_file, a.param), Path(a.output), union=a.union, logical=a.logical, unbounded=a.unbounded, timeout=a.timeout)
+    return explore.export(Path(a.manifest), explore.read_query(a.query, a.query_file, a.param), Path(a.output), union=a.union, logical=a.logical, unbounded=a.unbounded, timeout=a.timeout,
+                          query_file=a.query_file, params=a.param)
 
 
 def cmd_render(a) -> dict:

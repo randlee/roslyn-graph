@@ -91,18 +91,30 @@ def logical_map(store: Path, manifest: dict[str, Any]) -> dict[str, str]:
 
 
 def collapse(lines: list[str], mapping: dict[str, str]) -> list[str]:
-    """Rewrite physical type IRIs to their logical IRI and drop duplicate triples."""
-    wrapped = {f"<{k}>": f"<{v}>" for k, v in mapping.items()}
+    """Rewrite physical type IRIs to their logical IRI and drop duplicate triples.
+
+    Members and parameters (<type>/member/..., <type>/member/.../param/n) follow their type, so a member present
+    in two versions of a type becomes one member of the logical type instead of two.
+    """
+
+    def rewrite(token: str) -> str:
+        if not token.startswith("<"):
+            return token
+        iri = token[1:-1]
+        if iri in mapping:
+            return f"<{mapping[iri]}>"
+        cut = iri.find("/member/")
+        if cut > 0 and iri[:cut] in mapping:
+            return f"<{mapping[iri[:cut]]}{iri[cut:]}>"
+        return token
+
     out: dict[str, None] = {}
     for line in lines:
         match = _NT_LINE.match(line.strip())
         if not match:
             continue
         subject, predicate, obj = match.groups()
-        subject = wrapped.get(subject, subject)
-        if obj.startswith("<"):
-            obj = wrapped.get(obj, obj)
-        out[f"{subject} {predicate} {obj} ."] = None
+        out[f"{rewrite(subject)} {predicate} {rewrite(obj)} ."] = None
     return list(out)
 
 
@@ -124,10 +136,41 @@ def summarize(lines: list[str]) -> dict[str, Any]:
     return {"triples": len(lines), "nodesByKind": kinds, "edges": edges}
 
 
+CONTEXT_FORMAT = "roslyn-graph-context/1"
+
+
+def context_path(data: Path) -> Path:
+    """Provenance sidecar for an exported graph: <name>.nt -> <name>.context.json."""
+    return data.with_suffix(".context.json")
+
+
+def source_info(manifest_path: Path, manifest: dict[str, Any]) -> dict[str, Any]:
+    """Which store a graph came from, precisely enough to query it again."""
+    workspace = manifest.get("workspace") or {}
+    return {
+        "manifest": str(manifest_path.resolve()),
+        "store": str((manifest_path.parent / "store.oxigraph").resolve()),
+        "kind": manifest.get("kind"),
+        "artifactId": manifest.get("artifactId"),
+        "collection": workspace.get("collection"),
+        "profile": workspace.get("profile"),
+        "workspace": workspace.get("path"),
+    }
+
+
+def write_context(data: Path, context: dict[str, Any]) -> Path:
+    path = context_path(data)
+    payload = {"format": CONTEXT_FORMAT, "createdUtc": artifacts.utc_now(), **context}
+    path.write_text(json.dumps(payload, indent=1, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
+    return path
+
+
 def export(manifest_path: Path, text: str, output: Path, union: bool, logical: bool, unbounded: bool = False,
-           max_triples: int = MAX_EXPORT_TRIPLES, timeout: int = QUERY_TIMEOUT) -> dict[str, Any]:
+           max_triples: int = MAX_EXPORT_TRIPLES, timeout: int = QUERY_TIMEOUT, query_file: str | None = None,
+           params: list[str] | None = None) -> dict[str, Any]:
     """Run a CONSTRUCT. Results are never truncated silently: an oversized export or a runaway query fails with
-    EXPORT_TOO_LARGE or QUERY_TIMEOUT unless --unbounded asks for a deliberate full export."""
+    EXPORT_TOO_LARGE or QUERY_TIMEOUT unless --unbounded asks for a deliberate full export. The query and its
+    parameters are recorded beside the output (<name>.context.json) so a rendered page can say where it came from."""
     if not re.search(r"\bCONSTRUCT\b", text, re.IGNORECASE):
         raise RgError.of("EXPORT_NEEDS_CONSTRUCT", "Exports use a CONSTRUCT query.", "See reference/query-design.md for the viewer-ready CONSTRUCT patterns.")
     store, manifest = store_for(manifest_path)
@@ -157,8 +200,16 @@ def export(manifest_path: Path, text: str, output: Path, union: bool, logical: b
     if not lines:
         raise RgError.of("EXPORT_EMPTY", "The CONSTRUCT query produced no triples.", "Run the WHERE clause as a SELECT with the query command to debug it.")
     output.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
-    return {"type": "export", "manifest": str(manifest_path), "output": str(output), "logical": logical,
-            "duplicatesCollapsed": collapsed, "summary": summarize(lines)}
+    summary = summarize(lines)
+    write_context(output, {
+        "generator": "export",
+        "source": source_info(manifest_path, manifest),
+        "query": {"file": str(Path(query_file).resolve()) if query_file else None, "params": params or [], "text": text,
+                  "logical": logical, "union": union},
+        "summary": summary,
+    })
+    return {"type": "export", "manifest": str(manifest_path), "output": str(output), "context": str(context_path(output)),
+            "logical": logical, "duplicatesCollapsed": collapsed, "summary": summary}
 
 
 def registry() -> dict[str, Any]:
@@ -183,10 +234,15 @@ def render(visualizer: str, data: Path, output: Path, title: str) -> dict[str, A
     if "</script" in rdf.lower():
         raise RgError.of("EXPORT_UNSAFE", "The exported RDF contains '</script', which cannot be embedded.")
     block = f'<script type="text/turtle" id="roslyn-graph-data" data-title="{html.escape(title, quote=True)}">\n{rdf}</script>\n'
+    sidecar = context_path(data)
+    if sidecar.is_file():
+        # "</" is escaped so the JSON cannot close the script element early.
+        context = json.dumps(json.loads(sidecar.read_text(encoding="utf-8")), ensure_ascii=False).replace("</", "<\\/")
+        block = f'<script type="application/json" id="roslyn-graph-context">\n{context}\n</script>\n' + block
     if "</body>" not in page:
         raise RgError.of("VISUALIZER_TEMPLATE", f"{entry['template']} has no </body>.")
     page = page.replace("</body>", block + "</body>", 1)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(page, encoding="utf-8", newline="\n")
     return {"type": "page", "visualizer": visualizer, "output": str(output), "dataTriples": sum(1 for l in rdf.splitlines() if l.strip()),
-            "limits": entry.get("limits", "")}
+            "context": str(sidecar) if sidecar.is_file() else None, "limits": entry.get("limits", "")}

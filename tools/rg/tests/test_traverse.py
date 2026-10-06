@@ -89,3 +89,9 @@ def test_every_follow_relation_is_documented():
     doc = (EXPLORE_SKILL / "reference" / "graph-definitions.md").read_text(encoding="utf-8")
     for relation in traverse.FOLLOW:
         assert f"`{relation}`" in doc
+
+
+def test_members_are_exported_by_default_and_can_be_turned_off(tmp_path):
+    base = 'schema_version = 1\n[source]\nmanifest = "views/x/manifest.json"\n[seeds]\ntypes = ["A.B"]\n'
+    assert traverse.load_definition(write(tmp_path / "on", base)).members is True
+    assert traverse.load_definition(write(tmp_path / "off", base + "[output]\nmembers = false\n")).members is False

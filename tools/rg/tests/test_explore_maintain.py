@@ -186,3 +186,34 @@ def test_import_chain_honors_empty_guards(tmp_path):
     found, unresolved = discover.import_chain(project, sln)
     assert found == [(sln / "Common.targets").resolve(), (tmp_path / "Shared" / "Real.targets").resolve()]
     assert unresolved == {"$(Unknown)X.targets"}
+
+
+def test_collapse_merges_members_of_a_type_across_versions():
+    m1, m2 = f"{P1}/member/Run%28%29", f"{P2}/member/Run%28%29"
+    lines = [f"<{P1}> <{DT}hasMember> <{m1}> .", f"<{P2}> <{DT}hasMember> <{m2}> .",
+             f'<{m1}> <{DT}name> "Run" .', f'<{m2}> <{DT}name> "Run" .',
+             f"<{m1}/param/0> <{DT}parameterType> <{P2}> ."]
+    out = explore.collapse(lines, {P1: "urn:l", P2: "urn:l"})
+    assert out == [f"<urn:l> <{DT}hasMember> <urn:l/member/Run%28%29> .",
+                   '<urn:l/member/Run%28%29> <http://dotnet.example/ontology/name> "Run" .',
+                   f"<urn:l/member/Run%28%29/param/0> <{DT}parameterType> <urn:l> ."]
+
+
+def test_render_embeds_the_context_sidecar_safely(tmp_path):
+    data = tmp_path / "g.nt"
+    data.write_text(f"<a> <{RDF_TYPE}> <{DT}Interface> .\n")
+    explore.write_context(data, {"generator": "export", "query": {"text": 'CONSTRUCT {} WHERE { FILTER("</script>" != "") }'}})
+    result = explore.render("explorer", data, tmp_path / "g.html", "t")
+    page = (tmp_path / "g.html").read_text(encoding="utf-8")
+    block = page.split('<script type="application/json" id="roslyn-graph-context">\n', 1)[1].split("\n</script>", 1)[0]
+    assert "</script" not in block
+    context = json.loads(block.replace("<\/", "</"))
+    assert context["format"] == "roslyn-graph-context/1" and context["query"]["text"].count("</script>") == 1
+    assert result["context"] == str(explore.context_path(data))
+    assert page.index('id="roslyn-graph-context"') < page.index('id="roslyn-graph-data"')
+
+
+def test_source_info_names_the_store(tmp_path):
+    manifest = tmp_path / "views" / "abc" / "manifest.json"
+    info = explore.source_info(manifest, {"kind": "view", "artifactId": "a" * 64, "workspace": {"collection": "c", "profile": "p"}})
+    assert info["kind"] == "view" and info["collection"] == "c" and info["store"].endswith("store.oxigraph")

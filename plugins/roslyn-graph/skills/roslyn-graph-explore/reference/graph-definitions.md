@@ -44,6 +44,7 @@ max_types = 1500                               # stop before exceeding this many
 
 [output]
 visualizer = "explorer"                        # default
+members = true                                 # default: export each type's members for the details panel
 ```
 
 ### Seeds and implementations
@@ -79,6 +80,11 @@ it, and the export summary.
 
 Edges drawn: `dt:inherits`, `dt:implements` between exported types, plus `rg:references` for every other
 reference that pulled a type in, drawn as dotted grey lines.
+
+With `members = true` (the default) every exported type also carries its members: kind, name, type
+(`dt:returnType`, `dt:propertyType`, `dt:fieldType`, `dt:eventType`) and parameters (name, ordinal,
+type), so clicking a type shows its signatures. With `logical = true` the members of a type present in
+several versions are merged with the type. Set `members = false` for very large graphs.
 
 ## Example
 

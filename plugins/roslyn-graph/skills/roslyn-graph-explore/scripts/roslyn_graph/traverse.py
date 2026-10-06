@@ -49,6 +49,7 @@ class Definition:
     max_depth: int
     max_types: int
     visualizer: str
+    members: bool = True
 
 
 def load_definition(path: Path) -> Definition:
@@ -66,7 +67,7 @@ def load_definition(path: Path) -> Definition:
 
     allowed = {"schema_version": None, "title": None, "source": {"workspace", "collection", "manifest", "logical"},
                "seeds": {"types", "patterns", "kinds", "implementations"},
-               "expand": {"follow", "generic_arguments", "max_depth", "max_types"}, "output": {"visualizer"}}
+               "expand": {"follow", "generic_arguments", "max_depth", "max_types"}, "output": {"visualizer", "members"}}
     for key, value in data.items():
         if key not in allowed:
             bad(key, "unknown key", f"Allowed: {', '.join(allowed)}.")
@@ -115,6 +116,7 @@ def load_definition(path: Path) -> Definition:
         logical=bool(source.get("logical", True)), seed_types=types, seed_patterns=patterns, seed_kinds=kinds,
         implementations=implementations, follow=follow, generic_arguments=bool(expand.get("generic_arguments", True)),
         max_depth=max_depth, max_types=max_types, visualizer=str(output.get("visualizer", "explorer")),
+        members=bool(output.get("members", True)),
     )
 
 
@@ -280,6 +282,32 @@ def expand(store: Path, d: Definition, start: dict[str, str]) -> tuple[dict[str,
     return seen, sorted(edges), stats, truncated
 
 
+MEMBER_TYPE_PREDICATES = ("returnType", "propertyType", "fieldType", "eventType")
+XSD_INTEGER = "http://www.w3.org/2001/XMLSchema#integer"
+
+
+def member_lines(store: Path, types: list[str]) -> list[str]:
+    """Members of the selected types for the viewer's details panel: kind, name, type and parameters."""
+    lines: list[str] = []
+    memberships = _pairs(store, types, "?t dt:hasMember ?r")
+    members = sorted({m for _, m in memberships})
+    lines += [f"{nt_iri(t)} {nt_iri(DT + 'hasMember')} {nt_iri(m)} ." for t, m in memberships]
+    for m, cls in _pairs(store, members, "?t a ?r"):
+        if cls != DT + "Member":
+            lines.append(f"{nt_iri(m)} {nt_iri(RDF_TYPE)} {nt_iri(cls)} .")
+    lines += [f"{nt_iri(m)} {nt_iri(DT + 'name')} {nt_literal(n)} ." for m, n in _pairs(store, members, "?t dt:name ?r")]
+    for predicate in MEMBER_TYPE_PREDICATES:
+        lines += [f"{nt_iri(m)} {nt_iri(DT + predicate)} {nt_iri(t)} ." for m, t in _pairs(store, members, f"?t dt:{predicate} ?r")]
+    parameters = _pairs(store, members, "?t dt:hasParameter ?r")
+    params = sorted({p for _, p in parameters})
+    lines += [f"{nt_iri(m)} {nt_iri(DT + 'hasParameter')} {nt_iri(p)} ." for m, p in parameters]
+    lines += [f"{nt_iri(p)} {nt_iri(RDF_TYPE)} {nt_iri(DT + 'Parameter')} ." for p in params]
+    lines += [f"{nt_iri(p)} {nt_iri(DT + 'name')} {nt_literal(n)} ." for p, n in _pairs(store, params, "?t dt:name ?r")]
+    lines += [f'{nt_iri(p)} {nt_iri(DT + "ordinal")} "{int(o)}"^^{nt_iri(XSD_INTEGER)} .' for p, o in _pairs(store, params, "?t dt:ordinal ?r")]
+    lines += [f"{nt_iri(p)} {nt_iri(DT + 'parameterType')} {nt_iri(t)} ." for p, t in _pairs(store, params, "?t dt:parameterType ?r")]
+    return lines
+
+
 def export_lines(store: Path, types: dict[str, str], edges: list[tuple[str, str]]) -> list[str]:
     """Viewer triples for the selected component types (IRI -> full name) and the edges between them."""
     lines: list[str] = []
@@ -330,6 +358,8 @@ def run(definition_path: Path, data_root: str | None, output_dir: Path | None, o
     start = seeds | implementations
     types, edges, stats, truncated = expand(store, d, start)
     lines = export_lines(store, types, edges)
+    if d.members:
+        lines += member_lines(store, sorted(types))
     collapsed = 0
     if d.logical:
         before = len(lines)
@@ -340,6 +370,13 @@ def run(definition_path: Path, data_root: str | None, output_dir: Path | None, o
     data = out_dir / f"{stem}.nt"
     out_dir.mkdir(parents=True, exist_ok=True)
     data.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+    explore.write_context(data, {
+        "generator": "graph",
+        "source": explore.source_info(manifest_path, manifest),
+        "definition": {"path": str(d.path), "title": d.title, "text": d.path.read_text(encoding="utf-8")},
+        "result": {"seeds": sorted(set(seeds.values())), "implementations": len(implementations), "types": len(types),
+                   "referenceEdges": len(edges), "truncated": truncated, "logical": d.logical},
+    })
     page = explore.render(d.visualizer, data, out_dir / f"{stem}.html", d.title)
     if open_page:
         import webbrowser

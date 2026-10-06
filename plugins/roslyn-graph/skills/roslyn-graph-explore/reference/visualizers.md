@@ -16,12 +16,14 @@ and types searched.
 | Groups by | `dt:inNamespace` → namespace `dt:name` (export the namespace's full name as `dt:name`) |
 | Edges | `dt:implements`, `dt:inherits` — only between drawn types |
 | Details panel | `dt:hasMember` with member `dt:name`, `dt:returnType`, `dt:hasParameter`, `dt:parameterType`, `dt:ordinal` |
+| Copy | **📋 Copy for Claude** (header) copies the drawn types plus the database and query they came from as `roslyn-graph-selection/2` JSON; **📋 Copy this type** (details panel) copies one type; **⬇ JSON** downloads it ([selection-format.md](selection-format.md)) |
 | Size | responsive to roughly 1,500 type nodes |
 | Needs | a browser with network access to cdnjs and unpkg (Cytoscape, N3) |
 
-To include member details, add to the CONSTRUCT template
-`?t dt:hasMember ?m . ?m a ?memberClass ; dt:name ?memberName .` (and return/parameter types as needed);
-this grows the export quickly, so do it only for small type sets.
+`rg.py graph` exports members by default (see graph-definitions.md). For a hand-written CONSTRUCT, add
+`?t dt:hasMember ?m . ?m a ?memberClass ; dt:name ?memberName .` plus the member type and parameter
+triples above; without them every type shows zero members. This grows the export quickly, so do it only
+for bounded type sets.
 
 ## Adding a visualizer
 
