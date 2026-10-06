@@ -8,9 +8,9 @@
 
   <!-- Version: single source of truth for all assemblies and NuGet packages -->
   <PropertyGroup>
-    <Version>1.0.0</Version>
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <FileVersion>1.0.0.0</FileVersion>
+    <Version>0.1.0</Version>
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+    <FileVersion>0.1.0.0</FileVersion>
   </PropertyGroup>
 
   <!-- NuGet Package Common Properties -->
