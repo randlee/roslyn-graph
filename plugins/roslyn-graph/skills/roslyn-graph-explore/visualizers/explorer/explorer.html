@@ -22,13 +22,20 @@
         }
         .container {
             display: grid;
+            --sidebar-width: 300px;
             --details-width: 350px;
-            grid-template-columns: 300px minmax(0, 1fr) 10px var(--details-width);
+            grid-template-columns: var(--sidebar-width) 10px minmax(0, 1fr) 10px var(--details-width);
             grid-template-rows: 60px 1fr;
             height: 100vh;
         }
         .container.details-collapsed {
-            grid-template-columns: 300px minmax(0, 1fr) 0 0;
+            grid-template-columns: var(--sidebar-width) 10px minmax(0, 1fr) 0 0;
+        }
+        .container.sidebar-collapsed {
+            grid-template-columns: 0 0 minmax(0, 1fr) 10px var(--details-width);
+        }
+        .container.sidebar-collapsed.details-collapsed {
+            grid-template-columns: 0 0 minmax(0, 1fr) 0 0;
         }
         header {
             grid-column: 1 / -1;
@@ -93,6 +100,8 @@
             display: none;
         }
         .sidebar {
+            grid-column: 1;
+            grid-row: 2;
             background: #252526;
             border-right: 1px solid #3e3e42;
             overflow-y: auto;
@@ -186,11 +195,13 @@
             border-color: #007acc;
         }
         #cy {
+            grid-column: 3;
+            grid-row: 2;
             background: #1e1e1e;
             min-width: 0;
         }
+        .sidebar-splitter,
         .details-splitter {
-            grid-column: 3;
             grid-row: 2;
             background: #3e3e42;
             cursor: col-resize;
@@ -198,17 +209,26 @@
             touch-action: none;
         }
         .details-splitter:hover,
-        .details-splitter:focus-visible {
+        .sidebar-splitter:hover,
+        .details-splitter:focus-visible,
+        .sidebar-splitter:focus-visible {
             background: #007acc;
             outline: none;
         }
-        .details-splitter::after {
+        .sidebar-splitter {
+            grid-column: 2;
+        }
+        .details-splitter {
+            grid-column: 4;
+        }
+        .details-splitter::after,
+        .sidebar-splitter::after {
             content: '';
             position: absolute;
             inset: 0 -3px;
         }
         .details-panel {
-            grid-column: 4;
+            grid-column: 5;
             grid-row: 2;
             background: #252526;
             border-left: 1px solid #3e3e42;
@@ -449,6 +469,7 @@
             <button class="upload-btn" id="copy-graph-btn" disabled
                     title="Copy the types on the graph and where they came from (database and query) as JSON to paste into a chat with Claude">📋 Copy for Claude</button>
             <button class="upload-btn" id="download-graph-btn" disabled title="Download the same JSON as a file">⬇ JSON</button>
+            <button class="upload-btn" id="sidebar-toggle" aria-controls="sidebar" aria-expanded="true">Hide sidebar</button>
             <button class="upload-btn" id="details-toggle" aria-controls="details-panel" aria-expanded="true">Hide details</button>
             <div class="menu-button">
                 <button class="upload-btn" id="load-menu-btn">▼ Load RDF File</button>
@@ -466,7 +487,7 @@
             </div>
         </header>
 
-        <aside class="sidebar">
+        <aside class="sidebar" id="sidebar">
             <input type="text" class="search-box" id="search-box" placeholder="Search types...">
 
             <div class="stats-grid" id="stats-grid" style="display: none;">
@@ -489,6 +510,8 @@
             </div>
         </aside>
 
+        <div class="sidebar-splitter" id="sidebar-splitter" role="separator" aria-controls="sidebar"
+             aria-orientation="vertical" aria-label="Sidebar width" tabindex="0"></div>
         <main id="cy"></main>
 
         <div class="details-splitter" id="details-splitter" role="separator" aria-controls="details-panel"
@@ -528,9 +551,85 @@
         const clearHistoryBtn = document.getElementById('clear-history');
         const mruList = document.getElementById('mru-list');
         const container = document.querySelector('.container');
+        const sidebar = document.getElementById('sidebar');
+        const sidebarSplitter = document.getElementById('sidebar-splitter');
+        const sidebarToggle = document.getElementById('sidebar-toggle');
         const detailsSplitter = document.getElementById('details-splitter');
         const detailsToggle = document.getElementById('details-toggle');
+        const SIDEBAR_MIN_WIDTH = 220;
         const DETAILS_MIN_WIDTH = 240;
+
+        function sidebarMaxWidth() {
+            return Math.max(SIDEBAR_MIN_WIDTH, Math.floor(window.innerWidth * 0.45));
+        }
+
+        function clampSidebarWidth(width) {
+            return Math.min(sidebarMaxWidth(), Math.max(SIDEBAR_MIN_WIDTH, Math.round(width)));
+        }
+
+        function setSidebarWidth(width, persist = true) {
+            const nextWidth = clampSidebarWidth(width);
+            container.style.setProperty('--sidebar-width', `${nextWidth}px`);
+            sidebarSplitter.setAttribute('aria-valuemin', String(SIDEBAR_MIN_WIDTH));
+            sidebarSplitter.setAttribute('aria-valuemax', String(sidebarMaxWidth()));
+            sidebarSplitter.setAttribute('aria-valuenow', String(nextWidth));
+            sidebarSplitter.setAttribute('aria-valuetext', `${nextWidth} pixels wide`);
+            if (persist) {
+                settings.sidebarWidth = nextWidth;
+                saveSettings();
+            }
+            if (cy) cy.resize();
+        }
+
+        function setSidebarCollapsed(collapsed, persist = true) {
+            container.classList.toggle('sidebar-collapsed', collapsed);
+            sidebar.hidden = collapsed;
+            sidebarSplitter.hidden = collapsed;
+            sidebarToggle.setAttribute('aria-expanded', String(!collapsed));
+            sidebarToggle.textContent = collapsed ? 'Show sidebar' : 'Hide sidebar';
+            sidebarToggle.title = collapsed ? 'Show the namespace sidebar' : 'Hide the namespace sidebar';
+            if (persist) {
+                settings.sidebarCollapsed = collapsed;
+                saveSettings();
+            }
+            if (cy) requestAnimationFrame(() => cy.resize());
+        }
+
+        function initializeSidebarControls() {
+            const width = Number.isFinite(settings.sidebarWidth) ? settings.sidebarWidth : 300;
+            setSidebarWidth(width, false);
+            setSidebarCollapsed(settings.sidebarCollapsed === true, false);
+
+            sidebarToggle.addEventListener('click', () => setSidebarCollapsed(!sidebar.hidden));
+            sidebarSplitter.addEventListener('pointerdown', event => {
+                event.preventDefault();
+                sidebarSplitter.setPointerCapture(event.pointerId);
+            });
+            sidebarSplitter.addEventListener('pointermove', event => {
+                if (sidebarSplitter.hasPointerCapture(event.pointerId)) {
+                    setSidebarWidth(event.clientX, false);
+                }
+            });
+            sidebarSplitter.addEventListener('pointerup', event => {
+                if (!sidebarSplitter.hasPointerCapture(event.pointerId)) return;
+                sidebarSplitter.releasePointerCapture(event.pointerId);
+                setSidebarWidth(event.clientX);
+            });
+            sidebarSplitter.addEventListener('keydown', event => {
+                const current = Number(sidebarSplitter.getAttribute('aria-valuenow')) || 300;
+                const step = event.shiftKey ? 50 : 20;
+                let width = current;
+                if (event.key === 'ArrowLeft') width -= step;
+                else if (event.key === 'ArrowRight') width += step;
+                else if (event.key === 'Home') width = SIDEBAR_MIN_WIDTH;
+                else if (event.key === 'End') width = sidebarMaxWidth();
+                else return;
+                event.preventDefault();
+                setSidebarWidth(width);
+            });
+            window.addEventListener('resize', () => setSidebarWidth(
+                Number(sidebarSplitter.getAttribute('aria-valuenow')) || 300, false));
+        }
 
         function detailsMaxWidth() {
             return Math.max(DETAILS_MIN_WIDTH, Math.floor(window.innerWidth * 0.55));
@@ -1458,6 +1557,7 @@
 
         // Initialize
         loadSettings();
+        initializeSidebarControls();
         initializeDetailsPanelControls();
         updateMRUDisplay();
         initGraph();

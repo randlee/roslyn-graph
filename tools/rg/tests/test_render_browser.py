@@ -59,6 +59,11 @@ def test_rendered_page_loads_the_embedded_graph(tmp_path):
     assert "Load an RDF file to explore types" not in dom.split('id="roslyn-graph-data"')[0]
     copy_button = re.search(r'<button[^>]*id="copy-graph-btn"[^>]*>', dom)
     assert copy_button and "disabled" not in copy_button.group(0), "Copy for Claude stays disabled after the graph loads"
+    sidebar_toggle = re.search(r'<button[^>]*id="sidebar-toggle"[^>]*>', dom)
+    assert sidebar_toggle and 'aria-controls="sidebar"' in sidebar_toggle.group(0)
+    sidebar_splitter = re.search(r'<div[^>]*id="sidebar-splitter"[^>]*>', dom)
+    assert sidebar_splitter and 'role="separator"' in sidebar_splitter.group(0)
+    assert sidebar_splitter and 'aria-valuenow="300"' in sidebar_splitter.group(0), "sidebar splitter has an initialized accessible width"
     details_toggle = re.search(r'<button[^>]*id="details-toggle"[^>]*>', dom)
     assert details_toggle and 'aria-controls="details-panel"' in details_toggle.group(0)
     splitter = re.search(r'<div[^>]*id="details-splitter"[^>]*>', dom)
