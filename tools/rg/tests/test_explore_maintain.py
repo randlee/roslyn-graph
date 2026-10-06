@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -81,6 +82,24 @@ def test_every_registered_visualizer_has_its_files():
         assert (folder / entry["template"]).is_file()
         for script in entry.get("inlineScripts", []):
             assert (folder / script).is_file()
+
+
+def test_explorer_hides_edge_labels_without_losing_relationship_styles():
+    page = (explore.resource("visualizers", "explorer") / "explorer.html").read_text(encoding="utf-8")
+    edge_style = re.search(r"selector: 'edge',\s*style: \{(?P<style>.*?)\n\s*\}", page, re.DOTALL)
+    assert edge_style, "the explorer has a base edge style"
+    assert "'label': 'data(label)'" not in edge_style.group("style")
+    assert "'target-arrow-shape': 'triangle'" in edge_style.group("style")
+    for relationship, color, line_style in (
+        ("inherits", "#569cd6", None),
+        ("implements", "#b5cea8", "dashed"),
+        ("references", "#808080", "dotted"),
+    ):
+        style = re.search(rf"selector: 'edge\.{relationship}',\s*style: \{{(?P<style>.*?)\n\s*\}}", page, re.DOTALL)
+        assert style, f"{relationship} still has a relationship style"
+        assert f"'line-color': '{color}'" in style.group("style")
+        if line_style:
+            assert f"'line-style': '{line_style}'" in style.group("style")
 
 
 def test_export_requires_construct(tmp_path):
