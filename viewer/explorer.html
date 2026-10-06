@@ -352,6 +352,32 @@
         .namespace-label {
             flex: 1;
             cursor: pointer;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .palette-swatch {
+            width: 14px;
+            height: 14px;
+            border-radius: 3px;
+            background: var(--palette-color);
+            border: 1px solid rgba(255, 255, 255, 0.45);
+            flex-shrink: 0;
+        }
+        .palette-select {
+            width: 76px;
+            background: #3c3c3c;
+            color: #d4d4d4;
+            border: 1px solid #555;
+            border-radius: 3px;
+            padding: 2px 3px;
+            font-size: 0.75em;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .palette-select:focus {
+            outline: none;
+            border-color: #007acc;
         }
         .loading {
             position: fixed;
@@ -537,7 +563,8 @@
         let selectedTypeIri = null; // Type shown in the details panel
         let loadedFrom = null; // Provenance of a graph loaded from a file (embedded pages carry their own)
         let settings = {
-            mruFiles: []
+            mruFiles: [],
+            namespacePaletteOverrides: {}
         };
 
         const fileInput = document.getElementById('file-input');
@@ -712,10 +739,14 @@
                     if (!Array.isArray(settings.mruFiles)) {
                         settings.mruFiles = [];
                     }
+                    if (!settings.namespacePaletteOverrides || typeof settings.namespacePaletteOverrides !== 'object' ||
+                        Array.isArray(settings.namespacePaletteOverrides)) {
+                        settings.namespacePaletteOverrides = {};
+                    }
                 }
             } catch (e) {
                 console.error('Failed to load settings:', e);
-                settings = { mruFiles: [] };
+                settings = { mruFiles: [], namespacePaletteOverrides: {} };
             }
         }
 
@@ -799,6 +830,56 @@
             return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
         }
 
+        // These darker, similarly saturated fills keep white node labels legible across namespaces.
+        const NAMESPACE_PALETTES = [
+            { id: 'ocean', name: 'Ocean', color: '#0F6C7A' },
+            { id: 'violet', name: 'Violet', color: '#5145A8' },
+            { id: 'rose', name: 'Rose', color: '#9D174D' },
+            { id: 'amber', name: 'Amber', color: '#9A5A00' },
+            { id: 'teal', name: 'Teal', color: '#0F766E' },
+            { id: 'slate', name: 'Slate', color: '#3F526D' }
+        ];
+
+        function namespaceGroup(namespaceName) {
+            const segments = (namespaceName || '').split('.').filter(Boolean);
+            return segments.slice(0, 2).join('.') || namespaceName || 'global';
+        }
+
+        function automaticPaletteId(namespaceName) {
+            const group = namespaceGroup(namespaceName);
+            let hash = 0;
+            for (let index = 0; index < group.length; index++) {
+                hash = ((hash << 5) - hash + group.charCodeAt(index)) | 0;
+            }
+            return NAMESPACE_PALETTES[(hash >>> 0) % NAMESPACE_PALETTES.length].id;
+        }
+
+        function paletteIdForNamespace(namespaceName, overrides = {}) {
+            const override = overrides[namespaceName];
+            return NAMESPACE_PALETTES.some(palette => palette.id === override) ? override : automaticPaletteId(namespaceName);
+        }
+
+        function paletteForNamespace(namespaceIri) {
+            const namespaceName = graphData.namespaces.get(namespaceIri)?.name || '';
+            const paletteId = paletteIdForNamespace(namespaceName, settings.namespacePaletteOverrides || {});
+            return NAMESPACE_PALETTES.find(palette => palette.id === paletteId) || NAMESPACE_PALETTES[0];
+        }
+
+        function setNamespacePalette(namespaceName, paletteId) {
+            settings.namespacePaletteOverrides ||= {};
+            if (paletteId) settings.namespacePaletteOverrides[namespaceName] = paletteId;
+            else delete settings.namespacePaletteOverrides[namespaceName];
+            saveSettings();
+        }
+
+        function paletteOptions(namespaceName) {
+            const override = settings.namespacePaletteOverrides?.[namespaceName] || '';
+            return `<option value=""${override ? '' : ' selected'}>Auto</option>` +
+                NAMESPACE_PALETTES.map(palette =>
+                    `<option value="${palette.id}"${override === palette.id ? ' selected' : ''}>${palette.name}</option>`
+                ).join('');
+        }
+
         // Initialize Cytoscape
         function initGraph() {
             cy = cytoscape({
@@ -807,7 +888,7 @@
                     {
                         selector: 'node',
                         style: {
-                            'background-color': '#006f77',
+                            'background-color': 'data(palette)',
                             'label': 'data(label)',
                             'color': '#fff',
                             'text-valign': 'center',
@@ -820,28 +901,24 @@
                     {
                         selector: 'node.class',
                         style: {
-                            'background-color': '#0078d4',
                             'shape': 'rectangle'
                         }
                     },
                     {
                         selector: 'node.interface',
                         style: {
-                            'background-color': '#6f42c1',
                             'shape': 'diamond'
                         }
                     },
                     {
                         selector: 'node.struct',
                         style: {
-                            'background-color': '#007c91',
                             'shape': 'octagon'
                         }
                     },
                     {
                         selector: 'node.enum',
                         style: {
-                            'background-color': '#9a6700',
                             'shape': 'triangle'
                         }
                     },
@@ -996,6 +1073,7 @@
                             id: iri,
                             label: formatTypeLabel(type.name),
                             name: type.name,
+                            palette: paletteForNamespace(type.namespace).color,
                             kind: type.kind,
                             namespace: type.namespace
                         },
@@ -1064,10 +1142,15 @@
                     const type = graphData.types.get(typeIri);
                     return type && !isCompilerGenerated(type.name);
                 }).length;
+                const palette = paletteForNamespace(ns.iri);
 
                 return `<div class="namespace-item" data-ns="${ns.iri}">
-                    <input type="checkbox" class="namespace-checkbox" data-ns="${ns.iri}" checked>
-                    <span class="namespace-label">📁 ${ns.name} <span class="badge">${typeCount}</span></span>
+                    <input type="checkbox" class="namespace-checkbox" data-ns="${ns.iri}" ${visibleNamespaces.has(ns.iri) ? 'checked' : ''}>
+                    <span class="palette-swatch" style="--palette-color: ${palette.color}" title="${palette.name} palette"></span>
+                    <span class="namespace-label">📁 ${escapeHtml(ns.name)} <span class="badge">${typeCount}</span></span>
+                    <select class="palette-select" data-namespace-name="${escapeHtml(ns.name)}" aria-label="Color palette for ${escapeHtml(ns.name)}">
+                        ${paletteOptions(ns.name)}
+                    </select>
                 </div>`;
             }).join('');
 
@@ -1098,6 +1181,22 @@
                     } else {
                         visibleNamespaces.delete(nsIri);
                     }
+                    buildGraph();
+                });
+            });
+
+            document.querySelectorAll('.palette-select').forEach(select => {
+                select.addEventListener('click', event => event.stopPropagation());
+                select.addEventListener('change', event => {
+                    event.stopPropagation();
+                    const namespaceName = select.dataset.namespaceName;
+                    if (!namespaceName) return;
+                    setNamespacePalette(namespaceName, select.value);
+                    const palette = paletteForNamespace(
+                        Array.from(graphData.namespaces.values()).find(ns => ns.name === namespaceName)?.iri
+                    );
+                    select.closest('.namespace-item')?.querySelector('.palette-swatch')
+                        ?.style.setProperty('--palette-color', palette.color);
                     buildGraph();
                 });
             });
