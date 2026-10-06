@@ -22,9 +22,13 @@
         }
         .container {
             display: grid;
-            grid-template-columns: 300px 1fr 350px;
+            --details-width: 350px;
+            grid-template-columns: 300px minmax(0, 1fr) 10px var(--details-width);
             grid-template-rows: 60px 1fr;
             height: 100vh;
+        }
+        .container.details-collapsed {
+            grid-template-columns: 300px minmax(0, 1fr) 0 0;
         }
         header {
             grid-column: 1 / -1;
@@ -183,12 +187,34 @@
         }
         #cy {
             background: #1e1e1e;
+            min-width: 0;
+        }
+        .details-splitter {
+            grid-column: 3;
+            grid-row: 2;
+            background: #3e3e42;
+            cursor: col-resize;
+            position: relative;
+            touch-action: none;
+        }
+        .details-splitter:hover,
+        .details-splitter:focus-visible {
+            background: #007acc;
+            outline: none;
+        }
+        .details-splitter::after {
+            content: '';
+            position: absolute;
+            inset: 0 -3px;
         }
         .details-panel {
+            grid-column: 4;
+            grid-row: 2;
             background: #252526;
             border-left: 1px solid #3e3e42;
             overflow-y: auto;
             padding: 20px;
+            min-width: 0;
         }
         .details-panel h2 {
             font-size: 1.1em;
@@ -423,6 +449,7 @@
             <button class="upload-btn" id="copy-graph-btn" disabled
                     title="Copy the types on the graph and where they came from (database and query) as JSON to paste into a chat with Claude">📋 Copy for Claude</button>
             <button class="upload-btn" id="download-graph-btn" disabled title="Download the same JSON as a file">⬇ JSON</button>
+            <button class="upload-btn" id="details-toggle" aria-controls="details-panel" aria-expanded="true">Hide details</button>
             <div class="menu-button">
                 <button class="upload-btn" id="load-menu-btn">▼ Load RDF File</button>
                 <div class="menu-dropdown" id="load-menu" style="display:none">
@@ -464,6 +491,8 @@
 
         <main id="cy"></main>
 
+        <div class="details-splitter" id="details-splitter" role="separator" aria-controls="details-panel"
+             aria-orientation="vertical" aria-label="Details panel width" tabindex="0"></div>
         <aside class="details-panel" id="details-panel">
             <div class="empty-state">
                 <div class="empty-state-icon">👈</div>
@@ -498,6 +527,82 @@
         const loadNewBtn = document.getElementById('load-new');
         const clearHistoryBtn = document.getElementById('clear-history');
         const mruList = document.getElementById('mru-list');
+        const container = document.querySelector('.container');
+        const detailsSplitter = document.getElementById('details-splitter');
+        const detailsToggle = document.getElementById('details-toggle');
+        const DETAILS_MIN_WIDTH = 240;
+
+        function detailsMaxWidth() {
+            return Math.max(DETAILS_MIN_WIDTH, Math.floor(window.innerWidth * 0.55));
+        }
+
+        function clampDetailsWidth(width) {
+            return Math.min(detailsMaxWidth(), Math.max(DETAILS_MIN_WIDTH, Math.round(width)));
+        }
+
+        function setDetailsWidth(width, persist = true) {
+            const nextWidth = clampDetailsWidth(width);
+            container.style.setProperty('--details-width', `${nextWidth}px`);
+            detailsSplitter.setAttribute('aria-valuemin', String(DETAILS_MIN_WIDTH));
+            detailsSplitter.setAttribute('aria-valuemax', String(detailsMaxWidth()));
+            detailsSplitter.setAttribute('aria-valuenow', String(nextWidth));
+            detailsSplitter.setAttribute('aria-valuetext', `${nextWidth} pixels wide`);
+            if (persist) {
+                settings.detailsWidth = nextWidth;
+                saveSettings();
+            }
+            if (cy) cy.resize();
+        }
+
+        function setDetailsCollapsed(collapsed, persist = true) {
+            container.classList.toggle('details-collapsed', collapsed);
+            detailsPanel.hidden = collapsed;
+            detailsSplitter.hidden = collapsed;
+            detailsToggle.setAttribute('aria-expanded', String(!collapsed));
+            detailsToggle.textContent = collapsed ? 'Show details' : 'Hide details';
+            detailsToggle.title = collapsed ? 'Show the details panel' : 'Hide the details panel';
+            if (persist) {
+                settings.detailsCollapsed = collapsed;
+                saveSettings();
+            }
+            if (cy) requestAnimationFrame(() => cy.resize());
+        }
+
+        function initializeDetailsPanelControls() {
+            const width = Number.isFinite(settings.detailsWidth) ? settings.detailsWidth : 350;
+            setDetailsWidth(width, false);
+            setDetailsCollapsed(settings.detailsCollapsed === true, false);
+
+            detailsToggle.addEventListener('click', () => setDetailsCollapsed(!detailsPanel.hidden));
+            detailsSplitter.addEventListener('pointerdown', event => {
+                event.preventDefault();
+                detailsSplitter.setPointerCapture(event.pointerId);
+            });
+            detailsSplitter.addEventListener('pointermove', event => {
+                if (detailsSplitter.hasPointerCapture(event.pointerId)) {
+                    setDetailsWidth(window.innerWidth - event.clientX, false);
+                }
+            });
+            detailsSplitter.addEventListener('pointerup', event => {
+                if (!detailsSplitter.hasPointerCapture(event.pointerId)) return;
+                detailsSplitter.releasePointerCapture(event.pointerId);
+                setDetailsWidth(window.innerWidth - event.clientX);
+            });
+            detailsSplitter.addEventListener('keydown', event => {
+                const current = Number(detailsSplitter.getAttribute('aria-valuenow')) || 350;
+                const step = event.shiftKey ? 50 : 20;
+                let width = current;
+                if (event.key === 'ArrowLeft') width += step;
+                else if (event.key === 'ArrowRight') width -= step;
+                else if (event.key === 'Home') width = DETAILS_MIN_WIDTH;
+                else if (event.key === 'End') width = detailsMaxWidth();
+                else return;
+                event.preventDefault();
+                setDetailsWidth(width);
+            });
+            window.addEventListener('resize', () => setDetailsWidth(
+                Number(detailsSplitter.getAttribute('aria-valuenow')) || 350, false));
+        }
 
         // LocalStorage Settings Management
         function loadSettings() {
@@ -1336,6 +1441,7 @@
 
         // Initialize
         loadSettings();
+        initializeDetailsPanelControls();
         updateMRUDisplay();
         initGraph();
         if (document.readyState === 'loading') {

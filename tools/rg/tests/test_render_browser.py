@@ -59,4 +59,9 @@ def test_rendered_page_loads_the_embedded_graph(tmp_path):
     assert "Load an RDF file to explore types" not in dom.split('id="roslyn-graph-data"')[0]
     copy_button = re.search(r'<button[^>]*id="copy-graph-btn"[^>]*>', dom)
     assert copy_button and "disabled" not in copy_button.group(0), "Copy for Claude stays disabled after the graph loads"
+    details_toggle = re.search(r'<button[^>]*id="details-toggle"[^>]*>', dom)
+    assert details_toggle and 'aria-controls="details-panel"' in details_toggle.group(0)
+    splitter = re.search(r'<div[^>]*id="details-splitter"[^>]*>', dom)
+    assert splitter and 'role="separator"' in splitter.group(0)
+    assert splitter and 'aria-valuenow="350"' in splitter.group(0), "details splitter has an initialized accessible width"
     assert "roslyn-graph-context" in dom
