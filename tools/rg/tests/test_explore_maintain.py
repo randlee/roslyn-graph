@@ -64,6 +64,7 @@ def test_render_builds_a_self_contained_explorer_page(tmp_path):
     page = (tmp_path / "g.html").read_text(encoding="utf-8")
     assert result["type"] == "page" and result["dataTriples"] == 1
     assert '<script src="rdf-graph-parser.js">' not in page and "RdfGraphParser" in page
+    assert '<script src="namespace-label.js">' not in page and "RoslynGraphNamespaceLabel" in page
     assert 'id="roslyn-graph-data" data-title="Interfaces &quot;P3&quot;"' in page
     assert "loadEmbeddedGraph" in page
 
@@ -144,7 +145,7 @@ def test_explorer_assigns_persistent_namespace_palettes_without_changing_kind_sh
     completed = subprocess.run([node, "-e", script], capture_output=True, text=True, encoding="utf-8")
     assert completed.returncode == 0, completed.stderr
     assert "'background-color': 'data(palette)'" in page and "'color': '#fff'" in page
-    assert 'class="palette-select"' in page and '>Auto</option>' in page
+    assert 'class="palette-picker"' in page and '>Auto</option>' in page
     for kind, shape in (("class", "rectangle"), ("interface", "diamond"), ("struct", "octagon"), ("enum", "triangle")):
         style = re.search(rf"selector: 'node\.{kind}',\s*style: \{{(?P<style>.*?)\n\s*\}}", page, re.DOTALL)
         assert style and f"'shape': '{shape}'" in style.group("style")

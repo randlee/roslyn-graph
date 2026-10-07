@@ -5,7 +5,8 @@
     "template": "explorer.html",
     "inlineScripts": [
       "rdf-graph-parser.js",
-      "graph-selection.js"
+      "graph-selection.js",
+      "namespace-label.js"
     ],
     "input": "N-Triples or Turtle using the dt: ontology",
     "reads": {
