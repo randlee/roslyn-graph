@@ -14,12 +14,20 @@ test('both COSE layouts reserve space for type labels', () => {
     }
 });
 
-test('node kinds use saturated fills with white text for readable labels', () => {
+test('nodes use namespace fills with white text and kind-specific shapes', () => {
     const explorer = fs.readFileSync(path.join(__dirname, 'explorer.html'), 'utf8');
 
-    assert.match(explorer, /selector: 'node',[\s\S]*?'background-color': '#006f77',[\s\S]*?'color': '#fff'/);
-    assert.match(explorer, /selector: 'node\.class',[\s\S]*?'background-color': '#0078d4'/);
-    assert.match(explorer, /selector: 'node\.interface',[\s\S]*?'background-color': '#6f42c1'/);
-    assert.match(explorer, /selector: 'node\.struct',[\s\S]*?'background-color': '#007c91'/);
-    assert.match(explorer, /selector: 'node\.enum',[\s\S]*?'background-color': '#9a6700'/);
+    assert.match(explorer, /selector: 'node',[\s\S]*?'background-color': 'data\(palette\)',[\s\S]*?'color': '#fff'/);
+
+    for (const [kind, shape] of [
+        ['class', 'rectangle'],
+        ['interface', 'diamond'],
+        ['struct', 'octagon'],
+        ['enum', 'triangle']
+    ]) {
+        const match = explorer.match(new RegExp(`selector: 'node\\.${kind}',\\s*style: \\{([\\s\\S]*?)\\n\\s*\\}\\s*\\}`));
+        assert.ok(match, `missing ${kind} node style`);
+        assert.match(match[1], new RegExp(`'shape': '${shape}'`));
+        assert.doesNotMatch(match[1], /background-color/);
+    }
 });
