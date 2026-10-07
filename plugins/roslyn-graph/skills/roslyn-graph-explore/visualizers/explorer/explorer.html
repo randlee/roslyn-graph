@@ -356,28 +356,26 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
-        .palette-swatch {
-            width: 14px;
-            height: 14px;
-            border-radius: 3px;
+        /* The native select is the swatch: its options remain keyboard and screen-reader accessible. */
+        .palette-picker {
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            padding: 0;
             background: var(--palette-color);
+            color: transparent;
             border: 1px solid rgba(255, 255, 255, 0.45);
-            flex-shrink: 0;
-        }
-        .palette-select {
-            width: 76px;
-            background: #3c3c3c;
-            color: #d4d4d4;
-            border: 1px solid #555;
             border-radius: 3px;
-            padding: 2px 3px;
-            font-size: 0.75em;
             cursor: pointer;
             flex-shrink: 0;
         }
-        .palette-select:focus {
-            outline: none;
-            border-color: #007acc;
+        .palette-picker:focus-visible {
+            outline: 2px solid #4fc1ff;
+            outline-offset: 2px;
+        }
+        .palette-picker option {
+            color: #1e1e1e;
+            background: #fff;
         }
         .loading {
             position: fixed;
@@ -1146,11 +1144,11 @@
 
                 return `<div class="namespace-item" data-ns="${ns.iri}">
                     <input type="checkbox" class="namespace-checkbox" data-ns="${ns.iri}" ${visibleNamespaces.has(ns.iri) ? 'checked' : ''}>
-                    <span class="palette-swatch" style="--palette-color: ${palette.color}" title="${palette.name} palette"></span>
-                    <span class="namespace-label">📁 ${escapeHtml(ns.name)} <span class="badge">${typeCount}</span></span>
-                    <select class="palette-select" data-namespace-name="${escapeHtml(ns.name)}" aria-label="Color palette for ${escapeHtml(ns.name)}">
+                    <select class="palette-picker" style="--palette-color: ${palette.color}"
+                        data-namespace-name="${escapeHtml(ns.name)}" aria-label="Color palette for ${escapeHtml(ns.name)}" title="${palette.name} palette">
                         ${paletteOptions(ns.name)}
                     </select>
+                    <span class="namespace-label">📁 ${escapeHtml(ns.name)} <span class="badge">${typeCount}</span></span>
                 </div>`;
             }).join('');
 
@@ -1185,7 +1183,7 @@
                 });
             });
 
-            document.querySelectorAll('.palette-select').forEach(select => {
+            document.querySelectorAll('.palette-picker').forEach(select => {
                 select.addEventListener('click', event => event.stopPropagation());
                 select.addEventListener('change', event => {
                     event.stopPropagation();
@@ -1195,8 +1193,8 @@
                     const palette = paletteForNamespace(
                         Array.from(graphData.namespaces.values()).find(ns => ns.name === namespaceName)?.iri
                     );
-                    select.closest('.namespace-item')?.querySelector('.palette-swatch')
-                        ?.style.setProperty('--palette-color', palette.color);
+                    select.style.setProperty('--palette-color', palette.color);
+                    select.title = `${palette.name} palette`;
                     buildGraph();
                 });
             });
