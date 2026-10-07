@@ -38,6 +38,7 @@ test('namespace labels preserve their full name while eliding leading segments o
     assert.match(explorer, /<script src="namespace-label\.js"><\/script>/);
     assert.match(explorer, /class="namespace-label" title="\$\{escapeHtml\(ns\.name\)\}" aria-label="\$\{escapeHtml\(ns\.name\)\}"/);
     assert.match(explorer, /class="namespace-name" data-full-namespace="\$\{escapeHtml\(ns\.name\)\}"/);
+    assert.match(explorer, /\.namespace-name \{[\s\S]*?flex: 1 1 0;/);
     assert.match(explorer, /RoslynGraphNamespaceLabel\.elideFromLeft\(fullName/);
     assert.match(explorer, /scheduleNamespaceLabelElision\(\);/);
 });

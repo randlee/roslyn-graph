@@ -359,6 +359,8 @@
             gap: 4px;
         }
         .namespace-name {
+            /* Start with a share of the label's remaining width even before text is assigned. */
+            flex: 1 1 0;
             min-width: 0;
             overflow: hidden;
             text-overflow: ellipsis;
