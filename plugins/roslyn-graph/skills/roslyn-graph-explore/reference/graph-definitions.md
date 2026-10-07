@@ -67,6 +67,7 @@ is an error (`GRAPH_SEED_NOT_FOUND`); find exact names with `queries/find-type.r
 | `member_types` | return, property, field and event types of its members |
 | `parameter_types` | parameter types of its methods, constructors and indexers |
 | `attributes` | attribute classes applied to it or its members |
+| `referenced_by` | component types that consume it through inheritance, implemented interfaces, member/parameter types, or attributes |
 
 With `generic_arguments`, constructed generics contribute their definition and every type argument, and
 arrays their element type. Only component types are added; references to framework types end there.

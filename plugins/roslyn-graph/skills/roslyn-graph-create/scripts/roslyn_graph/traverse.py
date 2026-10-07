@@ -28,6 +28,17 @@ FOLLOW = {  # relation -> graph patterns binding ?t (the referencing type) and ?
     "attributes": ["?t dt:hasAttribute ?at . ?at dt:attributeType ?r",
                    "?t dt:hasMember ?m . ?m dt:hasAttribute ?at . ?at dt:attributeType ?r"],
 }
+INVERSE_FOLLOW = {  # relation -> patterns binding ?t (the consumed type) and ?r (its component consumer)
+    "referenced_by": [
+        "?r dt:inherits ?t",
+        "?r dt:implements ?t",
+        "?r dt:hasMember ?m . ?m dt:returnType|dt:propertyType|dt:fieldType|dt:eventType ?t",
+        "?r dt:hasMember ?m . ?m dt:hasParameter ?p . ?p dt:parameterType ?t",
+        "?r dt:hasAttribute ?at . ?at dt:attributeType ?t",
+        "?r dt:hasMember ?m . ?m dt:hasAttribute ?at . ?at dt:attributeType ?t",
+    ],
+}
+FOLLOW = FOLLOW | INVERSE_FOLLOW
 KINDS = {"Class", "Interface", "Struct", "Enum", "Delegate"}
 IMPLEMENTATIONS = {"none", "direct", "transitive"}
 
@@ -192,6 +203,16 @@ def _pairs(store: Path, subjects: list[str], pattern: str) -> list[tuple[str, st
     return pairs
 
 
+def _inverse_pairs(store: Path, targets: list[str], pattern: str) -> list[tuple[str, str]]:
+    """Return (consumed target, component consumer) pairs for an inverse follow pattern."""
+    pairs: list[tuple[str, str]] = []
+    for batch in _batches(sorted(targets)):
+        rows = oxigraph.select(store, f"PREFIX dt: <{DT}> SELECT DISTINCT ?t ?r WHERE {{ VALUES ?t {{ {_values(batch)} }} "
+                                      f"GRAPH ?g {{ {pattern} }} }}")
+        pairs += [(r["t"], r["r"]) for r in rows]
+    return pairs
+
+
 def _own_names(store: Path, iris: set[str]) -> dict[str, str]:
     """The subset of IRIs that are component types, with their full names."""
     names: dict[str, str] = {}
@@ -260,16 +281,29 @@ def expand(store: Path, d: Definition, start: dict[str, str]) -> tuple[dict[str,
     while frontier and (d.max_depth == 0 or depth < d.max_depth):
         depth += 1
         direct: set[tuple[str, str]] = set()
+        inverse: set[tuple[str, str]] = set()
         for relation in d.follow:
-            for pattern in FOLLOW[relation]:
-                direct.update(_pairs(store, frontier, pattern))
+            if relation in INVERSE_FOLLOW:
+                for pattern in INVERSE_FOLLOW[relation]:
+                    inverse.update(_inverse_pairs(store, frontier, pattern))
+            else:
+                for pattern in FOLLOW[relation]:
+                    direct.update(_pairs(store, frontier, pattern))
         inside = _underlying(store, {r for _, r in direct}, d.generic_arguments)
+        inverse_inside = _underlying(store, {r for _, r in inverse}, d.generic_arguments)
         own = _own_names(store, {u for us in inside.values() for u in us})
+        own.update(_own_names(store, {u for us in inverse_inside.values() for u in us}))
         added: dict[str, str] = {}
         for t, r in direct:
             for u in inside[r]:
                 if u in own and u != t:
                     edges.add((t, u))
+                    if u not in seen:
+                        added[u] = own[u]
+        for target, consumer in inverse:
+            for u in inverse_inside[consumer]:
+                if u in own and u != target:
+                    edges.add((u, target))
                     if u not in seen:
                         added[u] = own[u]
         if len(seen) + len(added) > d.max_types:
