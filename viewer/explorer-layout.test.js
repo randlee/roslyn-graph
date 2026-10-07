@@ -41,3 +41,14 @@ test('namespace labels preserve their full name while eliding leading segments o
     assert.match(explorer, /RoslynGraphNamespaceLabel\.elideFromLeft\(fullName/);
     assert.match(explorer, /scheduleNamespaceLabelElision\(\);/);
 });
+
+test('namespace palette picker is an accessible, arrowless color swatch', () => {
+    const explorer = fs.readFileSync(path.join(__dirname, 'explorer.html'), 'utf8');
+
+    assert.match(explorer, /<select class="palette-picker"[\s\S]*?style="--palette-color: \$\{palette\.color\}"[\s\S]*?aria-label="Color palette for \$\{escapeHtml\(ns\.name\)\}"/);
+    assert.match(explorer, /\.palette-picker \{[\s\S]*?appearance: none;[\s\S]*?background: var\(--palette-color\);/);
+    assert.match(explorer, /\.palette-picker:focus-visible \{[\s\S]*?outline: 2px solid/);
+    assert.match(explorer, /\.palette-picker option \{[\s\S]*?color: #1e1e1e;/);
+    assert.doesNotMatch(explorer, /palette-swatch|palette-select/);
+    assert.match(explorer, /document\.querySelectorAll\('\.palette-picker'\)/);
+});
