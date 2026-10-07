@@ -64,6 +64,7 @@ def test_render_builds_a_self_contained_explorer_page(tmp_path):
     page = (tmp_path / "g.html").read_text(encoding="utf-8")
     assert result["type"] == "page" and result["dataTriples"] == 1
     assert '<script src="rdf-graph-parser.js">' not in page and "RdfGraphParser" in page
+    assert '<script src="namespace-label.js">' not in page and "RoslynGraphNamespaceLabel" in page
     assert 'id="roslyn-graph-data" data-title="Interfaces &quot;P3&quot;"' in page
     assert "loadEmbeddedGraph" in page
 
