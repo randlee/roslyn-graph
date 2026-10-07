@@ -2,25 +2,17 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <LangVersion>latest</LangVersion>
-    
+
     <!-- NuGet Tool Configuration -->
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>roslyn2rdf</ToolCommandName>
     <PackageOutputPath>./nupkg</PackageOutputPath>
-    
-    <!-- Package Metadata -->
+
+    <!-- Package Metadata (Version/Authors/RepositoryUrl/License come from Directory.Build.props) -->
     <PackageId>RoslynToRdf</PackageId>
-    <Version>1.0.0</Version>
-    <Authors>Your Name</Authors>
     <Description>Extract .NET assembly type graphs to RDF/N-Triples format for Oxigraph and other RDF databases</Description>
     <PackageTags>roslyn;rdf;ntriples;oxigraph;sparql;code-analysis;type-graph</PackageTags>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <RepositoryUrl>https://github.com/yourname/RoslynToRdf</RepositoryUrl>
   </PropertyGroup>
 
   <ItemGroup>
