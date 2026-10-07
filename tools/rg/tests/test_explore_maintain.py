@@ -1,4 +1,7 @@
 import json
+import re
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -81,6 +84,71 @@ def test_every_registered_visualizer_has_its_files():
         assert (folder / entry["template"]).is_file()
         for script in entry.get("inlineScripts", []):
             assert (folder / script).is_file()
+
+
+def test_explorer_hides_edge_labels_without_losing_relationship_styles():
+    page = (explore.resource("visualizers", "explorer") / "explorer.html").read_text(encoding="utf-8")
+    edge_style = re.search(r"selector: 'edge',\s*style: \{(?P<style>.*?)\n\s*\}", page, re.DOTALL)
+    assert edge_style, "the explorer has a base edge style"
+    assert "'label': 'data(label)'" not in edge_style.group("style")
+    assert "'target-arrow-shape': 'triangle'" in edge_style.group("style")
+    for relationship, color, line_style in (
+        ("inherits", "#569cd6", None),
+        ("implements", "#b5cea8", "dashed"),
+        ("references", "#808080", "dotted"),
+    ):
+        style = re.search(rf"selector: 'edge\.{relationship}',\s*style: \{{(?P<style>.*?)\n\s*\}}", page, re.DOTALL)
+        assert style, f"{relationship} still has a relationship style"
+        assert f"'line-color': '{color}'" in style.group("style")
+        if line_style:
+            assert f"'line-style': '{line_style}'" in style.group("style")
+
+
+def test_explorer_wraps_only_long_camel_case_labels_and_keeps_source_names():
+    page = (explore.resource("visualizers", "explorer") / "explorer.html").read_text(encoding="utf-8")
+    function = re.search(r"function formatTypeLabel\(name\) \{.*?(?=\n\s*function buildGraph)", page, re.DOTALL)
+    assert function, "the explorer has a display-only type label formatter"
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node.js is not installed")
+    cases = {
+        "ShortTypeName": "ShortTypeName",
+        "abcdefghijklmnopqrst": "abcdefghijklmnopqrst",  # exactly 20 characters stays unwrapped
+        "alllowercaselongtypename": "alllowercaselongtypename",
+        "aaaaaaBbbbbbbbbbbCcccccccccccc": "aaaaaaBbbbbbbbbbb\nCcccccccccccc",
+    }
+    script = function.group(0) + "\n" + "\n".join(
+        f"if (formatTypeLabel({name!r}) !== {expected!r}) process.exit(1);" for name, expected in cases.items()
+    )
+    completed = subprocess.run([node, "-e", script], capture_output=True, text=True, encoding="utf-8")
+    assert completed.returncode == 0, completed.stderr
+    assert "label: formatTypeLabel(type.name)," in page
+    assert "name: type.name," in page
+    assert "const name = node.data('name').toLowerCase();" in page
+
+
+def test_explorer_assigns_persistent_namespace_palettes_without_changing_kind_shapes():
+    page = (explore.resource("visualizers", "explorer") / "explorer.html").read_text(encoding="utf-8")
+    palette_helpers = re.search(r"const NAMESPACE_PALETTES = \[.*?(?=\n\s*// Initialize Cytoscape)", page, re.DOTALL)
+    assert palette_helpers, "the explorer has namespace palette helpers"
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node.js is not installed")
+    script = palette_helpers.group(0) + "\n" + "\n".join((
+        "if (namespaceGroup('Radiant.Database.Measurements') !== 'Radiant.Database') process.exit(1);",
+        "if (namespaceGroup('Radiant') !== 'Radiant') process.exit(1);",
+        "if (automaticPaletteId('Radiant.Database.Measurements') !== automaticPaletteId('Radiant.Database.Images')) process.exit(1);",
+        "if (paletteIdForNamespace('Radiant.Database.Measurements', { 'Radiant.Database.Measurements': 'violet' }) !== 'violet') process.exit(1);",
+        "if (paletteIdForNamespace('Radiant.Database.Measurements', {}) !== automaticPaletteId('Radiant.Database.Measurements')) process.exit(1);",
+    ))
+    completed = subprocess.run([node, "-e", script], capture_output=True, text=True, encoding="utf-8")
+    assert completed.returncode == 0, completed.stderr
+    assert "'background-color': 'data(palette)'" in page and "'color': '#fff'" in page
+    assert 'class="palette-select"' in page and '>Auto</option>' in page
+    for kind, shape in (("class", "rectangle"), ("interface", "diamond"), ("struct", "octagon"), ("enum", "triangle")):
+        style = re.search(rf"selector: 'node\.{kind}',\s*style: \{{(?P<style>.*?)\n\s*\}}", page, re.DOTALL)
+        assert style and f"'shape': '{shape}'" in style.group("style")
+        assert "background-color" not in style.group("style")
 
 
 def test_export_requires_construct(tmp_path):
