@@ -31,3 +31,13 @@ test('nodes use namespace fills with white text and kind-specific shapes', () =>
         assert.doesNotMatch(match[1], /background-color/);
     }
 });
+
+test('namespace labels preserve their full name while eliding leading segments on resize', () => {
+    const explorer = fs.readFileSync(path.join(__dirname, 'explorer.html'), 'utf8');
+
+    assert.match(explorer, /<script src="namespace-label\.js"><\/script>/);
+    assert.match(explorer, /class="namespace-label" title="\$\{escapeHtml\(ns\.name\)\}" aria-label="\$\{escapeHtml\(ns\.name\)\}"/);
+    assert.match(explorer, /class="namespace-name" data-full-namespace="\$\{escapeHtml\(ns\.name\)\}"/);
+    assert.match(explorer, /RoslynGraphNamespaceLabel\.elideFromLeft\(fullName/);
+    assert.match(explorer, /scheduleNamespaceLabelElision\(\);/);
+});

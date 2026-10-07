@@ -8,6 +8,7 @@
     <script src="https://unpkg.com/n3@1.17.2/browser/n3.min.js"></script>
     <script src="rdf-graph-parser.js"></script>
     <script src="graph-selection.js"></script>
+    <script src="namespace-label.js"></script>
     <style>
         * {
             margin: 0;
@@ -353,8 +354,18 @@
             flex: 1;
             cursor: pointer;
             min-width: 0;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .namespace-name {
+            min-width: 0;
             overflow: hidden;
             text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .namespace-label .badge {
+            flex-shrink: 0;
         }
         .palette-swatch {
             width: 14px;
@@ -605,6 +616,7 @@
                 settings.sidebarWidth = nextWidth;
                 saveSettings();
             }
+            scheduleNamespaceLabelElision();
             if (cy) cy.resize();
         }
 
@@ -880,6 +892,23 @@
                 ).join('');
         }
 
+        let namespaceLabelElisionPending = false;
+
+        function scheduleNamespaceLabelElision() {
+            if (namespaceLabelElisionPending) return;
+            namespaceLabelElisionPending = true;
+            requestAnimationFrame(() => {
+                namespaceLabelElisionPending = false;
+                document.querySelectorAll('.namespace-name[data-full-namespace]').forEach(nameElement => {
+                    const fullName = nameElement.dataset.fullNamespace;
+                    nameElement.textContent = RoslynGraphNamespaceLabel.elideFromLeft(fullName, candidate => {
+                        nameElement.textContent = candidate;
+                        return nameElement.scrollWidth <= nameElement.clientWidth;
+                    });
+                });
+            });
+        }
+
         // Initialize Cytoscape
         function initGraph() {
             cy = cytoscape({
@@ -1147,7 +1176,11 @@
                 return `<div class="namespace-item" data-ns="${ns.iri}">
                     <input type="checkbox" class="namespace-checkbox" data-ns="${ns.iri}" ${visibleNamespaces.has(ns.iri) ? 'checked' : ''}>
                     <span class="palette-swatch" style="--palette-color: ${palette.color}" title="${palette.name} palette"></span>
-                    <span class="namespace-label">📁 ${escapeHtml(ns.name)} <span class="badge">${typeCount}</span></span>
+                    <span class="namespace-label" title="${escapeHtml(ns.name)}" aria-label="${escapeHtml(ns.name)}">
+                        <span aria-hidden="true">📁</span>
+                        <span class="namespace-name" data-full-namespace="${escapeHtml(ns.name)}"></span>
+                        <span class="badge">${typeCount}</span>
+                    </span>
                     <select class="palette-select" data-namespace-name="${escapeHtml(ns.name)}" aria-label="Color palette for ${escapeHtml(ns.name)}">
                         ${paletteOptions(ns.name)}
                     </select>
@@ -1208,6 +1241,7 @@
                     focusNamespace(nsIri);
                 });
             });
+            scheduleNamespaceLabelElision();
         }
 
         function focusNamespace(nsIri) {
