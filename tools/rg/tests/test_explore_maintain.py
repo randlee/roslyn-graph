@@ -144,7 +144,7 @@ def test_explorer_assigns_persistent_namespace_palettes_without_changing_kind_sh
     completed = subprocess.run([node, "-e", script], capture_output=True, text=True, encoding="utf-8")
     assert completed.returncode == 0, completed.stderr
     assert "'background-color': 'data(palette)'" in page and "'color': '#fff'" in page
-    assert 'class="palette-select"' in page and '>Auto</option>' in page
+    assert 'class="palette-picker"' in page and '>Auto</option>' in page
     for kind, shape in (("class", "rectangle"), ("interface", "diamond"), ("struct", "octagon"), ("enum", "triangle")):
         style = re.search(rf"selector: 'node\.{kind}',\s*style: \{{(?P<style>.*?)\n\s*\}}", page, re.DOTALL)
         assert style and f"'shape': '{shape}'" in style.group("style")
