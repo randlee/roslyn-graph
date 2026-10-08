@@ -1,5 +1,6 @@
 import re
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -89,6 +90,20 @@ def test_every_follow_relation_is_documented():
     doc = (EXPLORE_SKILL / "reference" / "graph-definitions.md").read_text(encoding="utf-8")
     for relation in traverse.FOLLOW:
         assert f"`{relation}`" in doc
+
+
+def test_referenced_by_adds_component_consumers_with_edges_pointing_to_the_consumed_type(monkeypatch):
+    definition = SimpleNamespace(follow=["referenced_by"], max_depth=1, max_types=10, generic_arguments=False)
+    monkeypatch.setattr(traverse, "_inverse_pairs", lambda *_: [("seed", "consumer")])
+    monkeypatch.setattr(traverse, "_underlying", lambda _store, refs, _generic: {ref: {ref} for ref in refs})
+    monkeypatch.setattr(traverse, "_own_names", lambda _store, iris: {iri: iri.title() for iri in iris})
+
+    types, edges, stats, truncated = traverse.expand(Path("store"), definition, {"seed": "Seed"})
+
+    assert types == {"seed": "Seed", "consumer": "Consumer"}
+    assert edges == [("consumer", "seed")]
+    assert stats == [{"depth": 1, "added": 1, "total": 2}]
+    assert truncated is False
 
 
 def test_members_are_exported_by_default_and_can_be_turned_off(tmp_path):
