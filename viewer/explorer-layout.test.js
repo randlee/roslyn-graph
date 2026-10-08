@@ -77,3 +77,11 @@ test('graph export actions are grouped after loading and use icon-only controls'
     assert.match(explorer, /\.graph-actions \{[\s\S]*?border-left: 1px solid #555;/);
     assert.doesNotMatch(explorer, />⬇ JSON<\/button>/);
 });
+
+test('the type copy action is a compact control in the detail heading', () => {
+    const explorer = fs.readFileSync(path.join(__dirname, 'explorer.html'), 'utf8');
+
+    assert.match(explorer, /<div class="details-title-row">[\s\S]*?<h2>\$\{kindIcon\} \$\{type\.name\}<\/h2>[\s\S]*?<button class="icon-btn copy-type-btn" onclick="copySelection\('type'\)"[\s\S]*?aria-label="Copy this type for Claude"[\s\S]*?>📋<\/button>[\s\S]*?<\/div>/);
+    assert.match(explorer, /\.details-title-row \{[\s\S]*?display: flex;[\s\S]*?border-bottom: 2px solid #007acc;/);
+    assert.doesNotMatch(explorer, /📋 Copy this type/);
+});

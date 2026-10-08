@@ -82,10 +82,23 @@
             padding-left: 8px;
             border-left: 1px solid #555;
         }
+        .details-title-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #007acc;
+            padding-bottom: 8px;
+        }
+        .details-title-row h2 {
+            flex: 1;
+            min-width: 0;
+            margin: 0;
+            padding: 0;
+            border: 0;
+        }
         .copy-type-btn {
-            margin: 4px 0 12px;
-            padding: 5px 10px;
-            font-size: 0.85em;
+            flex: 0 0 auto;
         }
         .toast {
             position: fixed;
@@ -1301,9 +1314,12 @@
             });
 
             let html = `
-                <h2>${kindIcon} ${type.name}</h2>
-                <button class="upload-btn copy-type-btn" onclick="copySelection('type')"
-                        title="Copy this type and where it came from (database and query) as JSON for a chat with Claude">📋 Copy this type</button>
+                <div class="details-title-row">
+                    <h2>${kindIcon} ${type.name}</h2>
+                    <button class="icon-btn copy-type-btn" onclick="copySelection('type')"
+                            aria-label="Copy this type for Claude"
+                            title="Copy this type and where it came from (database and query) as JSON for a chat with Claude">📋</button>
+                </div>
                 <div class="detail-section">
                     <h3>Type Information</h3>
                     <div class="detail-item"><strong>Kind:</strong> ${type.kind}</div>
