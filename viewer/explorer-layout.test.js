@@ -62,3 +62,10 @@ test('panel toggles are compact directional controls with accessible names', () 
     assert.match(explorer, /sidebarToggle\.setAttribute\('aria-label', sidebarLabel\)/);
     assert.match(explorer, /detailsToggle\.setAttribute\('aria-label', detailsLabel\)/);
 });
+
+test('copying a graph uses a compact clipboard action', () => {
+    const explorer = fs.readFileSync(path.join(__dirname, 'explorer.html'), 'utf8');
+
+    assert.match(explorer, /<button class="icon-btn graph-action-btn" id="copy-graph-btn" disabled[\s\S]*?aria-label="Copy graph selection for Claude"[\s\S]*?>📋<\/button>/);
+    assert.doesNotMatch(explorer, /📋 Copy for Claude/);
+});
