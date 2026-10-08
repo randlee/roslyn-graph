@@ -53,3 +53,12 @@ test('namespace palette picker is an accessible, arrowless color swatch', () => 
     assert.doesNotMatch(explorer, /palette-swatch|palette-select/);
     assert.match(explorer, /document\.querySelectorAll\('\.palette-picker'\)/);
 });
+
+test('panel toggles are compact directional controls with accessible names', () => {
+    const explorer = fs.readFileSync(path.join(__dirname, 'explorer.html'), 'utf8');
+
+    assert.match(explorer, /class="icon-btn panel-toggle" id="sidebar-toggle"[\s\S]*?aria-label="Hide sidebar"[\s\S]*?>◀<\/button>/);
+    assert.match(explorer, /class="icon-btn panel-toggle" id="details-toggle"[\s\S]*?aria-label="Hide details"[\s\S]*?>▶<\/button>/);
+    assert.match(explorer, /sidebarToggle\.setAttribute\('aria-label', sidebarLabel\)/);
+    assert.match(explorer, /detailsToggle\.setAttribute\('aria-label', detailsLabel\)/);
+});
