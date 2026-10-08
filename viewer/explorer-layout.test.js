@@ -69,3 +69,11 @@ test('copying a graph uses a compact clipboard action', () => {
     assert.match(explorer, /<button class="icon-btn graph-action-btn" id="copy-graph-btn" disabled[\s\S]*?aria-label="Copy graph selection for Claude"[\s\S]*?>📋<\/button>/);
     assert.doesNotMatch(explorer, /📋 Copy for Claude/);
 });
+
+test('graph export actions are grouped after loading and use icon-only controls', () => {
+    const explorer = fs.readFileSync(path.join(__dirname, 'explorer.html'), 'utf8');
+
+    assert.match(explorer, /<div class="menu-button">[\s\S]*?<\/div>\s*<div class="graph-actions" aria-label="Graph actions">[\s\S]*?id="copy-graph-btn"[\s\S]*?<button class="icon-btn graph-action-btn" id="download-graph-btn" disabled[\s\S]*?aria-label="Download graph selection as JSON"[\s\S]*?>⬇<\/button>[\s\S]*?<\/div>/);
+    assert.match(explorer, /\.graph-actions \{[\s\S]*?border-left: 1px solid #555;/);
+    assert.doesNotMatch(explorer, />⬇ JSON<\/button>/);
+});
