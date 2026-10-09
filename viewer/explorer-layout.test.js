@@ -73,8 +73,9 @@ test('copying a graph uses a compact clipboard action', () => {
 test('graph export actions are grouped after loading and use icon-only controls', () => {
     const explorer = fs.readFileSync(path.join(__dirname, 'explorer.html'), 'utf8');
 
-    assert.match(explorer, /<div class="menu-button">[\s\S]*?<\/div>\s*<div class="graph-actions" aria-label="Graph actions">[\s\S]*?id="copy-graph-btn"[\s\S]*?<button class="icon-btn graph-action-btn" id="download-graph-btn" disabled[\s\S]*?aria-label="Download graph selection as JSON"[\s\S]*?>⬇<\/button>[\s\S]*?<\/div>/);
+    assert.match(explorer, /<div class="menu-button">[\s\S]*?<\/div>\s*<div class="graph-actions" aria-label="Graph actions">[\s\S]*?id="copy-graph-btn"[\s\S]*?<button class="icon-btn graph-action-btn" id="download-graph-btn" disabled[\s\S]*?aria-label="Download graph selection as JSON"[\s\S]*?><svg class="download-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"\/><\/svg><\/button>[\s\S]*?<\/div>/);
     assert.match(explorer, /\.graph-actions \{[\s\S]*?border-left: 1px solid #555;/);
+    assert.match(explorer, /\.download-icon \{[\s\S]*?width: 16px;[\s\S]*?fill: currentColor;/);
     assert.doesNotMatch(explorer, />⬇ JSON<\/button>/);
 });
 

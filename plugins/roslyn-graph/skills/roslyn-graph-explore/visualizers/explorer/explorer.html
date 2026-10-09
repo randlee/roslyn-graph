@@ -82,6 +82,12 @@
             padding-left: 8px;
             border-left: 1px solid #555;
         }
+        .download-icon {
+            display: block;
+            width: 16px;
+            height: 16px;
+            fill: currentColor;
+        }
         .details-title-row {
             display: flex;
             align-items: flex-start;
@@ -546,7 +552,7 @@
                         title="Copy the types on the graph and where they came from (database and query) as JSON to paste into a chat with Claude">📋</button>
                 <button class="icon-btn graph-action-btn" id="download-graph-btn" disabled
                         aria-label="Download graph selection as JSON"
-                        title="Download the same JSON as a file">⬇</button>
+                        title="Download the same JSON as a file"><svg class="download-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg></button>
             </div>
             </div>
         </header>
