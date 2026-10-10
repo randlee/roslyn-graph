@@ -97,6 +97,9 @@ jobs:
       - name: Skill copies match their masters (tools/rg, ontology, viewer, ontology reference)
         run: python scripts/check_plugin_sync.py
 
+      - name: Plugin manifests match the package version
+        run: python scripts/check_plugin_versions.py
+
       - name: Plugin and sync tests
         run: python -m pytest tools/rg/tests scripts/tests -q
 
