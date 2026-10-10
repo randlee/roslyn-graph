@@ -21,6 +21,12 @@ public sealed partial class AssemblyGraphExtractor
 
         var typeIri = _iris.Type(type);
 
+        // A generic constructed only over type parameters (IFoo<TOut> inside Bar<TOut>) shares the definition's IRI.
+        // Describe the definition, not the construction, so the IRI keeps one name and no foreign type arguments.
+        if (!SymbolEqualityComparer.Default.Equals(namedType, namedType.OriginalDefinition)
+            && typeIri == _iris.Type(namedType.OriginalDefinition))
+            return EnsureTypeEmitted(namedType.OriginalDefinition);
+
         if (_emittedTypes.Contains(typeIri))
             return typeIri;
 
@@ -34,7 +40,7 @@ public sealed partial class AssemblyGraphExtractor
 
         _emitter.EmitIri(typeIri, RdfType, Prop(DotNetOntology.Classes.Type));
         _emitter.EmitLiteral(typeIri, Prop(DotNetOntology.TypeProps.Name), namedType.Name);
-        _emitter.EmitLiteral(typeIri, Prop(DotNetOntology.TypeProps.FullName), namedType.ToDisplayString());
+        _emitter.EmitLiteral(typeIri, Prop(DotNetOntology.TypeProps.FullName), namedType.ToDisplayString(TypeNameFormat));
         _emitter.EmitLiteral(typeIri, Prop(DotNetOntology.TypeProps.TypeKind), namedType.TypeKind.ToString());
 
         if (namedType.ContainingAssembly != null)
@@ -79,7 +85,7 @@ public sealed partial class AssemblyGraphExtractor
         _emittedTypes.Add(typeIri);
 
         _emitter.EmitIri(typeIri, RdfType, Prop(DotNetOntology.Classes.Type));
-        _emitter.EmitLiteral(typeIri, Prop(DotNetOntology.TypeProps.Name), arrayType.ToDisplayString());
+        _emitter.EmitLiteral(typeIri, Prop(DotNetOntology.TypeProps.Name), arrayType.ToDisplayString(TypeNameFormat));
         _emitter.EmitLiteral(typeIri, Prop(DotNetOntology.TypeProps.TypeKind), "Array");
         _emitter.EmitInt(typeIri, Prop("arrayRank"), arrayType.Rank);
 
@@ -99,7 +105,7 @@ public sealed partial class AssemblyGraphExtractor
         _emittedTypes.Add(typeIri);
 
         _emitter.EmitIri(typeIri, RdfType, Prop(DotNetOntology.Classes.Type));
-        _emitter.EmitLiteral(typeIri, Prop(DotNetOntology.TypeProps.Name), pointerType.ToDisplayString());
+        _emitter.EmitLiteral(typeIri, Prop(DotNetOntology.TypeProps.Name), pointerType.ToDisplayString(TypeNameFormat));
         _emitter.EmitLiteral(typeIri, Prop(DotNetOntology.TypeProps.TypeKind), "Pointer");
 
         var pointedAtIri = EnsureTypeEmitted(pointerType.PointedAtType);

@@ -1,0 +1,38 @@
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix dt: <http://dotnet.example/ontology/> .
+@prefix rg: <http://roslyn-graph.example/ontology/> .
+
+rg: a owl:Ontology ;
+    rdfs:label "Roslyn Graph Artifact Ontology" ;
+    rdfs:comment "Solution-build metadata and logical-type projections written by the roslyn-graph plugin. Physical .NET facts use the dt: ontology." .
+
+# Classes
+rg:SolutionBuild a rdfs:Class ; rdfs:label "SolutionBuild" ; rdfs:comment "One configured build composed into a solution store; described in the store's metadata named graph." .
+rg:LogicalTypeView a rdfs:Class ; rdfs:label "LogicalTypeView" ; rdfs:comment "A derived store that adds overlay components and a logical-type projection to an immutable solution store." .
+rg:LogicalType a rdfs:Class ; rdfs:label "LogicalType" ; rdfs:comment "One display/query node per compatible type across versions. Never owl:sameAs its physical types." .
+
+# Solution metadata
+rg:name a rdf:Property ; rdfs:domain rg:SolutionBuild ; rdfs:range xsd:string .
+rg:profile a rdf:Property ; rdfs:comment "workspace.toml profile that produced the build" ; rdfs:domain rg:SolutionBuild ; rdfs:range xsd:string .
+rg:solutionPath a rdf:Property ; rdfs:domain rg:SolutionBuild ; rdfs:range xsd:string .
+rg:repository a rdf:Property ; rdfs:domain rg:SolutionBuild ; rdfs:range xsd:string .
+rg:branch a rdf:Property ; rdfs:domain rg:SolutionBuild ; rdfs:range xsd:string .
+rg:commit a rdf:Property ; rdfs:domain rg:SolutionBuild ; rdfs:range xsd:string .
+rg:buildFingerprint a rdf:Property ; rdfs:domain rg:SolutionBuild ; rdfs:range xsd:string .
+rg:targetFramework a rdf:Property ; rdfs:domain rg:SolutionBuild ; rdfs:range xsd:string .
+rg:configuration a rdf:Property ; rdfs:domain rg:SolutionBuild ; rdfs:range xsd:string .
+rg:platform a rdf:Property ; rdfs:domain rg:SolutionBuild ; rdfs:range xsd:string .
+rg:includesGraph a rdf:Property ; rdfs:comment "Named graph IRI of a component assembly artifact" ; rdfs:domain rg:SolutionBuild .
+rg:includesArtifact a rdf:Property ; rdfs:comment "Full SHA-256 artifact ID of a component" ; rdfs:domain rg:SolutionBuild ; rdfs:range xsd:string .
+
+# Logical-type projection
+rg:policy a rdf:Property ; rdfs:domain rg:LogicalTypeView ; rdfs:range xsd:string .
+rg:baseSolution a rdf:Property ; rdfs:domain rg:LogicalTypeView ; rdfs:range rg:SolutionBuild .
+rg:logicalType a rdf:Property ; rdfs:comment "Links a physical, versioned dt:Type to its logical type" ; rdfs:domain dt:Type ; rdfs:range rg:LogicalType .
+rg:assemblyName a rdf:Property ; rdfs:domain rg:LogicalType ; rdfs:range xsd:string .
+
+# Derived traversal graphs (rg.py graph)
+rg:references a rdf:Property ; rdfs:comment "Written only into exported traversal graphs: the subject type uses the object type as a base type, interface, member type, parameter type or generic argument" ; rdfs:domain dt:Type ; rdfs:range dt:Type .

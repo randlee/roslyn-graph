@@ -532,6 +532,28 @@ public class C
     }
 
     [Fact]
+    public void Member_GenericParameterSignature_IsEscapedForUseInAnIri()
+    {
+        var source = @"
+namespace Sample;
+public class C
+{
+    public void Method<T>(T value) { }
+}";
+        var compilation = TestUtilities.CreateCompilation(source, "TestAsm");
+        var type = compilation.GetTypeByMetadataName("Sample.C")!;
+        var method = type.GetMembers("Method").OfType<IMethodSymbol>().Single();
+
+        var minter = new IriMinter();
+        var iri = minter.Member(method);
+
+        Assert.Contains("%28", iri);
+        Assert.Contains("%3C", iri);
+        Assert.DoesNotContain('<', iri);
+        Assert.True(Uri.IsWellFormedUriString(iri, UriKind.Absolute));
+    }
+
+    [Fact]
     public void Member_OverloadedMethods_HaveDifferentIris()
     {
         var source = @"
@@ -970,6 +992,27 @@ public class C
         var iri = minter.Attribute(param, attr, 0);
 
         Assert.Contains("/attr/0", iri);
+    }
+
+    [Fact]
+    public void Attribute_OnIndexerParameter_ReturnsValidIri()
+    {
+        var source = @"
+namespace Sample;
+public class C
+{
+    public int this[[System.Obsolete] int index] => index;
+}";
+        var compilation = TestUtilities.CreateCompilation(source, "TestAsm");
+        var type = compilation.GetTypeByMetadataName("Sample.C")!;
+        var property = type.GetMembers().OfType<IPropertySymbol>().Single();
+        var param = property.Parameters[0];
+        var attr = param.GetAttributes()[0];
+
+        var minter = new IriMinter();
+        var iri = minter.Attribute(param, attr, 0);
+
+        Assert.Contains("/param/0/attr/0", iri);
     }
 
     [Fact]

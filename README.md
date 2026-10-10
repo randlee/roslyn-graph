@@ -107,6 +107,16 @@ dotnet pack src/RoslynToRdf.Cli -c Release
 dotnet tool install --global --add-source src/RoslynToRdf.Cli/nupkg RoslynToRdf
 ```
 
+## Viewer tests
+
+The standalone RDF viewer accepts both N-Triples and standard Turtle. Its parser tests run with Node.js:
+
+```bash
+cd viewer
+npm ci
+npm test
+```
+
 ## License
 
 MIT

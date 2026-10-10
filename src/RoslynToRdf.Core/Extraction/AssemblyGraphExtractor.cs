@@ -12,7 +12,14 @@ public sealed partial class AssemblyGraphExtractor
     private readonly IriMinter _iris;
     private readonly ITriplesEmitter _emitter;
     private readonly ExtractionOptions _options;
+    // Type names must not depend on how a type was referenced: Foo? and Foo share one IRI, so they share one name.
+    private static readonly SymbolDisplayFormat TypeNameFormat = SymbolDisplayFormat.CSharpErrorMessageFormat
+        .RemoveMiscellaneousOptions(SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier);
+
+    // Types with at least a reference stub (EnsureTypeEmitted) versus types fully extracted (ExtractType).
+    // They must be separate: a type referenced before the traversal reaches it still needs full extraction.
     private readonly HashSet<string> _emittedTypes = new();
+    private readonly HashSet<string> _extractedTypes = new();
     private readonly HashSet<string> _emittedNamespaces = new();
     private XmlDocParser? _xmlDocParser;
     private readonly Action<string>? _log;
@@ -137,8 +144,9 @@ public sealed partial class AssemblyGraphExtractor
     {
         var typeIri = _iris.Type(type);
         
-        if (!_emittedTypes.Add(typeIri))
-            return; // Already emitted
+        if (!_extractedTypes.Add(typeIri))
+            return; // Already extracted
+        _emittedTypes.Add(typeIri);
 
         LogVerbose($"  Type: {type.ToDisplayString()}");
 
@@ -148,7 +156,7 @@ public sealed partial class AssemblyGraphExtractor
 
         // Basic properties
         _emitter.EmitLiteral(typeIri, Prop(DotNetOntology.TypeProps.Name), type.Name);
-        _emitter.EmitLiteral(typeIri, Prop(DotNetOntology.TypeProps.FullName), type.ToDisplayString());
+        _emitter.EmitLiteral(typeIri, Prop(DotNetOntology.TypeProps.FullName), type.ToDisplayString(TypeNameFormat));
         _emitter.EmitLiteral(typeIri, Prop(DotNetOntology.TypeProps.TypeKind), type.TypeKind.ToString());
         _emitter.EmitLiteral(typeIri, Prop(DotNetOntology.TypeProps.Accessibility), 
             type.DeclaredAccessibility.ToString());

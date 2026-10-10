@@ -68,6 +68,47 @@ public class C { public int X => 1; }
     }
 
     [Fact]
+    public async Task Cli_MultipleAssemblies_WritesOneCombinedGraph()
+    {
+        var firstCompilation = TestUtilities.CreateCompilation("namespace First; public class A { }", "CliFirst");
+        var secondCompilation = TestUtilities.CreateCompilation("namespace Second; public class B { }", "CliSecond");
+        var (firstAssemblyPath, firstDirectory) = TestUtilities.EmitToTempAssembly(firstCompilation);
+        var (secondAssemblyPath, _) = TestUtilities.EmitToTempAssembly(secondCompilation);
+        var outputPath = Path.Combine(firstDirectory, "combined.ttl");
+
+        var result = await RunCliAsync([
+            firstAssemblyPath,
+            "--assembly", secondAssemblyPath,
+            "--output", outputPath,
+            "--format", "turtle",
+            "--quiet"
+        ]);
+
+        Assert.Equal(0, result.ExitCode);
+        var text = await File.ReadAllTextAsync(outputPath);
+        Assert.Contains("assembly/CliFirst", text);
+        Assert.Contains("assembly/CliSecond", text);
+    }
+
+    [Fact]
+    public async Task Cli_MultipleAssemblies_RequiresExplicitOutputPath()
+    {
+        var firstCompilation = TestUtilities.CreateCompilation("namespace First; public class A { }", "CliFirst");
+        var secondCompilation = TestUtilities.CreateCompilation("namespace Second; public class B { }", "CliSecond");
+        var (firstAssemblyPath, _) = TestUtilities.EmitToTempAssembly(firstCompilation);
+        var (secondAssemblyPath, _) = TestUtilities.EmitToTempAssembly(secondCompilation);
+
+        var result = await RunCliAsync([
+            firstAssemblyPath,
+            "--assembly", secondAssemblyPath,
+            "--quiet"
+        ]);
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Contains("--output is required", result.Stderr);
+    }
+
+    [Fact]
     public async Task Cli_MissingAssembly_ReturnsError()
     {
         var missingPath = Path.Combine(Path.GetTempPath(), "missing_" + Guid.NewGuid() + ".dll");

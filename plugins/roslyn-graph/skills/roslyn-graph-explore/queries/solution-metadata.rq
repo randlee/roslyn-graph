@@ -1,0 +1,16 @@
+# Title: Build described by the store
+# Description: profile, repository, branch, commit, configuration, platform, framework and component count.
+PREFIX rg: <http://roslyn-graph.example/ontology/>
+SELECT ?solution ?name ?profile ?repository ?branch ?commit ?configuration ?platform ?framework (COUNT(DISTINCT ?graph) AS ?components) WHERE {
+  GRAPH ?metadata {
+    ?solution a rg:SolutionBuild ; rg:name ?name ; rg:includesGraph ?graph .
+    OPTIONAL { ?solution rg:profile ?profile }
+    OPTIONAL { ?solution rg:repository ?repository }
+    OPTIONAL { ?solution rg:branch ?branch }
+    OPTIONAL { ?solution rg:commit ?commit }
+    OPTIONAL { ?solution rg:configuration ?configuration }
+    OPTIONAL { ?solution rg:platform ?platform }
+    OPTIONAL { ?solution rg:targetFramework ?framework }
+  }
+}
+GROUP BY ?solution ?name ?profile ?repository ?branch ?commit ?configuration ?platform ?framework

@@ -1,0 +1,22 @@
+# Title: Type hierarchy of a namespace tree
+# Description: viewer-ready; classes, structs, records and interfaces with base classes and implemented interfaces.
+# Parameters:
+#   NAMESPACE  namespace prefix, matching it and its sub-namespaces (example: Contoso.Data)
+PREFIX dt: <http://dotnet.example/ontology/>
+CONSTRUCT {
+  ?t a ?class ; dt:name ?name ; dt:fullName ?full ; dt:inNamespace ?ns .
+  ?ns dt:name ?nsFull .
+  ?t dt:inherits ?base .
+  ?t dt:implements ?iface .
+}
+WHERE {
+  GRAPH ?g {
+    ?asm a dt:Assembly .
+    ?t dt:definedInAssembly ?asm ; a ?class ; dt:name ?name ; dt:fullName ?full ; dt:inNamespace ?ns .
+    VALUES ?class { dt:Class dt:Struct dt:Interface dt:Record }
+    ?ns dt:fullName ?nsFull .
+    FILTER(?nsFull = "{{NAMESPACE}}" || STRSTARTS(?nsFull, CONCAT("{{NAMESPACE}}", ".")))
+    OPTIONAL { ?t dt:inherits ?base }
+    OPTIONAL { ?t dt:implements ?iface }
+  }
+}
