@@ -9,6 +9,14 @@ public class Program
     public static async Task<int> Main(string[] args)
     {
         var rootCommand = new RootCommand("Extract .NET assembly type graphs to RDF format") { Name = "roslyn2rdf" };
+        var skillCommand = new Command("skill", "Install the bundled roslyn-graph plugin skills.");
+        var installOption = new Option<DirectoryInfo>("--install", "Target repository directory") { IsRequired = true };
+        var claudeOption = new Option<bool>("--claude", "Install only the Claude plugin location.");
+        var codexOption = new Option<bool>("--codex", "Install only the Codex plugin location.");
+        var dryRunOption = new Option<bool>("--dry-run", "Report target paths without writing files.");
+        skillCommand.AddOption(installOption); skillCommand.AddOption(claudeOption); skillCommand.AddOption(codexOption); skillCommand.AddOption(dryRunOption);
+        skillCommand.SetHandler(context => context.ExitCode = PluginInstaller.Install(context.ParseResult.GetValueForOption(installOption)!, context.ParseResult.GetValueForOption(claudeOption), context.ParseResult.GetValueForOption(codexOption), context.ParseResult.GetValueForOption(dryRunOption), Console.Out, Console.Error));
+        rootCommand.AddCommand(skillCommand);
 
         var assemblyArg = new Argument<FileInfo>("assembly", "Path to the primary .NET assembly (.dll) to analyze");
         var additionalAssembliesOption = new Option<FileInfo[]>(["--assembly", "-a"], () => [], "Additional target assemblies to include in the same graph");
