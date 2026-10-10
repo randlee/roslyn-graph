@@ -53,3 +53,36 @@ test('namespace palette picker is an accessible, arrowless color swatch', () => 
     assert.doesNotMatch(explorer, /palette-swatch|palette-select/);
     assert.match(explorer, /document\.querySelectorAll\('\.palette-picker'\)/);
 });
+
+test('panel toggles are compact directional controls with accessible names', () => {
+    const explorer = fs.readFileSync(path.join(__dirname, 'explorer.html'), 'utf8');
+
+    assert.match(explorer, /class="icon-btn panel-toggle" id="sidebar-toggle"[\s\S]*?aria-label="Hide sidebar"[\s\S]*?>◀<\/button>/);
+    assert.match(explorer, /class="icon-btn panel-toggle" id="details-toggle"[\s\S]*?aria-label="Hide details"[\s\S]*?>▶<\/button>/);
+    assert.match(explorer, /sidebarToggle\.setAttribute\('aria-label', sidebarLabel\)/);
+    assert.match(explorer, /detailsToggle\.setAttribute\('aria-label', detailsLabel\)/);
+});
+
+test('copying a graph uses a compact clipboard action', () => {
+    const explorer = fs.readFileSync(path.join(__dirname, 'explorer.html'), 'utf8');
+
+    assert.match(explorer, /<button class="icon-btn graph-action-btn" id="copy-graph-btn" disabled[\s\S]*?aria-label="Copy graph selection for Claude"[\s\S]*?>📋<\/button>/);
+    assert.doesNotMatch(explorer, /📋 Copy for Claude/);
+});
+
+test('graph export actions are grouped after loading and use icon-only controls', () => {
+    const explorer = fs.readFileSync(path.join(__dirname, 'explorer.html'), 'utf8');
+
+    assert.match(explorer, /<div class="menu-button">[\s\S]*?<\/div>\s*<div class="graph-actions" aria-label="Graph actions">[\s\S]*?id="copy-graph-btn"[\s\S]*?<button class="icon-btn graph-action-btn" id="download-graph-btn" disabled[\s\S]*?aria-label="Download graph selection as JSON"[\s\S]*?><svg class="download-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"\/><\/svg><\/button>[\s\S]*?<\/div>/);
+    assert.match(explorer, /\.graph-actions \{[\s\S]*?border-left: 1px solid #555;/);
+    assert.match(explorer, /\.download-icon \{[\s\S]*?width: 16px;[\s\S]*?fill: currentColor;/);
+    assert.doesNotMatch(explorer, />⬇ JSON<\/button>/);
+});
+
+test('the type copy action is a compact control in the detail heading', () => {
+    const explorer = fs.readFileSync(path.join(__dirname, 'explorer.html'), 'utf8');
+
+    assert.match(explorer, /<div class="details-title-row">[\s\S]*?<h2>\$\{kindIcon\} \$\{type\.name\}<\/h2>[\s\S]*?<button class="icon-btn copy-type-btn" onclick="copySelection\('type'\)"[\s\S]*?aria-label="Copy this type for Claude"[\s\S]*?>📋<\/button>[\s\S]*?<\/div>/);
+    assert.match(explorer, /\.details-title-row \{[\s\S]*?display: flex;[\s\S]*?border-bottom: 2px solid #007acc;/);
+    assert.doesNotMatch(explorer, /📋 Copy this type/);
+});

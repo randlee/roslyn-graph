@@ -75,10 +75,36 @@
             align-items: center;
             gap: 8px;
         }
+        .graph-actions {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding-left: 8px;
+            border-left: 1px solid #555;
+        }
+        .download-icon {
+            display: block;
+            width: 16px;
+            height: 16px;
+            fill: currentColor;
+        }
+        .details-title-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #007acc;
+            padding-bottom: 8px;
+        }
+        .details-title-row h2 {
+            flex: 1;
+            min-width: 0;
+            margin: 0;
+            padding: 0;
+            border: 0;
+        }
         .copy-type-btn {
-            margin: 4px 0 12px;
-            padding: 5px 10px;
-            font-size: 0.85em;
+            flex: 0 0 auto;
         }
         .toast {
             position: fixed;
@@ -503,11 +529,10 @@
         <header>
             <h1>🔍 RDF Explorer - Assembly Type Graph</h1>
             <div class="header-actions">
-            <button class="upload-btn" id="copy-graph-btn" disabled
-                    title="Copy the types on the graph and where they came from (database and query) as JSON to paste into a chat with Claude">📋 Copy for Claude</button>
-            <button class="upload-btn" id="download-graph-btn" disabled title="Download the same JSON as a file">⬇ JSON</button>
-            <button class="upload-btn" id="sidebar-toggle" aria-controls="sidebar" aria-expanded="true">Hide sidebar</button>
-            <button class="upload-btn" id="details-toggle" aria-controls="details-panel" aria-expanded="true">Hide details</button>
+            <button class="icon-btn panel-toggle" id="sidebar-toggle" aria-controls="sidebar" aria-expanded="true"
+                    aria-label="Hide sidebar" title="Hide sidebar">◀</button>
+            <button class="icon-btn panel-toggle" id="details-toggle" aria-controls="details-panel" aria-expanded="true"
+                    aria-label="Hide details" title="Hide details">▶</button>
             <div class="menu-button">
                 <button class="upload-btn" id="load-menu-btn">▼ Load RDF File</button>
                 <div class="menu-dropdown" id="load-menu" style="display:none">
@@ -520,6 +545,14 @@
                     <div class="menu-item single-line" id="clear-history">🗑️ Clear history</div>
                 </div>
                 <input type="file" id="file-input" accept=".nt,.ttl" style="display: none;">
+            </div>
+            <div class="graph-actions" aria-label="Graph actions">
+                <button class="icon-btn graph-action-btn" id="copy-graph-btn" disabled
+                        aria-label="Copy graph selection for Claude"
+                        title="Copy the types on the graph and where they came from (database and query) as JSON to paste into a chat with Claude">📋</button>
+                <button class="icon-btn graph-action-btn" id="download-graph-btn" disabled
+                        aria-label="Download graph selection as JSON"
+                        title="Download the same JSON as a file"><svg class="download-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg></button>
             </div>
             </div>
         </header>
@@ -625,7 +658,9 @@
             sidebar.hidden = collapsed;
             sidebarSplitter.hidden = collapsed;
             sidebarToggle.setAttribute('aria-expanded', String(!collapsed));
-            sidebarToggle.textContent = collapsed ? 'Show sidebar' : 'Hide sidebar';
+            const sidebarLabel = collapsed ? 'Show sidebar' : 'Hide sidebar';
+            sidebarToggle.textContent = collapsed ? '▶' : '◀';
+            sidebarToggle.setAttribute('aria-label', sidebarLabel);
             sidebarToggle.title = collapsed ? 'Show the namespace sidebar' : 'Hide the namespace sidebar';
             if (persist) {
                 settings.sidebarCollapsed = collapsed;
@@ -697,7 +732,9 @@
             detailsPanel.hidden = collapsed;
             detailsSplitter.hidden = collapsed;
             detailsToggle.setAttribute('aria-expanded', String(!collapsed));
-            detailsToggle.textContent = collapsed ? 'Show details' : 'Hide details';
+            const detailsLabel = collapsed ? 'Show details' : 'Hide details';
+            detailsToggle.textContent = collapsed ? '◀' : '▶';
+            detailsToggle.setAttribute('aria-label', detailsLabel);
             detailsToggle.title = collapsed ? 'Show the details panel' : 'Hide the details panel';
             if (persist) {
                 settings.detailsCollapsed = collapsed;
@@ -1283,9 +1320,12 @@
             });
 
             let html = `
-                <h2>${kindIcon} ${type.name}</h2>
-                <button class="upload-btn copy-type-btn" onclick="copySelection('type')"
-                        title="Copy this type and where it came from (database and query) as JSON for a chat with Claude">📋 Copy this type</button>
+                <div class="details-title-row">
+                    <h2>${kindIcon} ${type.name}</h2>
+                    <button class="icon-btn copy-type-btn" onclick="copySelection('type')"
+                            aria-label="Copy this type for Claude"
+                            title="Copy this type and where it came from (database and query) as JSON for a chat with Claude">📋</button>
+                </div>
                 <div class="detail-section">
                     <h3>Type Information</h3>
                     <div class="detail-item"><strong>Kind:</strong> ${type.kind}</div>
