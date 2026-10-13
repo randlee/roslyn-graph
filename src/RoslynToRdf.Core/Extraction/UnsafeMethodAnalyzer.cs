@@ -12,6 +12,11 @@ internal static class UnsafeMethodAnalyzer
 {
     internal sealed record Fact(string Reason, string Location);
 
+    public static bool HasUnsafeTypeModifier(INamedTypeSymbol type) => type.DeclaringSyntaxReferences
+        .Select(reference => reference.GetSyntax())
+        .OfType<TypeDeclarationSyntax>()
+        .Any(declaration => declaration.Modifiers.Any(SyntaxKind.UnsafeKeyword));
+
     public static IReadOnlyList<Fact> Analyze(Compilation compilation, IMethodSymbol method, string? sourceRoot)
     {
         var facts = new HashSet<Fact>();
@@ -22,9 +27,6 @@ internal static class UnsafeMethodAnalyzer
 
             if (HasUnsafeModifier(declaration))
                 Add(facts, "UnsafeMethodModifier", declaration, sourceRoot);
-
-            if (declaration.Ancestors().OfType<TypeDeclarationSyntax>().Any(type => type.Modifiers.Any(SyntaxKind.UnsafeKeyword)))
-                Add(facts, "UnsafeTypeContext", declaration, sourceRoot);
 
             foreach (var node in declaration.DescendantNodesAndSelf())
             {

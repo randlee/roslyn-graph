@@ -158,6 +158,9 @@ public sealed partial class AssemblyGraphExtractor
             return; // Already extracted
         _emittedTypes.Add(typeIri);
 
+        if (_unsafeCompilationEnabled && UnsafeMethodAnalyzer.HasUnsafeTypeModifier(type))
+            _unsafeTypes.Add(typeIri);
+
         LogVerbose($"  Type: {type.ToDisplayString()}");
 
         // RDF type based on kind

@@ -74,8 +74,10 @@ are represented when their generated trees are present in the compilation suppli
 The MSBuild options above are passed as project-evaluation properties, without changing the caller's
 environment. The `rg` generator supplies `SolutionDir`, `Configuration`, `Platform` and
 `TargetFramework` from each solution profile automatically.
-Unsafe reason nodes carry project-relative source paths with one-based line and column numbers. The
-`.dll` mode remains metadata-only and does not report method-body unsafe facts.
+Unsafe reason nodes describe a method's own unsafe modifier or unsafe syntax and carry project-relative
+source paths with one-based line and column numbers. An unsafe enclosing type contributes to type and
+assembly `containsUnsafeCode` aggregates, but does not mark each ordinary method in that type unsafe.
+The `.dll` mode remains metadata-only and does not report method-body unsafe facts.
 
 ## RDF Schema
 
