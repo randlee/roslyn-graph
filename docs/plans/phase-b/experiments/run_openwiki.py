@@ -133,7 +133,8 @@ def main() -> int:
             target = inp.get("file_path") or inp.get("path")
             if t["name"] == "read_file" and isinstance(target, str):
                 rel = target.lstrip("/")
-                if rel not in in_scope and not rel.startswith(("openwiki/", "skills/")):
+                if (rel not in in_scope and not rel.startswith(("openwiki/", "skills/"))
+                        and not any(rel.startswith(d + "/") for d in allowed_dirs)):
                     requests_outside.add(rel)
 
     wiki = sorted((repo / "openwiki").rglob("*.md")) if (repo / "openwiki").is_dir() else []
