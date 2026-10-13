@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RDF Explorer - Assembly Type Graph Viewer</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+    <script src="https://unpkg.com/n3@1.17.2/browser/n3.min.js"></script>
+    <script src="rdf-graph-parser.js"></script>
+    <script src="graph-selection.js"></script>
+    <script src="namespace-label.js"></script>
     <style>
         * {
             margin: 0;
@@ -19,9 +23,20 @@
         }
         .container {
             display: grid;
-            grid-template-columns: 300px 1fr 350px;
+            --sidebar-width: 300px;
+            --details-width: 350px;
+            grid-template-columns: var(--sidebar-width) 10px minmax(0, 1fr) 10px var(--details-width);
             grid-template-rows: 60px 1fr;
             height: 100vh;
+        }
+        .container.details-collapsed {
+            grid-template-columns: var(--sidebar-width) 10px minmax(0, 1fr) 0 0;
+        }
+        .container.sidebar-collapsed {
+            grid-template-columns: 0 0 minmax(0, 1fr) 10px var(--details-width);
+        }
+        .container.sidebar-collapsed.details-collapsed {
+            grid-template-columns: 0 0 minmax(0, 1fr) 0 0;
         }
         header {
             grid-column: 1 / -1;
@@ -50,10 +65,70 @@
         .upload-btn:hover {
             background: #1177bb;
         }
+        .upload-btn:disabled {
+            background: #3e3e42;
+            color: #858585;
+            cursor: default;
+        }
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .graph-actions {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding-left: 8px;
+            border-left: 1px solid #555;
+        }
+        .download-icon {
+            display: block;
+            width: 16px;
+            height: 16px;
+            fill: currentColor;
+        }
+        .details-title-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #007acc;
+            padding-bottom: 8px;
+        }
+        .details-title-row h2 {
+            flex: 1;
+            min-width: 0;
+            margin: 0;
+            padding: 0;
+            border: 0;
+        }
+        .copy-type-btn {
+            flex: 0 0 auto;
+        }
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #0e639c;
+            color: #fff;
+            padding: 10px 18px;
+            border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+            z-index: 2000;
+            font-size: 0.9em;
+            max-width: 80vw;
+        }
+        .toast.error {
+            background: #a1260d;
+        }
         input[type="file"] {
             display: none;
         }
         .sidebar {
+            grid-column: 1;
+            grid-row: 2;
             background: #252526;
             border-right: 1px solid #3e3e42;
             overflow-y: auto;
@@ -147,13 +222,46 @@
             border-color: #007acc;
         }
         #cy {
+            grid-column: 3;
+            grid-row: 2;
             background: #1e1e1e;
+            min-width: 0;
+        }
+        .sidebar-splitter,
+        .details-splitter {
+            grid-row: 2;
+            background: #3e3e42;
+            cursor: col-resize;
+            position: relative;
+            touch-action: none;
+        }
+        .details-splitter:hover,
+        .sidebar-splitter:hover,
+        .details-splitter:focus-visible,
+        .sidebar-splitter:focus-visible {
+            background: #007acc;
+            outline: none;
+        }
+        .sidebar-splitter {
+            grid-column: 2;
+        }
+        .details-splitter {
+            grid-column: 4;
+        }
+        .details-splitter::after,
+        .sidebar-splitter::after {
+            content: '';
+            position: absolute;
+            inset: 0 -3px;
         }
         .details-panel {
+            grid-column: 5;
+            grid-row: 2;
             background: #252526;
             border-left: 1px solid #3e3e42;
             overflow-y: auto;
             padding: 20px;
+            min-width: 0;
         }
         .details-panel h2 {
             font-size: 1.1em;
@@ -271,6 +379,42 @@
         .namespace-label {
             flex: 1;
             cursor: pointer;
+            min-width: 0;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .namespace-name {
+            /* Start with a share of the label's remaining width even before text is assigned. */
+            flex: 1 1 0;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .namespace-label .badge {
+            flex-shrink: 0;
+        }
+        /* The native select is the swatch: its options remain keyboard and screen-reader accessible. */
+        .palette-picker {
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            padding: 0;
+            background: var(--palette-color);
+            color: transparent;
+            border: 1px solid rgba(255, 255, 255, 0.45);
+            border-radius: 3px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .palette-picker:focus-visible {
+            outline: 2px solid #4fc1ff;
+            outline-offset: 2px;
+        }
+        .palette-picker option {
+            color: #1e1e1e;
+            background: #fff;
         }
         .loading {
             position: fixed;
@@ -384,6 +528,11 @@
     <div class="container">
         <header>
             <h1>🔍 RDF Explorer - Assembly Type Graph</h1>
+            <div class="header-actions">
+            <button class="icon-btn panel-toggle" id="sidebar-toggle" aria-controls="sidebar" aria-expanded="true"
+                    aria-label="Hide sidebar" title="Hide sidebar">◀</button>
+            <button class="icon-btn panel-toggle" id="details-toggle" aria-controls="details-panel" aria-expanded="true"
+                    aria-label="Hide details" title="Hide details">▶</button>
             <div class="menu-button">
                 <button class="upload-btn" id="load-menu-btn">▼ Load RDF File</button>
                 <div class="menu-dropdown" id="load-menu" style="display:none">
@@ -397,9 +546,18 @@
                 </div>
                 <input type="file" id="file-input" accept=".nt,.ttl" style="display: none;">
             </div>
+            <div class="graph-actions" aria-label="Graph actions">
+                <button class="icon-btn graph-action-btn" id="copy-graph-btn" disabled
+                        aria-label="Copy graph selection for Claude"
+                        title="Copy the types on the graph and where they came from (database and query) as JSON to paste into a chat with Claude">📋</button>
+                <button class="icon-btn graph-action-btn" id="download-graph-btn" disabled
+                        aria-label="Download graph selection as JSON"
+                        title="Download the same JSON as a file"><svg class="download-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg></button>
+            </div>
+            </div>
         </header>
 
-        <aside class="sidebar">
+        <aside class="sidebar" id="sidebar">
             <input type="text" class="search-box" id="search-box" placeholder="Search types...">
 
             <div class="stats-grid" id="stats-grid" style="display: none;">
@@ -422,8 +580,12 @@
             </div>
         </aside>
 
+        <div class="sidebar-splitter" id="sidebar-splitter" role="separator" aria-controls="sidebar"
+             aria-orientation="vertical" aria-label="Sidebar width" tabindex="0"></div>
         <main id="cy"></main>
 
+        <div class="details-splitter" id="details-splitter" role="separator" aria-controls="details-panel"
+             aria-orientation="vertical" aria-label="Details panel width" tabindex="0"></div>
         <aside class="details-panel" id="details-panel">
             <div class="empty-state">
                 <div class="empty-state-icon">👈</div>
@@ -442,8 +604,11 @@
             parameters: new Map() // Store parameter details
         };
         let visibleNamespaces = new Set(); // Track checked namespaces
+        let selectedTypeIri = null; // Type shown in the details panel
+        let loadedFrom = null; // Provenance of a graph loaded from a file (embedded pages carry their own)
         let settings = {
-            mruFiles: []
+            mruFiles: [],
+            namespacePaletteOverrides: {}
         };
 
         const fileInput = document.getElementById('file-input');
@@ -456,6 +621,163 @@
         const loadNewBtn = document.getElementById('load-new');
         const clearHistoryBtn = document.getElementById('clear-history');
         const mruList = document.getElementById('mru-list');
+        const container = document.querySelector('.container');
+        const sidebar = document.getElementById('sidebar');
+        const sidebarSplitter = document.getElementById('sidebar-splitter');
+        const sidebarToggle = document.getElementById('sidebar-toggle');
+        const detailsSplitter = document.getElementById('details-splitter');
+        const detailsToggle = document.getElementById('details-toggle');
+        const SIDEBAR_MIN_WIDTH = 220;
+        const DETAILS_MIN_WIDTH = 240;
+
+        function sidebarMaxWidth() {
+            return Math.max(SIDEBAR_MIN_WIDTH, Math.floor(window.innerWidth * 0.45));
+        }
+
+        function clampSidebarWidth(width) {
+            return Math.min(sidebarMaxWidth(), Math.max(SIDEBAR_MIN_WIDTH, Math.round(width)));
+        }
+
+        function setSidebarWidth(width, persist = true) {
+            const nextWidth = clampSidebarWidth(width);
+            container.style.setProperty('--sidebar-width', `${nextWidth}px`);
+            sidebarSplitter.setAttribute('aria-valuemin', String(SIDEBAR_MIN_WIDTH));
+            sidebarSplitter.setAttribute('aria-valuemax', String(sidebarMaxWidth()));
+            sidebarSplitter.setAttribute('aria-valuenow', String(nextWidth));
+            sidebarSplitter.setAttribute('aria-valuetext', `${nextWidth} pixels wide`);
+            if (persist) {
+                settings.sidebarWidth = nextWidth;
+                saveSettings();
+            }
+            scheduleNamespaceLabelElision();
+            if (cy) cy.resize();
+        }
+
+        function setSidebarCollapsed(collapsed, persist = true) {
+            container.classList.toggle('sidebar-collapsed', collapsed);
+            sidebar.hidden = collapsed;
+            sidebarSplitter.hidden = collapsed;
+            sidebarToggle.setAttribute('aria-expanded', String(!collapsed));
+            const sidebarLabel = collapsed ? 'Show sidebar' : 'Hide sidebar';
+            sidebarToggle.textContent = collapsed ? '▶' : '◀';
+            sidebarToggle.setAttribute('aria-label', sidebarLabel);
+            sidebarToggle.title = collapsed ? 'Show the namespace sidebar' : 'Hide the namespace sidebar';
+            if (persist) {
+                settings.sidebarCollapsed = collapsed;
+                saveSettings();
+            }
+            if (cy) requestAnimationFrame(() => cy.resize());
+        }
+
+        function initializeSidebarControls() {
+            const width = Number.isFinite(settings.sidebarWidth) ? settings.sidebarWidth : 300;
+            setSidebarWidth(width, false);
+            setSidebarCollapsed(settings.sidebarCollapsed === true, false);
+
+            sidebarToggle.addEventListener('click', () => setSidebarCollapsed(!sidebar.hidden));
+            sidebarSplitter.addEventListener('pointerdown', event => {
+                event.preventDefault();
+                sidebarSplitter.setPointerCapture(event.pointerId);
+            });
+            sidebarSplitter.addEventListener('pointermove', event => {
+                if (sidebarSplitter.hasPointerCapture(event.pointerId)) {
+                    setSidebarWidth(event.clientX, false);
+                }
+            });
+            sidebarSplitter.addEventListener('pointerup', event => {
+                if (!sidebarSplitter.hasPointerCapture(event.pointerId)) return;
+                sidebarSplitter.releasePointerCapture(event.pointerId);
+                setSidebarWidth(event.clientX);
+            });
+            sidebarSplitter.addEventListener('keydown', event => {
+                const current = Number(sidebarSplitter.getAttribute('aria-valuenow')) || 300;
+                const step = event.shiftKey ? 50 : 20;
+                let width = current;
+                if (event.key === 'ArrowLeft') width -= step;
+                else if (event.key === 'ArrowRight') width += step;
+                else if (event.key === 'Home') width = SIDEBAR_MIN_WIDTH;
+                else if (event.key === 'End') width = sidebarMaxWidth();
+                else return;
+                event.preventDefault();
+                setSidebarWidth(width);
+            });
+            window.addEventListener('resize', () => setSidebarWidth(
+                Number(sidebarSplitter.getAttribute('aria-valuenow')) || 300, false));
+        }
+
+        function detailsMaxWidth() {
+            return Math.max(DETAILS_MIN_WIDTH, Math.floor(window.innerWidth * 0.55));
+        }
+
+        function clampDetailsWidth(width) {
+            return Math.min(detailsMaxWidth(), Math.max(DETAILS_MIN_WIDTH, Math.round(width)));
+        }
+
+        function setDetailsWidth(width, persist = true) {
+            const nextWidth = clampDetailsWidth(width);
+            container.style.setProperty('--details-width', `${nextWidth}px`);
+            detailsSplitter.setAttribute('aria-valuemin', String(DETAILS_MIN_WIDTH));
+            detailsSplitter.setAttribute('aria-valuemax', String(detailsMaxWidth()));
+            detailsSplitter.setAttribute('aria-valuenow', String(nextWidth));
+            detailsSplitter.setAttribute('aria-valuetext', `${nextWidth} pixels wide`);
+            if (persist) {
+                settings.detailsWidth = nextWidth;
+                saveSettings();
+            }
+            if (cy) cy.resize();
+        }
+
+        function setDetailsCollapsed(collapsed, persist = true) {
+            container.classList.toggle('details-collapsed', collapsed);
+            detailsPanel.hidden = collapsed;
+            detailsSplitter.hidden = collapsed;
+            detailsToggle.setAttribute('aria-expanded', String(!collapsed));
+            const detailsLabel = collapsed ? 'Show details' : 'Hide details';
+            detailsToggle.textContent = collapsed ? '◀' : '▶';
+            detailsToggle.setAttribute('aria-label', detailsLabel);
+            detailsToggle.title = collapsed ? 'Show the details panel' : 'Hide the details panel';
+            if (persist) {
+                settings.detailsCollapsed = collapsed;
+                saveSettings();
+            }
+            if (cy) requestAnimationFrame(() => cy.resize());
+        }
+
+        function initializeDetailsPanelControls() {
+            const width = Number.isFinite(settings.detailsWidth) ? settings.detailsWidth : 350;
+            setDetailsWidth(width, false);
+            setDetailsCollapsed(settings.detailsCollapsed === true, false);
+
+            detailsToggle.addEventListener('click', () => setDetailsCollapsed(!detailsPanel.hidden));
+            detailsSplitter.addEventListener('pointerdown', event => {
+                event.preventDefault();
+                detailsSplitter.setPointerCapture(event.pointerId);
+            });
+            detailsSplitter.addEventListener('pointermove', event => {
+                if (detailsSplitter.hasPointerCapture(event.pointerId)) {
+                    setDetailsWidth(window.innerWidth - event.clientX, false);
+                }
+            });
+            detailsSplitter.addEventListener('pointerup', event => {
+                if (!detailsSplitter.hasPointerCapture(event.pointerId)) return;
+                detailsSplitter.releasePointerCapture(event.pointerId);
+                setDetailsWidth(window.innerWidth - event.clientX);
+            });
+            detailsSplitter.addEventListener('keydown', event => {
+                const current = Number(detailsSplitter.getAttribute('aria-valuenow')) || 350;
+                const step = event.shiftKey ? 50 : 20;
+                let width = current;
+                if (event.key === 'ArrowLeft') width += step;
+                else if (event.key === 'ArrowRight') width -= step;
+                else if (event.key === 'Home') width = DETAILS_MIN_WIDTH;
+                else if (event.key === 'End') width = detailsMaxWidth();
+                else return;
+                event.preventDefault();
+                setDetailsWidth(width);
+            });
+            window.addEventListener('resize', () => setDetailsWidth(
+                Number(detailsSplitter.getAttribute('aria-valuenow')) || 350, false));
+        }
 
         // LocalStorage Settings Management
         function loadSettings() {
@@ -466,10 +788,14 @@
                     if (!Array.isArray(settings.mruFiles)) {
                         settings.mruFiles = [];
                     }
+                    if (!settings.namespacePaletteOverrides || typeof settings.namespacePaletteOverrides !== 'object' ||
+                        Array.isArray(settings.namespacePaletteOverrides)) {
+                        settings.namespacePaletteOverrides = {};
+                    }
                 }
             } catch (e) {
                 console.error('Failed to load settings:', e);
-                settings = { mruFiles: [] };
+                settings = { mruFiles: [], namespacePaletteOverrides: {} };
             }
         }
 
@@ -553,6 +879,73 @@
             return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
         }
 
+        // These darker, similarly saturated fills keep white node labels legible across namespaces.
+        const NAMESPACE_PALETTES = [
+            { id: 'ocean', name: 'Ocean', color: '#0F6C7A' },
+            { id: 'violet', name: 'Violet', color: '#5145A8' },
+            { id: 'rose', name: 'Rose', color: '#9D174D' },
+            { id: 'amber', name: 'Amber', color: '#9A5A00' },
+            { id: 'teal', name: 'Teal', color: '#0F766E' },
+            { id: 'slate', name: 'Slate', color: '#3F526D' }
+        ];
+
+        function namespaceGroup(namespaceName) {
+            const segments = (namespaceName || '').split('.').filter(Boolean);
+            return segments.slice(0, 2).join('.') || namespaceName || 'global';
+        }
+
+        function automaticPaletteId(namespaceName) {
+            const group = namespaceGroup(namespaceName);
+            let hash = 0;
+            for (let index = 0; index < group.length; index++) {
+                hash = ((hash << 5) - hash + group.charCodeAt(index)) | 0;
+            }
+            return NAMESPACE_PALETTES[(hash >>> 0) % NAMESPACE_PALETTES.length].id;
+        }
+
+        function paletteIdForNamespace(namespaceName, overrides = {}) {
+            const override = overrides[namespaceName];
+            return NAMESPACE_PALETTES.some(palette => palette.id === override) ? override : automaticPaletteId(namespaceName);
+        }
+
+        function paletteForNamespace(namespaceIri) {
+            const namespaceName = graphData.namespaces.get(namespaceIri)?.name || '';
+            const paletteId = paletteIdForNamespace(namespaceName, settings.namespacePaletteOverrides || {});
+            return NAMESPACE_PALETTES.find(palette => palette.id === paletteId) || NAMESPACE_PALETTES[0];
+        }
+
+        function setNamespacePalette(namespaceName, paletteId) {
+            settings.namespacePaletteOverrides ||= {};
+            if (paletteId) settings.namespacePaletteOverrides[namespaceName] = paletteId;
+            else delete settings.namespacePaletteOverrides[namespaceName];
+            saveSettings();
+        }
+
+        function paletteOptions(namespaceName) {
+            const override = settings.namespacePaletteOverrides?.[namespaceName] || '';
+            return `<option value=""${override ? '' : ' selected'}>Auto</option>` +
+                NAMESPACE_PALETTES.map(palette =>
+                    `<option value="${palette.id}"${override === palette.id ? ' selected' : ''}>${palette.name}</option>`
+                ).join('');
+        }
+
+        let namespaceLabelElisionPending = false;
+
+        function scheduleNamespaceLabelElision() {
+            if (namespaceLabelElisionPending) return;
+            namespaceLabelElisionPending = true;
+            requestAnimationFrame(() => {
+                namespaceLabelElisionPending = false;
+                document.querySelectorAll('.namespace-name[data-full-namespace]').forEach(nameElement => {
+                    const fullName = nameElement.dataset.fullNamespace;
+                    nameElement.textContent = RoslynGraphNamespaceLabel.elideFromLeft(fullName, candidate => {
+                        nameElement.textContent = candidate;
+                        return nameElement.scrollWidth <= nameElement.clientWidth;
+                    });
+                });
+            });
+        }
+
         // Initialize Cytoscape
         function initGraph() {
             cy = cytoscape({
@@ -561,7 +954,7 @@
                     {
                         selector: 'node',
                         style: {
-                            'background-color': '#4ec9b0',
+                            'background-color': 'data(palette)',
                             'label': 'data(label)',
                             'color': '#fff',
                             'text-valign': 'center',
@@ -574,28 +967,24 @@
                     {
                         selector: 'node.class',
                         style: {
-                            'background-color': '#4ec9b0',
                             'shape': 'rectangle'
                         }
                     },
                     {
                         selector: 'node.interface',
                         style: {
-                            'background-color': '#b5cea8',
                             'shape': 'diamond'
                         }
                     },
                     {
                         selector: 'node.struct',
                         style: {
-                            'background-color': '#9cdcfe',
                             'shape': 'octagon'
                         }
                     },
                     {
                         selector: 'node.enum',
                         style: {
-                            'background-color': '#dcdcaa',
                             'shape': 'triangle'
                         }
                     },
@@ -606,10 +995,7 @@
                             'line-color': '#666',
                             'target-arrow-color': '#666',
                             'target-arrow-shape': 'triangle',
-                            'curve-style': 'bezier',
-                            'label': 'data(label)',
-                            'font-size': '8px',
-                            'color': '#999'
+                            'curve-style': 'bezier'
                         }
                     },
                     {
@@ -626,13 +1012,26 @@
                             'target-arrow-color': '#b5cea8',
                             'line-style': 'dashed'
                         }
+                    },
+                    {
+                        selector: 'edge.references',
+                        style: {
+                            'line-color': '#808080',
+                            'target-arrow-color': '#808080',
+                            'line-style': 'dotted',
+                            'width': 1
+                        }
                     }
                 ],
                 layout: {
                     name: 'cose',
                     padding: 50,
-                    nodeRepulsion: 8000,
-                    idealEdgeLength: 100
+                    // Type names are rendered outside the fixed node shape. Include
+                    // their bounds so the force layout does not place labels over
+                    // neighbouring nodes.
+                    nodeDimensionsIncludeLabels: true,
+                    nodeRepulsion: 10000,
+                    idealEdgeLength: 140
                 }
             });
 
@@ -676,17 +1075,22 @@
             if (!file) return;
 
             showLoading();
-            const text = await file.text();
-            await parseRDF(text);
-            buildGraph();
-            updateUI();
-            hideLoading();
-
-            // Add to MRU
-            addToMRU(file.name, file.size);
-
-            // Reset file input so same file can be loaded again
-            fileInput.value = '';
+            try {
+                const text = await file.text();
+                await parseRDF(text);
+                buildGraph();
+                updateUI();
+                addToMRU(file.name, file.size);
+                loadedFrom = { generator: 'file', fileName: file.name };
+                selectedTypeIri = null;
+            } catch (error) {
+                console.error('Failed to parse RDF file:', error);
+                alert(`Could not load ${file.name}: ${error.message}`);
+            } finally {
+                hideLoading();
+                // Reset file input so the same file can be loaded again.
+                fileInput.value = '';
+            }
         });
 
         searchBox.addEventListener('input', (e) => {
@@ -695,171 +1099,28 @@
         });
 
         async function parseRDF(text) {
-            graphData = {
-                types: new Map(),
-                namespaces: new Map(),
-                relationships: [],
-                members: new Map(),
-                parameters: new Map()
-            };
-
-            const lines = text.split('\n').filter(l => l.trim() && !l.startsWith('#'));
-            const dtOntology = 'http://dotnet.example/ontology/';
-            const rdfType = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
-
-            // Parse triples
-            for (const line of lines) {
-                const match = line.match(/<([^>]+)>\s+<([^>]+)>\s+(<([^>]+)>|"([^"]*)")/);
-                if (!match) continue;
-
-                const subject = match[1];
-                const predicate = match[2];
-                const objectIri = match[4];
-                const objectLiteral = match[5];
-
-                // Extract type information
-                if (predicate === rdfType && objectIri) {
-                    const typeName = objectIri.replace(dtOntology, '');
-                    if (['Class', 'Interface', 'Struct', 'Enum'].includes(typeName)) {
-                        if (!graphData.types.has(subject)) {
-                            graphData.types.set(subject, {
-                                iri: subject,
-                                kind: typeName.toLowerCase(),
-                                name: '',
-                                namespace: '',
-                                members: [],
-                                inherits: [],
-                                implements: []
-                            });
-                        }
-                        graphData.types.get(subject).kind = typeName.toLowerCase();
-                    }
-                    // Extract member types
-                    if (['Method', 'Property', 'Field', 'Event', 'Constructor'].includes(typeName)) {
-                        if (!graphData.members.has(subject)) {
-                            graphData.members.set(subject, {
-                                iri: subject,
-                                kind: typeName.toLowerCase(),
-                                name: '',
-                                returnType: '',
-                                parameters: []
-                            });
-                        }
-                        graphData.members.get(subject).kind = typeName.toLowerCase();
-                    }
-                    // Extract parameter types
-                    if (typeName === 'Parameter') {
-                        if (!graphData.parameters.has(subject)) {
-                            graphData.parameters.set(subject, {
-                                iri: subject,
-                                name: '',
-                                parameterType: '',
-                                ordinal: 0
-                            });
-                        }
-                    }
-                }
-
-                // Extract name
-                if (predicate === dtOntology + 'name' && objectLiteral) {
-                    if (graphData.types.has(subject)) {
-                        graphData.types.get(subject).name = objectLiteral;
-                    }
-                    if (graphData.members.has(subject)) {
-                        graphData.members.get(subject).name = objectLiteral;
-                    }
-                    if (graphData.parameters.has(subject)) {
-                        graphData.parameters.get(subject).name = objectLiteral;
-                    }
-                }
-
-                // Extract return type for members
-                if (predicate === dtOntology + 'returnType' && objectIri) {
-                    if (graphData.members.has(subject)) {
-                        graphData.members.get(subject).returnType = objectIri;
-                    }
-                }
-
-                // Extract parameter type
-                if (predicate === dtOntology + 'parameterType' && objectIri) {
-                    if (graphData.parameters.has(subject)) {
-                        graphData.parameters.get(subject).parameterType = objectIri;
-                    }
-                }
-
-                // Extract parameter ordinal
-                if (predicate === dtOntology + 'ordinal' && objectLiteral) {
-                    if (graphData.parameters.has(subject)) {
-                        graphData.parameters.get(subject).ordinal = parseInt(objectLiteral);
-                    }
-                }
-
-                // Extract hasParameter relationship
-                if (predicate === dtOntology + 'hasParameter' && objectIri) {
-                    if (graphData.members.has(subject)) {
-                        graphData.members.get(subject).parameters.push(objectIri);
-                    }
-                }
-
-                // Extract namespace
-                if (predicate === dtOntology + 'inNamespace' && objectIri) {
-                    if (graphData.types.has(subject)) {
-                        const ns = objectIri;
-                        graphData.types.get(subject).namespace = ns;
-                        if (!graphData.namespaces.has(ns)) {
-                            graphData.namespaces.set(ns, { iri: ns, name: '', types: [] });
-                        }
-                        graphData.namespaces.get(ns).types.push(subject);
-                    }
-                }
-
-                // Extract relationships
-                if (predicate === dtOntology + 'inherits') {
-                    if (graphData.types.has(subject)) {
-                        graphData.types.get(subject).inherits.push(objectIri);
-                        graphData.relationships.push({
-                            from: subject,
-                            to: objectIri,
-                            type: 'inherits'
-                        });
-                    }
-                }
-
-                if (predicate === dtOntology + 'implements') {
-                    if (graphData.types.has(subject)) {
-                        graphData.types.get(subject).implements.push(objectIri);
-                        graphData.relationships.push({
-                            from: subject,
-                            to: objectIri,
-                            type: 'implements'
-                        });
-                    }
-                }
-
-                // Extract members
-                if (predicate === dtOntology + 'hasMember') {
-                    if (graphData.types.has(subject)) {
-                        graphData.types.get(subject).members.push(objectIri);
-                    }
-                }
-            }
-
-            // Get namespace names
-            for (const line of lines) {
-                const match = line.match(/<([^>]+)>\s+<([^>]+)>\s+"([^"]*)"/);
-                if (!match) continue;
-                const subject = match[1];
-                const predicate = match[2];
-                const literal = match[3];
-
-                if (predicate === dtOntology + 'name' && graphData.namespaces.has(subject)) {
-                    graphData.namespaces.get(subject).name = literal;
-                }
-            }
-
-            // Initialize all namespaces as visible
+            graphData = await RdfGraphParser.parse(text, window.N3);
             visibleNamespaces.clear();
             graphData.namespaces.forEach((ns, iri) => visibleNamespaces.add(iri));
+        }
+
+        // Keep the source name intact in node data; this is only the label Cytoscape draws.
+        function formatTypeLabel(name) {
+            if (name.length <= 20) return name;
+
+            const midpoint = name.length / 2;
+            let bestIndex = -1;
+            let bestDistance = Infinity;
+            for (let index = 1; index < name.length; index++) {
+                if (/[a-z]/.test(name[index - 1]) && /[A-Z]/.test(name[index])) {
+                    const distance = Math.abs(index - midpoint);
+                    if (distance < bestDistance) {
+                        bestIndex = index;
+                        bestDistance = distance;
+                    }
+                }
+            }
+            return bestIndex === -1 ? name : `${name.slice(0, bestIndex)}\n${name.slice(bestIndex)}`;
         }
 
         function buildGraph() {
@@ -876,7 +1137,9 @@
                     elements.push({
                         data: {
                             id: iri,
-                            label: type.name,
+                            label: formatTypeLabel(type.name),
+                            name: type.name,
+                            palette: paletteForNamespace(type.namespace).color,
                             kind: type.kind,
                             namespace: type.namespace
                         },
@@ -905,8 +1168,11 @@
             cy.layout({
                 name: 'cose',
                 padding: 50,
-                nodeRepulsion: 8000,
-                idealEdgeLength: 100,
+                // Keep this in sync with the initial layout above: rebuilt graphs
+                // must reserve space for their rendered type labels as well.
+                nodeDimensionsIncludeLabels: true,
+                nodeRepulsion: 10000,
+                idealEdgeLength: 140,
                 animate: true
             }).run();
         }
@@ -920,6 +1186,8 @@
             document.getElementById('type-count').textContent = nonCompilerTypes.length;
             document.getElementById('ns-count').textContent = graphData.namespaces.size;
             statsGrid.style.display = 'grid';
+            copyGraphBtn.disabled = graphData.types.size === 0;
+            downloadGraphBtn.disabled = graphData.types.size === 0;
 
             // Update namespace list with checkboxes
             const sorted = Array.from(graphData.namespaces.values())
@@ -940,10 +1208,19 @@
                     const type = graphData.types.get(typeIri);
                     return type && !isCompilerGenerated(type.name);
                 }).length;
+                const palette = paletteForNamespace(ns.iri);
 
                 return `<div class="namespace-item" data-ns="${ns.iri}">
-                    <input type="checkbox" class="namespace-checkbox" data-ns="${ns.iri}" checked>
-                    <span class="namespace-label">📁 ${ns.name} <span class="badge">${typeCount}</span></span>
+                    <input type="checkbox" class="namespace-checkbox" data-ns="${ns.iri}" ${visibleNamespaces.has(ns.iri) ? 'checked' : ''}>
+                    <select class="palette-picker" style="--palette-color: ${palette.color}"
+                        data-namespace-name="${escapeHtml(ns.name)}" aria-label="Color palette for ${escapeHtml(ns.name)}" title="${palette.name} palette">
+                        ${paletteOptions(ns.name)}
+                    </select>
+                    <span class="namespace-label" title="${escapeHtml(ns.name)}" aria-label="${escapeHtml(ns.name)}">
+                        <span aria-hidden="true">📁</span>
+                        <span class="namespace-name" data-full-namespace="${escapeHtml(ns.name)}"></span>
+                        <span class="badge">${typeCount}</span>
+                    </span>
                 </div>`;
             }).join('');
 
@@ -978,6 +1255,22 @@
                 });
             });
 
+            document.querySelectorAll('.palette-picker').forEach(select => {
+                select.addEventListener('click', event => event.stopPropagation());
+                select.addEventListener('change', event => {
+                    event.stopPropagation();
+                    const namespaceName = select.dataset.namespaceName;
+                    if (!namespaceName) return;
+                    setNamespacePalette(namespaceName, select.value);
+                    const palette = paletteForNamespace(
+                        Array.from(graphData.namespaces.values()).find(ns => ns.name === namespaceName)?.iri
+                    );
+                    select.style.setProperty('--palette-color', palette.color);
+                    select.title = `${palette.name} palette`;
+                    buildGraph();
+                });
+            });
+
             // Add namespace label click listeners
             document.querySelectorAll('.namespace-label').forEach(label => {
                 label.addEventListener('click', (e) => {
@@ -985,6 +1278,7 @@
                     focusNamespace(nsIri);
                 });
             });
+            scheduleNamespaceLabelElision();
         }
 
         function focusNamespace(nsIri) {
@@ -1000,6 +1294,7 @@
         function showTypeDetails(typeIri) {
             const type = graphData.types.get(typeIri);
             if (!type) return;
+            selectedTypeIri = typeIri;
 
             const kindIcon = {
                 'class': '🏛️',
@@ -1025,7 +1320,12 @@
             });
 
             let html = `
-                <h2>${kindIcon} ${type.name}</h2>
+                <div class="details-title-row">
+                    <h2>${kindIcon} ${type.name}</h2>
+                    <button class="icon-btn copy-type-btn" onclick="copySelection('type')"
+                            aria-label="Copy this type for Claude"
+                            title="Copy this type and where it came from (database and query) as JSON for a chat with Claude">📋</button>
+                </div>
                 <div class="detail-section">
                     <h3>Type Information</h3>
                     <div class="detail-item"><strong>Kind:</strong> ${type.kind}</div>
@@ -1315,8 +1615,8 @@
             }
 
             cy.nodes().forEach(node => {
-                const label = node.data('label').toLowerCase();
-                const opacity = label.includes(query) ? 1 : 0.2;
+                const name = node.data('name').toLowerCase();
+                const opacity = name.includes(query) ? 1 : 0.2;
                 node.style('opacity', opacity);
             });
         }
@@ -1334,10 +1634,111 @@
             if (loading) loading.remove();
         }
 
+        // "Copy for Claude": the drawn types (or the selected one) plus the database and query they came from,
+        // as JSON a fresh chat can act on (see graph-selection.js).
+        const copyGraphBtn = document.getElementById('copy-graph-btn');
+        const downloadGraphBtn = document.getElementById('download-graph-btn');
+
+        function currentContext() {
+            const embedded = document.getElementById('roslyn-graph-context');
+            if (embedded) {
+                try {
+                    return JSON.parse(embedded.textContent);
+                } catch (error) {
+                    console.error('Unreadable embedded context:', error);
+                }
+            }
+            return loadedFrom;
+        }
+
+        function buildSelection(scope) {
+            // The types drawn right now (namespace filters applied), or the one selected type.
+            const typeIris = scope === 'type' ? [selectedTypeIri] : cy.nodes().map(node => node.id());
+            return RoslynGraphSelection.build(graphData, { typeIris, context: currentContext() });
+        }
+
+        async function writeClipboard(text) {
+            try {
+                await navigator.clipboard.writeText(text);
+                return true;
+            } catch (error) {
+                // file:// pages and older browsers: fall back to a hidden textarea
+                const area = document.createElement('textarea');
+                area.value = text;
+                area.style.position = 'fixed';
+                area.style.opacity = '0';
+                document.body.appendChild(area);
+                area.select();
+                const copied = document.execCommand('copy');
+                area.remove();
+                return copied;
+            }
+        }
+
+        function showToast(message, isError = false) {
+            const toast = document.createElement('div');
+            toast.className = isError ? 'toast error' : 'toast';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 4000);
+        }
+
+        async function copySelection(scope) {
+            if (scope === 'type' && !selectedTypeIri) return;
+            const selection = buildSelection(scope);
+            const text = RoslynGraphSelection.toText(selection);
+            const copied = await writeClipboard(text);
+            if (copied) {
+                const where = selection.store ? '' : ' (no database recorded: this graph was loaded from a file)';
+                showToast(`Copied ${selection.types.length} type(s) and the query/database reference${where}. Paste it into a chat with Claude.`);
+            } else {
+                showToast('The browser blocked the clipboard. Use ⬇ JSON instead.', true);
+            }
+        }
+
+        function downloadSelection() {
+            const text = RoslynGraphSelection.toText(buildSelection('graph'));
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+            link.download = `${(document.title || 'roslyn-graph').replace(/[^\w.-]+/g, '-')}.selection.json`;
+            link.click();
+            URL.revokeObjectURL(link.href);
+        }
+
+        copyGraphBtn.addEventListener('click', () => copySelection('graph'));
+        downloadGraphBtn.addEventListener('click', downloadSelection);
+
+        // Pages generated by the roslyn-graph plugin embed their RDF in this element. It is placed after this
+        // script, so it only exists once the document has been parsed (see the call below).
+        async function loadEmbeddedGraph() {
+            const embedded = document.getElementById('roslyn-graph-data');
+            if (!embedded) return;
+
+            showLoading();
+            try {
+                await parseRDF(embedded.textContent);
+                buildGraph();
+                updateUI();
+                if (embedded.dataset.title) document.title = embedded.dataset.title;
+            } catch (error) {
+                console.error('Failed to parse embedded RDF:', error);
+                alert(`Could not load the embedded graph: ${error.message}`);
+            } finally {
+                hideLoading();
+            }
+        }
+
         // Initialize
         loadSettings();
+        initializeSidebarControls();
+        initializeDetailsPanelControls();
         updateMRUDisplay();
         initGraph();
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', loadEmbeddedGraph);
+        } else {
+            loadEmbeddedGraph();
+        }
     </script>
 </body>
 </html>

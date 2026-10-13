@@ -10,7 +10,8 @@ public class Program
     {
         var rootCommand = new RootCommand("Extract .NET assembly type graphs to RDF format") { Name = "roslyn2rdf" };
 
-        var assemblyArg = new Argument<FileInfo>("assembly", "Path to the .NET assembly (.dll) to analyze");
+        var assemblyArg = new Argument<FileInfo>("assembly", "Path to the primary .NET assembly (.dll) to analyze");
+        var additionalAssembliesOption = new Option<FileInfo[]>(["--assembly", "-a"], () => [], "Additional target assemblies to include in the same graph");
         var outputOption = new Option<FileInfo?>(["--output", "-o"], "Output file path");
         var formatOption = new Option<OutputFormat>(["--format", "-f"], () => OutputFormat.NTriples, "Output format");
         var baseUriOption = new Option<string>(["--base-uri", "-b"], () => "http://dotnet.example/", "Base URI for IRIs");
@@ -26,6 +27,7 @@ public class Program
         var searchDirOption = new Option<string[]>(["--search-dir", "-s"], () => [], "Search directories");
 
         rootCommand.AddArgument(assemblyArg);
+        rootCommand.AddOption(additionalAssembliesOption);
         rootCommand.AddOption(outputOption);
         rootCommand.AddOption(formatOption);
         rootCommand.AddOption(baseUriOption);
@@ -43,6 +45,7 @@ public class Program
         rootCommand.SetHandler(async (context) =>
         {
             var assembly = context.ParseResult.GetValueForArgument(assemblyArg);
+            var additionalAssemblies = context.ParseResult.GetValueForOption(additionalAssembliesOption)!;
             var output = context.ParseResult.GetValueForOption(outputOption);
             var format = context.ParseResult.GetValueForOption(formatOption);
             var baseUri = context.ParseResult.GetValueForOption(baseUriOption)!;
@@ -57,24 +60,37 @@ public class Program
             var refs = context.ParseResult.GetValueForOption(refsOption)!;
             var searchDirs = context.ParseResult.GetValueForOption(searchDirOption)!;
 
-            context.ExitCode = await RunExtraction(assembly, output, format, baseUri, includePrivate, includeInternal,
+            context.ExitCode = await RunExtraction([assembly, ..additionalAssemblies], output, format, baseUri, includePrivate, includeInternal,
                 excludeAttributes, excludeExternalTypes, extractExceptions, extractSeeAlso, verbose, quiet, refs, searchDirs);
         });
 
         return await rootCommand.InvokeAsync(args);
     }
 
-    private static Task<int> RunExtraction(FileInfo assembly, FileInfo? output, OutputFormat format, string baseUri,
+    private static Task<int> RunExtraction(IEnumerable<FileInfo> requestedAssemblies, FileInfo? output, OutputFormat format, string baseUri,
         bool includePrivate, bool includeInternal, bool excludeAttributes, bool excludeExternalTypes,
         bool extractExceptions, bool extractSeeAlso, bool verbose, bool quiet, string[] refs, string[] searchDirs)
     {
-        if (!assembly.Exists)
+        var assemblies = requestedAssemblies
+            .GroupBy(assembly => assembly.FullName, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToArray();
+
+        var missingAssemblies = assemblies.Where(assembly => !assembly.Exists).ToArray();
+        if (missingAssemblies.Length > 0)
         {
-            Console.Error.WriteLine($"Assembly not found: {assembly.FullName}");
+            foreach (var assembly in missingAssemblies)
+                Console.Error.WriteLine($"Assembly not found: {assembly.FullName}");
             return Task.FromResult(1);
         }
 
-        var outputPath = output?.FullName ?? Path.ChangeExtension(assembly.FullName, format == OutputFormat.Turtle ? ".ttl" : ".nt");
+        if (assemblies.Length > 1 && output is null)
+        {
+            Console.Error.WriteLine("--output is required when extracting more than one assembly.");
+            return Task.FromResult(1);
+        }
+
+        var outputPath = output?.FullName ?? Path.ChangeExtension(assemblies[0].FullName, format == OutputFormat.Turtle ? ".ttl" : ".nt");
         var options = new ExtractionOptions
         {
             BaseUri = baseUri,
@@ -91,21 +107,24 @@ public class Program
 
         try
         {
-            log?.Invoke($"Loading assembly: {assembly.FullName}");
-
-            var loader = new AssemblyLoader();
-            foreach (var refPath in refs) loader.AddReferencePath(refPath);
-            foreach (var searchDir in searchDirs) loader.AddSearchDirectory(searchDir);
-
-            var (compilation, assemblySymbol) = loader.LoadAssembly(assembly.FullName);
             log?.Invoke($"Output file: {outputPath}");
 
             using ITriplesEmitter emitter = format == OutputFormat.Turtle
                 ? new TurtleEmitter(outputPath)
                 : new NTriplesEmitter(outputPath);
 
-            var extractor = new AssemblyGraphExtractor(emitter, options, log);
-            extractor.Extract(compilation, assemblySymbol);
+            foreach (var assembly in assemblies)
+            {
+                log?.Invoke($"Loading assembly: {assembly.FullName}");
+
+                var loader = new AssemblyLoader();
+                foreach (var refPath in refs) loader.AddReferencePath(refPath);
+                foreach (var searchDir in searchDirs) loader.AddSearchDirectory(searchDir);
+
+                var (compilation, assemblySymbol) = loader.LoadAssembly(assembly.FullName);
+                var extractor = new AssemblyGraphExtractor(emitter, options, log);
+                extractor.Extract(compilation, assemblySymbol);
+            }
             emitter.Flush();
 
             log?.Invoke($"Done. {emitter.TripleCount} triples written to {outputPath}");

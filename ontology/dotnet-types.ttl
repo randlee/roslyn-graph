@@ -106,3 +106,46 @@ dt:publicKeyToken a rdf:Property ; rdfs:domain dt:Assembly ; rdfs:range xsd:stri
 
 # Namespace Relationships
 dt:parentNamespace a rdf:Property ; rdfs:domain dt:Namespace ; rdfs:range dt:Namespace .
+
+# Terms emitted by the extractor that were previously undeclared.
+# Every term the extractor emits must be declared in this file; plugins/roslyn-graph/scripts check it.
+
+# Type properties
+dt:isRefLikeType a rdf:Property ; rdfs:label "isRefLikeType" ; rdfs:domain dt:Type ; rdfs:range xsd:boolean .
+dt:isUnmanagedType a rdf:Property ; rdfs:label "isUnmanagedType" ; rdfs:domain dt:Type ; rdfs:range xsd:boolean .
+dt:specialType a rdf:Property ; rdfs:label "specialType" ; rdfs:comment "Roslyn SpecialType name for built-in types, such as System_Int32" ; rdfs:domain dt:Type ; rdfs:range xsd:string .
+dt:enumUnderlyingType a rdf:Property ; rdfs:label "enumUnderlyingType" ; rdfs:domain dt:Enum ; rdfs:range dt:Type .
+dt:pointerElementType a rdf:Property ; rdfs:label "pointerElementType" ; rdfs:domain dt:Type ; rdfs:range dt:Type .
+dt:arrayRank a rdf:Property ; rdfs:label "arrayRank" ; rdfs:domain dt:Type ; rdfs:range xsd:integer .
+
+# Generic type arguments: dt:typeArgument points at an argument node <type>/typearg/<i> carrying dt:index and dt:type.
+dt:index a rdf:Property ; rdfs:label "index" ; rdfs:comment "Zero-based position of a generic type argument node" ; rdfs:range xsd:integer .
+dt:type a rdf:Property ; rdfs:label "type" ; rdfs:comment "Type supplied by a generic type argument node" ; rdfs:range dt:Type .
+
+# Member properties
+dt:isExtern a rdf:Property ; rdfs:label "isExtern" ; rdfs:domain dt:Member ; rdfs:range xsd:boolean .
+dt:isVolatile a rdf:Property ; rdfs:label "isVolatile" ; rdfs:domain dt:Field ; rdfs:range xsd:boolean .
+dt:isRequired a rdf:Property ; rdfs:label "isRequired" ; rdfs:domain dt:Member ; rdfs:range xsd:boolean .
+dt:isInitOnly a rdf:Property ; rdfs:label "isInitOnly" ; rdfs:domain dt:Property ; rdfs:range xsd:boolean .
+dt:getterAccessibility a rdf:Property ; rdfs:label "getterAccessibility" ; rdfs:domain dt:Property ; rdfs:range xsd:string .
+dt:setterAccessibility a rdf:Property ; rdfs:label "setterAccessibility" ; rdfs:domain dt:Property ; rdfs:range xsd:string .
+dt:isPartialDefinition a rdf:Property ; rdfs:label "isPartialDefinition" ; rdfs:domain dt:Method ; rdfs:range xsd:boolean .
+dt:explicitInterfaceImplementation a rdf:Property ; rdfs:label "explicitInterfaceImplementation" ; rdfs:domain dt:Member ; rdfs:range dt:Member .
+
+# Parameter properties
+dt:isThis a rdf:Property ; rdfs:label "isThis" ; rdfs:domain dt:Parameter ; rdfs:range xsd:boolean .
+dt:isDiscard a rdf:Property ; rdfs:label "isDiscard" ; rdfs:domain dt:Parameter ; rdfs:range xsd:boolean .
+dt:hasExplicitDefaultValue a rdf:Property ; rdfs:label "hasExplicitDefaultValue" ; rdfs:domain dt:Parameter ; rdfs:range xsd:boolean .
+
+# Type parameter properties
+dt:hasUnmanagedTypeConstraint a rdf:Property ; rdfs:label "hasUnmanagedTypeConstraint" ; rdfs:domain dt:TypeParameter ; rdfs:range xsd:boolean .
+dt:hasNotNullConstraint a rdf:Property ; rdfs:label "hasNotNullConstraint" ; rdfs:domain dt:TypeParameter ; rdfs:range xsd:boolean .
+
+# Attribute properties
+dt:attributeClass a rdf:Property ; rdfs:label "attributeClass" ; rdfs:domain dt:Attribute ; rdfs:range dt:Type .
+
+# Assembly properties
+dt:isInteractive a rdf:Property ; rdfs:label "isInteractive" ; rdfs:domain dt:Assembly ; rdfs:range xsd:boolean .
+
+# Namespace relationships
+dt:containsType a rdf:Property ; rdfs:label "containsType" ; rdfs:domain dt:Namespace ; rdfs:range dt:Type .

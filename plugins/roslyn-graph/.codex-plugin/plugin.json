@@ -1,0 +1,18 @@
+{
+  "name": "roslyn-graph",
+  "version": "0.1.0",
+  "description": "Create immutable Roslyn Graph databases and explore them with ontology-aware queries and visualizations.",
+  "author": {
+    "name": "Local developer"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Roslyn Graph",
+    "shortDescription": "Create and explore Roslyn Graph stores.",
+    "longDescription": "Build configured .NET solutions into immutable Roslyn Graph/Oxigraph artifacts, then query and visualize their ontology-backed relationships.",
+    "developerName": "Local developer",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": "Create or explore a Roslyn Graph database from a configured workspace."
+  }
+}

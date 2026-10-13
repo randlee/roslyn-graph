@@ -222,7 +222,7 @@ public sealed partial class AssemblyGraphExtractor
     {
         if (attr.AttributeClass == null) return;
 
-        var attrIri = _iris.Attribute(target, attr, index);
+        var attrIri = _iris.Attribute(targetIri, index);
         _emitter.EmitIri(attrIri, RdfType, Prop(DotNetOntology.Classes.Attribute));
         _emitter.EmitIri(targetIri, Prop(DotNetOntology.TypeRels.HasAttribute), attrIri);
         _emitter.EmitIri(attrIri, Prop(DotNetOntology.AttrRels.AttributeOf), targetIri);
