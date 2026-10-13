@@ -25,6 +25,9 @@ The skill never evaluates or runs MSBuild. It reads:
 | `PACKAGE_OUTPUT_DIFFERS` | the package DLL copied into `output_dir` is byte-identical to the isolated restore |
 
 After extraction the assembly's own name must equal the expected output name (check `S5`).
+For C# source-project extraction, `rg` evaluates each project with the profile's solution directory
+(including its trailing separator), configuration, platform when set, and target framework. These are
+per-workspace MSBuild properties; they do not depend on or modify the invoking process environment.
 
 **What the build check does not prove.** It does not show that the outputs were built with the profile's
 configuration, platform or compile constants; `[profiles.<name>.build]` describes the build, and the
