@@ -44,6 +44,9 @@ def test_chain_is_case_insensitive_like_openwiki():
     # JavaScript's /i folds simply: 'ß' is not 'ss' to OpenWiki, so these stay two directories.
     assert openwiki.chain(["Straße/a.cs", "STRASSE/b.cs"]) == \
         ["*", "!/openwiki/", "!/STRASSE/", "/STRASSE/*", "!/STRASSE/b.cs", "!/Straße/", "/Straße/*", "!/Straße/a.cs"]
+    # ...but it does fold final sigma and capital sharp s, which str.lower does not.
+    assert openwiki.chain(["ς/i.cs", "Σ/ß.cs"]) == ["*", "!/openwiki/", "!/Σ/", "/Σ/*", "!/Σ/i.cs", "!/Σ/ß.cs"]
+    assert openwiki.fold("ẞΣςİK") == "ßσσİk"
 
 
 @pytest.mark.parametrize("path", ["src/*.cs", "src/a?.cs", "src/!x.cs", "/abs.cs", "../up.cs", "src/./x.cs", "src//x.cs", " x.cs",
@@ -305,12 +308,13 @@ def test_chain_against_openwiki_matcher(tmp_path):
     script = tmp_path / "probe.mjs"
     script.write_text(PROBE % json.dumps(OPENWIKI_IGNORE_JS.as_uri()), encoding="utf-8")
     body = openwiki.chain(["src/Billing/Orders/Order.cs", "src/Billing/Orders/OrderLine.cs", "src/Billing/Payments/", "Top.cs",
-                           "Common/y.cs", "common/x.cs"])
+                           "Common/y.cs", "common/x.cs", "ς/i.cs", "Σ/ß.cs", "Straße/a.cs", "STRASSE/b.cs"])
     text = openwiki.merge_block("secrets/\n", body, False, "f")
     allowed = [("src", True), ("src/Billing", True), ("src/Billing/Orders", True), ("src/Billing/Orders/Order.cs", False),
                ("SRC/billing/orders/order.cs", False), ("src/Billing/Orders/OrderLine.cs", False), ("src/Billing/Payments", True),
                ("src/Billing/Payments/Deep/Pay.cs", False), ("Top.cs", False), ("openwiki", True), ("openwiki/x.md", False),
-               ("Common", True), ("common", True), ("Common/y.cs", False), ("common/x.cs", False)]
+               ("Common", True), ("common", True), ("Common/y.cs", False), ("common/x.cs", False),
+               ("ς/i.cs", False), ("Σ/ß.cs", False), ("Straße/a.cs", False), ("STRASSE/b.cs", False)]
     ignored = [("src/Billing/Orders/OrderMapper.cs", False), ("src/Billing/Other", True), ("src/Billing/Other/X.cs", False),
                ("src/Other.cs", False), ("Common/z.cs", False), ("lib", True), ("lib/A.cs", False), ("README.md", False),
                ("src/Billing/Payments/secrets", True), ("src/Billing/Payments/secrets/key.txt", False)]

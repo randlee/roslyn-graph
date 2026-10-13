@@ -45,6 +45,20 @@ def check_path(path: str) -> str:
     return path
 
 
+def fold(text: str) -> str:
+    """Case folding as OpenWiki's JavaScript /iu matching does it: simple, one character to one.
+
+    str.casefold is full folding ('ß' -> 'ss'), and str.lower misses folds such as final sigma ('ς' ~ 'σ' ~ 'Σ').
+    """
+    out = []
+    for c in text:
+        folded = c.casefold()
+        if len(folded) != 1:
+            folded = c.lower() if len(c.lower()) == 1 else c
+        out.append(folded)
+    return "".join(out)
+
+
 def chain(paths: list[str]) -> list[str]:
     """Rules that deny everything except these files and directories (directories end with '/').
 
@@ -59,29 +73,28 @@ def chain(paths: list[str]) -> list[str]:
             problems.extend(exc)
     problems.raise_if_any()
     # OpenWiki matches case-insensitively, so 'Common/' and 'common/' are one directory to it: every comparison
-    # uses a lowered key, and each directory keeps the first spelling in sorted order. str.lower, not casefold:
-    # JavaScript's /i folds simply, so 'Straße' and 'STRASSE' stay different to it.
+    # uses a folded key (fold), and each directory keeps the first spelling in sorted order.
     spelling: dict[str, str] = {}
 
     def canonical(path: str) -> str:
         parts = path.rstrip("/").split("/")
         out = []
         for i in range(len(parts)):
-            out.append(spelling.setdefault("/".join(parts[:i + 1]).lower(), parts[i]))
+            out.append(spelling.setdefault(fold("/".join(parts[:i + 1])), parts[i]))
         return "/".join(out) + ("/" if path.endswith("/") else "")
 
-    targets = sorted({canonical(p).lower(): canonical(p) for p in sorted(paths)}.values(), key=str.lower)
-    directories = [t.lower() for t in targets if t.endswith("/")]
-    targets = [t for t in targets if not any(t.lower() != d and t.lower().startswith(d) for d in directories)]
+    targets = sorted({fold(canonical(p)): canonical(p) for p in sorted(paths)}.values(), key=fold)
+    directories = [fold(t) for t in targets if t.endswith("/")]
+    targets = [t for t in targets if not any(fold(t) != d and fold(t).startswith(d) for d in directories)]
     lines = ["*", "!/openwiki/"]
     opened: set[str] = set()
     for t in targets:
         parts = t.rstrip("/").split("/")
         for i in range(1, len(parts)):
             ancestor = "/".join(parts[:i])
-            if ancestor.lower() not in opened:
+            if fold(ancestor) not in opened:
                 lines += [f"!/{ancestor}/", f"/{ancestor}/*"]
-                opened.add(ancestor.lower())
+                opened.add(fold(ancestor))
         lines.append(f"!/{t}")
     return lines
 
