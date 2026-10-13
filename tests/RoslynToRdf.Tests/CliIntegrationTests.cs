@@ -6,6 +6,27 @@ namespace RoslynToRdf.Tests;
 public class CliIntegrationTests
 {
     [Fact]
+    public async Task Cli_SkillHelp_DoesNotInheritAssemblyArgument()
+    {
+        var result = await RunCliAsync(["skill", "--help"]);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("skill [options]", result.Stdout);
+        Assert.Contains("--install", result.Stdout);
+        Assert.DoesNotContain("<assembly>", result.Stdout);
+        Assert.DoesNotContain("roslyn2rdf <assembly>", result.Stdout);
+    }
+
+    [Fact]
+    public async Task Cli_SkillRejectsPositionalAssemblyArgument()
+    {
+        var result = await RunCliAsync(["skill", "not-an-assembly.dll"]);
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.DoesNotContain("Assembly not found", result.Stderr);
+    }
+
+    [Fact]
     public async Task Cli_TurtleOutput_WritesFileWithPrefixes()
     {
         var source = @"
