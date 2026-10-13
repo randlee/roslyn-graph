@@ -37,13 +37,13 @@ commands that crash natively (for example Windows exit code 0xC0000005) are retr
 
 | Code | Meaning and fix |
 |---|---|
-| `SOLUTION_NOT_FOUND`, `SOLUTION_UNSUPPORTED`, `SOLUTION_EMPTY` | check `root`/`solution`; only .sln/.slnx with C# projects are supported |
+| `SOLUTION_NOT_FOUND`, `SOLUTION_UNSUPPORTED`, `SOLUTION_EMPTY` | check `root`/`solution`; only .sln/.slnx with C# or VB projects are supported |
 | `PROJECT_NOT_FOUND`, `PROJECT_UNREADABLE` | a project listed by the solution is missing or not valid XML |
 | `PROJECT_NOT_IN_SOLUTION`, `EXCLUDE_NOT_SELECTED` | a path in `collect.projects`/`exclude` does not match a solution project (paths are relative to `root`) |
 | `ASSEMBLY_NAME_COMPUTED` | add the evaluated name under `assembly_names` |
 | `BUILD_OUTPUT_MISSING` | build the solution; or add an `outputs` entry for a project that writes elsewhere; or exclude it |
-| `NO_OUTPUT_FOUND` | (discover) a project has no built DLL yet; build first |
-| `BUILD_OUTPUT_STALE` | sources or fingerprint files are newer than the DLL; rebuild |
+| `NO_OUTPUT_FOUND` | (discover) a project has no built managed assembly output yet; build first |
+| `BUILD_OUTPUT_STALE` | sources or fingerprint files are newer than the managed assembly output; rebuild |
 | `SOURCE_DIRTY` | commit the changes and rebuild, or pass `--allow-dirty` if the user wants that state captured |
 | `FINGERPRINT_FILE_MISSING` | a `fingerprint_files` entry does not exist; fix the path |
 | `ASSETS_NOT_FOUND` | a project has no `obj/project.assets.json`; restore/build the solution |
@@ -52,7 +52,7 @@ commands that crash natively (for example Windows exit code 0xC0000005) are retr
 | `PACKAGE_VERSION_DRIFT` | the solution restored another version than the nuget profile pins; update the profile |
 | `PACKAGE_OUTPUT_DIFFERS` | the package DLL in the build output is not the package's DLL; rebuild after restore |
 | `OVERLAY_NOT_IN_POLICY` | add the overlay's assembly to the policy, or remove the overlay |
-| `DUPLICATE_OUTPUT` | two selected projects (or a package listed twice) resolve to the same DLL; give the projects distinct `outputs` entries or exclude all but one; never merged silently |
+| `DUPLICATE_OUTPUT` | two selected projects (or a package listed twice) resolve to the same assembly output; give the projects distinct `outputs` entries or exclude all but one; never merged silently |
 
 ## NuGet
 

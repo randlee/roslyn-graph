@@ -68,7 +68,7 @@ def test_oxigraph_missing_input_is_an_error():
     assert oxigraph.unexpected_stderr("Error while loading file a.nt: The system cannot find the file specified. (os error 2)")
 
 
-def test_read_solution_keeps_only_csproj(tmp_path):
+def test_read_solution_keeps_csharp_and_visual_basic_projects(tmp_path):
     sln = tmp_path / "App.sln"
     sln.write_text(
         'Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Folder", "Folder", "{11111111-1111-1111-1111-111111111111}"\n'
@@ -77,8 +77,12 @@ def test_read_solution_keeps_only_csproj(tmp_path):
         encoding="utf-8-sig",
     )
     projects = msbuild.read_solution(sln)
-    assert [(p.name, p.relative_path) for p in projects] == [("Lib", "../Lib/Lib.csproj")]
+    assert [(p.name, p.relative_path) for p in projects] == [
+        ("Lib", "../Lib/Lib.csproj"),
+        ("Vb", "Vb/Vb.vbproj"),
+    ]
     assert projects[0].path == (tmp_path.parent / "Lib" / "Lib.csproj").resolve()
+    assert projects[1].path == (tmp_path / "Vb" / "Vb.vbproj").resolve()
 
 
 def test_read_slnx(tmp_path):

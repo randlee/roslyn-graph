@@ -7,6 +7,40 @@ namespace RoslynToRdf.Tests;
 public class AssemblyGraphExtractorTests
 {
     [Fact]
+    public void Extract_UnresolvedPropertyType_DoesNotFail()
+    {
+        var source = @"
+namespace Sample;
+public class C
+{
+    public Missing.NamespaceType Value { get; set; }
+}
+";
+
+        var compilation = TestUtilities.CreateCompilation(source, "ExtractorUnresolvedPropertyType");
+        var property = compilation.GetTypeByMetadataName("Sample.C")!.GetMembers("Value").OfType<IPropertySymbol>().Single();
+        var unresolvedType = property.Type;
+        Assert.IsAssignableFrom<INamedTypeSymbol>(unresolvedType);
+
+        var emitter = new TestEmitter();
+        var options = new ExtractionOptions
+        {
+            BaseUri = "http://test.example/",
+            IncludePrivate = true,
+            IncludeInternal = true,
+            IncludeExternalTypes = true,
+            IncludeAttributes = false,
+            ExtractExceptions = false,
+            ExtractSeeAlso = false
+        };
+
+        new AssemblyGraphExtractor(emitter, options).Extract(compilation, compilation.Assembly);
+
+        var unresolvedIri = new IriMinter("http://test.example/").Type(unresolvedType);
+        Assert.Contains(emitter.Triples, triple => triple.Object == unresolvedIri);
+    }
+
+    [Fact]
     public void Extract_EmitsTypeAndMembers()
     {
         var source = @"

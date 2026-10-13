@@ -45,7 +45,12 @@ def assembly_identity(m: dict[str, Any]) -> str:
     extractor = m["extraction"]["extractorId"]
     if m["origin"]["kind"] == "source":
         o, b = m["origin"], m["build"]
-        parts = ["assembly/v2", "source", o["id"], o["commit"], o.get("dirtyHash", ""), b["fingerprint"], b["targetFramework"]]
+        # Keep already-published v2 manifests valid. v3 adds project provenance to the graph,
+        # so the project path must participate in identity and cannot reuse a v2 snapshot.
+        version = "v2" if m.get("identity", "").startswith("assembly/v2|") else "v3"
+        parts = [f"assembly/{version}", "source", o["id"], o["commit"], o.get("dirtyHash", ""), b["fingerprint"], b["targetFramework"]]
+        if version == "v3":
+            parts.append(b["project"])
     else:
         p = m["package"]
         parts = ["assembly/v2", "nuget", p["id"].lower(), p["version"], p["nupkgSha256"], p["asset"], p["dependenciesHash"], p["targetFramework"]]

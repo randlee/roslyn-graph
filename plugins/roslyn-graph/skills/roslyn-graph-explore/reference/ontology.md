@@ -136,17 +136,21 @@
 |---|---|---|
 | `rg:LogicalType` |  | One display/query node per compatible type across versions. Never owl:sameAs its physical types. |
 | `rg:LogicalTypeView` |  | A derived store that adds overlay components and a logical-type projection to an immutable solution store. |
+| `rg:Project` |  | A source project identified by repository ID and repository-relative project path. |
 | `rg:SolutionBuild` |  | One configured build composed into a solution store; described in the store's metadata named graph. |
 
 ### Properties
 
 | Property | Domain | Range | Notes |
 |---|---|---|---|
+| `rg:builtFromProject` | `dt:Assembly` | `rg:Project` | Source project that produced a source assembly |
 | `rg:logicalType` | `dt:Type` | `rg:LogicalType` | Links a physical, versioned dt:Type to its logical type |
 | `rg:references` | `dt:Type` | `dt:Type` | Written only into exported traversal graphs: the subject type uses the object type as a base type, interface, member type, parameter type or generic argument |
 | `rg:assemblyName` | `rg:LogicalType` | `xsd:string` |  |
 | `rg:baseSolution` | `rg:LogicalTypeView` | `rg:SolutionBuild` |  |
 | `rg:policy` | `rg:LogicalTypeView` | `xsd:string` |  |
+| `rg:projectRelativePath` | `rg:Project` | `xsd:string` | Project file path relative to the owning repository root, with forward slashes |
+| `rg:projectRepository` | `rg:Project` | `xsd:string` | Repository ID from the source component manifest |
 | `rg:branch` | `rg:SolutionBuild` | `xsd:string` |  |
 | `rg:buildFingerprint` | `rg:SolutionBuild` | `xsd:string` |  |
 | `rg:commit` | `rg:SolutionBuild` | `xsd:string` |  |

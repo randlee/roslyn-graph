@@ -44,6 +44,11 @@ def assembly_iri(name: str, version: str) -> str:
     return f"{DOTNET_BASE}/assembly/{iri_escape(name)}/{iri_escape(version)}"
 
 
+def project_iri(repository_id: str, relative_path: str) -> str:
+    """Stable project identity within a repository, independent of checkout location."""
+    return f"urn:roslyn-graph:project:{sha256_text(repository_id + '|' + relative_path)[:32]}"
+
+
 def nt_literal(value: str) -> str:
     escaped = (
         value.replace("\\", "\\\\").replace('"', '\\"').replace("\r", "\\r").replace("\n", "\\n").replace("\t", "\\t")

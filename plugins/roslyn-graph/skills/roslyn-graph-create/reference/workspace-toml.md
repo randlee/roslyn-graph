@@ -26,7 +26,7 @@ oxigraph = "0.5.8"           # required: the installed Oxigraph must be this exa
 kind = "solution"                          # optional; "solution" is the default
 root = "../app-checkout"                   # required
 solution = "App/App.sln"                   # required; .sln or .slnx
-output_dir = "App/bin/Debug"               # required; where the build writes <AssemblyName>.dll
+output_dir = "App/bin/Debug"               # required; where the build writes the managed assembly output
 fingerprint_files = [                      # files whose content defines the build (hashed into the identity)
   "App/Common.targets",
   "Build/Platform.targets",
@@ -52,11 +52,11 @@ packages = ["contoso_data_2_4"]            # optional; nuget profiles this solut
 ```
 
 What the skill derives (details in [solution-profiles.md](solution-profiles.md)):
-- the DLL for a project: `outputs[project]` or `output_dir`, plus `/<AssemblyName>.dll`;
+- the managed assembly output for a project: `outputs[project]` or `output_dir`, plus `/<AssemblyName>.exe` for `OutputType` `Exe`/`WinExe`, otherwise `/<AssemblyName>.dll`;
 - the owning repository: the git repository containing the project; its folder name is the origin ID;
 - the build fingerprint: `<configuration>-<target_framework>[-<platform>]-<16 hex>`, hashing those three
   values and every `fingerprint_files` entry's path and content;
-- search directories: the DLL's folder, `output_dir`, `search_dirs`, and every package asset folder in
+- search directories: the assembly's folder, `output_dir`, `search_dirs`, and every package asset folder in
   the project's `obj/project.assets.json`.
 
 ## NuGet profile

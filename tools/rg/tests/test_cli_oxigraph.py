@@ -3,12 +3,13 @@
 import json
 import subprocess
 import sys
+from types import SimpleNamespace
 from pathlib import Path
 
 import pytest
 
 from conftest import SCRIPTS, requires_oxigraph
-from roslyn_graph import oxigraph
+from roslyn_graph import artifacts, build, oxigraph
 from roslyn_graph.result import RgError
 
 
@@ -126,3 +127,89 @@ def test_s8_rejects_an_own_type_written_only_as_a_stub(tmp_path):
          "extraction": {"ttlUniqueTriples": len(lines)}}
     checks = {c.id: c for c in validate.assembly(tmp_path / "artifact", m, published=False).items}
     assert checks["S7"].passed and not checks["S8"].passed
+
+
+@requires_oxigraph
+def test_type_to_project_provenance_query_returns_repo_and_relative_path(tmp_path):
+    from roslyn_graph.util import assembly_iri, nt_iri, project_iri, RDF_TYPE, RG
+
+    assembly = assembly_iri("PixelMeasurement", "1.0.0.0")
+    type_iri = "http://dotnet.example/type/PixelMeasurement/1.0.0.0/MeasurementFilter"
+    manifest = {
+        "origin": {"kind": "source", "id": "TrueTestCore"},
+        "build": {"project": "TrueTest_Analyses/PixelMeasurement/MeasurementFilter/MeasurementFilter.vbproj"},
+    }
+    lines = [
+        f"{nt_iri(type_iri)} {nt_iri(RDF_TYPE)} {nt_iri('http://dotnet.example/ontology/Type')} .",
+        f"{nt_iri(type_iri)} {nt_iri('http://dotnet.example/ontology/definedInAssembly')} {nt_iri(assembly)} .",
+        *build.project_provenance_lines(manifest, assembly),
+    ]
+    nt = tmp_path / "provenance.nt"
+    nt.write_text("\n".join(lines) + "\n")
+    store = tmp_path / "store"
+    oxigraph.load(store, nt)
+
+    rows = oxigraph.select(store, f"""PREFIX dt: <http://dotnet.example/ontology/> PREFIX rg: <{RG}>
+      SELECT ?repository ?path WHERE {{
+        <{type_iri}> dt:definedInAssembly ?assembly .
+        ?assembly rg:builtFromProject ?project .
+        ?project a rg:Project ; rg:projectRepository ?repository ; rg:projectRelativePath ?path .
+      }}""")
+    assert rows == [{"repository": "TrueTestCore", "path": "TrueTest_Analyses/PixelMeasurement/MeasurementFilter/MeasurementFilter.vbproj"}]
+    assert project_iri("TrueTestCore", manifest["build"]["project"]) in "\n".join(lines)
+
+
+@requires_oxigraph
+def test_snapshot_publishes_validated_type_to_project_provenance(tmp_path, monkeypatch):
+    from roslyn_graph.plan import Component
+    from roslyn_graph.util import RG, sha256_file
+
+    dll = tmp_path / "Lib.dll"
+    dll.write_bytes(b"test assembly bytes")
+    assembly = "http://dotnet.example/assembly/Lib/1.0.0.0"
+    type_iri = "http://dotnet.example/type/Lib/1.0.0.0/Lib.Widget"
+    source_manifest = {
+        "origin": {"kind": "source", "id": "Repo", "repository": str(tmp_path / "Repo"), "commit": "c1", "dirtyHash": ""},
+        "build": {"fingerprint": "debug-net10.0-test", "targetFramework": "net10.0", "project": "src/Lib.csproj"},
+        "assembly": {"sha256": sha256_file(dll), "expectedName": "Lib", "inputPath": str(dll)},
+        "extraction": {"extractorId": "e1"},
+    }
+    component = Component("p", "base", dll, "Lib", [], source_manifest)
+    component.artifact_id = artifacts.artifact_id(artifacts.assembly_identity(source_manifest))
+    base = artifacts.base_dir(tmp_path / ".roslyn-graph", "assembly-source", origin="Repo")
+    component.destination, component.exists = artifacts.resolve_destination(base, component.artifact_id)
+
+    class FakeExtractor:
+        id = "e1"
+
+        def to_json(self):
+            return {"id": self.id}
+
+    fake_plan = SimpleNamespace(
+        root=tmp_path / ".roslyn-graph",
+        extractor=FakeExtractor(),
+        oxigraph_version="test",
+        workspace=SimpleNamespace(path=tmp_path / "workspace.toml", sha256="workspace-hash"),
+        collection=SimpleNamespace(name="test-collection"),
+    )
+
+    def fake_extract(_extractor, _assembly_path, output, _search_dirs):
+        output.write_text(f"""@prefix dt: <http://dotnet.example/ontology/> .
+<{assembly}> a dt:Assembly ; dt:name "Lib" ; dt:version "1.0.0.0" .
+<{type_iri}> a dt:Type, dt:Class ; dt:name "Widget" ; dt:fullName "Lib.Widget" ;
+  dt:typeKind "Class" ; dt:accessibility "Public" ; dt:definedInAssembly <{assembly}> .
+""")
+        return []
+
+    monkeypatch.setattr(build.extractor, "extract", fake_extract)
+    result = build.snapshot(fake_plan, component)
+    manifest = artifacts.read_manifest(component.destination / "manifest.json")
+    assert result["status"] == "created"
+    assert {c["id"]: c["status"] for c in manifest["validation"]["staging"]}["S9"] == "pass"
+    rows = oxigraph.select(component.destination / "store.oxigraph", f"""PREFIX dt: <http://dotnet.example/ontology/> PREFIX rg: <{RG}>
+      SELECT ?repository ?path WHERE {{
+        <{type_iri}> dt:definedInAssembly ?assembly .
+        ?assembly rg:builtFromProject ?project .
+        ?project rg:projectRepository ?repository ; rg:projectRelativePath ?path .
+      }}""")
+    assert rows == [{"repository": "Repo", "path": "src/Lib.csproj"}]

@@ -4,10 +4,10 @@
 
 The skill never evaluates or runs MSBuild. It reads:
 
-1. the `.sln`/`.slnx` project list (only `.csproj` entries; solution folders are ignored);
+1. the `.sln`/`.slnx` project list (`.csproj` and `.vbproj` entries; solution folders are ignored);
 2. each project file's `<AssemblyName>` (or the file name when absent; `$(...)` values need an
    `assembly_names` entry);
-3. the build output `<output dir>/<AssemblyName>.dll`;
+3. the managed build output `<output dir>/<AssemblyName>.exe` for `OutputType` `Exe`/`WinExe`, otherwise `<output dir>/<AssemblyName>.dll`;
 4. `obj/project.assets.json` of each project, for dependency folders and consumed package versions;
 5. git state of the repository containing each project.
 
@@ -17,8 +17,8 @@ The skill never evaluates or runs MSBuild. It reads:
 
 | Code | Rule |
 |---|---|
-| `BUILD_OUTPUT_MISSING` | the DLL exists exactly where the TOML says (no directory scanning) |
-| `BUILD_OUTPUT_STALE` | the DLL is newer than every source-like file in its project folder (`.cs`, `.csproj`, `.props`, `.targets`, `.resx`, `.xaml`, `.settings`, `.config`, `.json`, `.editorconfig`; `bin`/`obj` excluded) and every `fingerprint_files` entry |
+| `BUILD_OUTPUT_MISSING` | the expected managed assembly exists exactly where the TOML says (no directory scanning) |
+| `BUILD_OUTPUT_STALE` | the output is newer than every source-like file in its project folder (`.cs`, `.vb`, `.csproj`, `.vbproj`, `.props`, `.targets`, `.resx`, `.xaml`, `.settings`, `.config`, `.json`, `.editorconfig`; `bin`/`obj` excluded) and every `fingerprint_files` entry |
 | `SOURCE_DIRTY` | the owning repository has no uncommitted or untracked changes (or `--allow-dirty`, which hashes the dirty state into the identity) |
 | `PACKAGE_VERSION_DRIFT` | every project that restored a `collect.packages` package restored the version its nuget profile pins |
 | `PACKAGE_NOT_CONSUMED` | a listed package is actually restored by the solution |

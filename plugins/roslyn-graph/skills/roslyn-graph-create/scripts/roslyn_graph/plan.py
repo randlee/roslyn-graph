@@ -1,6 +1,6 @@
 """Resolve a workspace collection into an exact, reviewable plan.
 
-The plan names every DLL, its provenance, search directories, artifact ID and destination. Solution
+The plan names every source assembly output, its provenance, search directories, artifact ID and destination. Solution
 profiles are checked against their build output (build check); nuget profiles are restored in
 isolation. The only write is the NuGet restore cache under <artifact-root>/cache.
 """
@@ -18,7 +18,7 @@ from .config import Collection, NugetProfile, SolutionProfile, Workspace
 from .result import ProblemList, RgError
 from .util import full_path, rel_posix, sha256_file, sha256_text
 
-SOURCE_EXTENSIONS = {".cs", ".csproj", ".props", ".targets", ".resx", ".xaml", ".settings", ".config", ".json", ".editorconfig"}
+SOURCE_EXTENSIONS = {".cs", ".vb", ".csproj", ".vbproj", ".props", ".targets", ".resx", ".xaml", ".settings", ".config", ".json", ".editorconfig"}
 SKIP_DIRS = {"bin", "obj", ".git", ".vs", "node_modules", "TestResults"}
 
 
@@ -209,31 +209,32 @@ def _solution_components(profile: SolutionProfile, role: str, tool: extractor.Ex
     for project in projects:
         rel = rel_posix(project.path, profile.root)
         try:
-            name = profile.assembly_names.get(rel) or msbuild.read_project(project.path).assembly_name
+            info = msbuild.read_project(project.path)
+            name = profile.assembly_names.get(rel) or info.assembly_name
         except RgError as exc:
             problems.extend(exc)
             continue
         output_dir = profile.outputs.get(rel, profile.output_dir)
-        dll = output_dir / f"{name}.dll"
-        if not dll.is_file():
+        assembly_path = output_dir / f"{name}{info.output_extension}"
+        if not assembly_path.is_file():
             problems.add(
                 "BUILD_OUTPUT_MISSING",
-                f"{rel}: expected build output {dll} does not exist.",
+                f"{rel}: expected build output {assembly_path} does not exist.",
                 "Build the solution successfully first. If this project writes elsewhere, add it under "
                 f"[profiles.{profile.name}.outputs]; if it should not be collected, add it to collect.exclude.",
                 project=rel,
             )
             continue
-        dll_mtime = dll.stat().st_mtime
+        output_mtime = assembly_path.stat().st_mtime
         newest, newest_path = newest_input(project.path.parent)
-        if max(newest, fingerprint_mtime) > dll_mtime:
+        if max(newest, fingerprint_mtime) > output_mtime:
             stale_source = newest_path if newest >= fingerprint_mtime else "a fingerprint file"
             problems.add(
                 "BUILD_OUTPUT_STALE",
-                f"{rel}: {dll.name} is older than {stale_source}.",
+                f"{rel}: {assembly_path.name} is older than {stale_source}.",
                 "Rebuild the solution; the skill only snapshots outputs built from the current sources.",
-                dll=str(dll),
-                dllTime=_iso(dll_mtime),
+                output=str(assembly_path),
+                outputTime=_iso(output_mtime),
                 sourceTime=_iso(max(newest, fingerprint_mtime)),
             )
             continue
@@ -241,12 +242,12 @@ def _solution_components(profile: SolutionProfile, role: str, tool: extractor.Ex
         if repo.dirty and not allow_dirty:
             problems.add(
                 "SOURCE_DIRTY",
-                f"{repo.name} has uncommitted changes, so its commit does not describe {dll.name}.",
+                f"{repo.name} has uncommitted changes, so its commit does not describe {assembly_path.name}.",
                 "Commit or stash the changes and rebuild, or pass --allow-dirty to record a dirty-state hash in the identity.",
                 repository=str(repo.root),
             )
             continue
-        search = [dll.parent, profile.output_dir, *profile.search_dirs]
+        search = [assembly_path.parent, profile.output_dir, *profile.search_dirs]
         assets_file = msbuild.assets_path(project.path)
         if assets_file.is_file():
             try:
@@ -262,12 +263,12 @@ def _solution_components(profile: SolutionProfile, role: str, tool: extractor.Ex
             "build": {
                 "profile": profile.name, "fingerprint": fp, "configuration": profile.configuration,
                 "targetFramework": profile.target_framework, "platform": profile.platform,
-                "project": rel, "solution": rel_posix(profile.solution, profile.root),
+                "project": rel_posix(project.path, repo.root), "solution": rel_posix(profile.solution, profile.root),
             },
-            "assembly": {"inputPath": str(dll), "sha256": sha256_file(dll), "expectedName": name},
+            "assembly": {"inputPath": str(assembly_path), "sha256": sha256_file(assembly_path), "expectedName": name},
             "extraction": {"extractorId": tool.id},
         }
-        components.append(Component(profile.name, role, dll, name, _unique(search), manifest))
+        components.append(Component(profile.name, role, assembly_path, name, _unique(search), manifest))
     return components
 
 

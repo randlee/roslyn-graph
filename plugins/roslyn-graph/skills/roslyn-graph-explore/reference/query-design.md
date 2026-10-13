@@ -20,6 +20,23 @@ each physical type of a policy assembly to one `rg:LogicalType` (`rg:logicalType
 Solution metadata (`rg:SolutionBuild`, see [../queries/solution-metadata.rq](../queries/solution-metadata.rq))
 records the profile, repository, branch, commit, configuration, platform and target framework.
 
+Source assembly graphs also connect the assembly to an `rg:Project` with `rg:builtFromProject`.
+The project node carries `rg:projectRepository` (the repository ID) and `rg:projectRelativePath`
+(forward-slash path relative to that repository's root). Package assemblies have no source project.
+For example, to find the owning project of each type:
+
+```sparql
+PREFIX dt: <http://dotnet.example/ontology/>
+PREFIX rg: <http://roslyn-graph.example/ontology/>
+SELECT ?type ?repository ?path WHERE {
+  GRAPH ?g {
+    ?type dt:definedInAssembly ?assembly .
+    ?assembly rg:builtFromProject ?project .
+    ?project rg:projectRepository ?repository ; rg:projectRelativePath ?path .
+  }
+}
+```
+
 ## Rules that keep queries fast
 
 1. **Scope to the defining graph.** Put the type patterns inside `GRAPH ?g { … }` and start from the

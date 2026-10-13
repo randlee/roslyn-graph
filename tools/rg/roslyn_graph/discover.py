@@ -20,15 +20,16 @@ from .util import full_path, rel_posix
 FINGERPRINT_NAMES = {"directory.build.props", "directory.build.targets", "directory.packages.props", "global.json", "nuget.config"}
 
 
-def _find_outputs(name: str, places: list[Path]) -> list[dict[str, Any]]:
+def _find_outputs(name: str, extension: str, places: list[Path]) -> list[dict[str, Any]]:
     found = {}
     for place in places:
         if not place.is_dir():
             continue
         for dirpath, dirnames, filenames in os.walk(place):
             dirnames[:] = [d for d in dirnames if d.lower() not in {"obj", "ref", "refint", ".git", "node_modules"}]
-            if f"{name}.dll" in filenames:
-                path = Path(dirpath) / f"{name}.dll"
+            output_name = f"{name}{extension}"
+            if output_name in filenames:
+                path = Path(dirpath) / output_name
                 found[str(path).lower()] = {"path": str(path), "modified": path.stat().st_mtime}
     return sorted(found.values(), key=lambda f: -f["modified"])
 
@@ -113,7 +114,7 @@ def solution(solution_path: Path, root: Path | None, tfm: str | None) -> dict[st
     solution_path = full_path(solution_path)
     projects = msbuild.read_solution(solution_path)
     if not projects:
-        raise RgError.of("SOLUTION_EMPTY", f"{solution_path} lists no C# projects.")
+        raise RgError.of("SOLUTION_EMPTY", f"{solution_path} lists no C# or VB projects.")
     root = full_path(root) if root else Path(os.path.commonpath([solution_path.parent, *[p.path.parent for p in projects]]))
     repos: dict[str, dict[str, Any]] = {}
     packages: dict[str, dict[str, set[str]]] = {}
@@ -128,6 +129,8 @@ def solution(solution_path: Path, root: Path | None, tfm: str | None) -> dict[st
         try:
             info = msbuild.read_project(project.path)
             row["assemblyName"] = info.assembly_name
+            row["outputType"] = info.output_type
+            row["assemblyExtension"] = info.output_extension
             row["targetFrameworks"] = info.target_frameworks
             frameworks.update(info.target_frameworks)
         except RgError as exc:
@@ -141,7 +144,7 @@ def solution(solution_path: Path, root: Path | None, tfm: str | None) -> dict[st
         except RgError as exc:
             row["repository"] = None
             row["problem"] = exc.problems[0].to_json()
-        outputs = _find_outputs(info.assembly_name, [solution_path.parent / "bin", project.path.parent / "bin"])
+        outputs = _find_outputs(info.assembly_name, info.output_extension, [solution_path.parent / "bin", project.path.parent / "bin"])
         row["outputCandidates"] = [o["path"] for o in outputs[:3]]
         if outputs:
             output_dirs[rel_posix(Path(outputs[0]["path"]).parent, root)] += 1
@@ -167,7 +170,10 @@ def solution(solution_path: Path, root: Path | None, tfm: str | None) -> dict[st
             if directory != common_output:
                 overrides[row["project"]] = directory
         elif "assemblyName" in row:
-            row["problem"] = {"code": "NO_OUTPUT_FOUND", "message": "No built DLL found; build the solution before designing the profile."}
+            row["problem"] = {
+                "code": "NO_OUTPUT_FOUND",
+                "message": f"No built managed assembly output ({row['assemblyExtension']}) found; build the solution before designing the profile.",
+            }
     return {
         "type": "discovery",
         "solution": str(solution_path),

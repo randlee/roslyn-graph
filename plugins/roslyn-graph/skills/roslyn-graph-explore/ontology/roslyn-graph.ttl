@@ -13,6 +13,7 @@ rg: a owl:Ontology ;
 rg:SolutionBuild a rdfs:Class ; rdfs:label "SolutionBuild" ; rdfs:comment "One configured build composed into a solution store; described in the store's metadata named graph." .
 rg:LogicalTypeView a rdfs:Class ; rdfs:label "LogicalTypeView" ; rdfs:comment "A derived store that adds overlay components and a logical-type projection to an immutable solution store." .
 rg:LogicalType a rdfs:Class ; rdfs:label "LogicalType" ; rdfs:comment "One display/query node per compatible type across versions. Never owl:sameAs its physical types." .
+rg:Project a rdfs:Class ; rdfs:label "Project" ; rdfs:comment "A source project identified by repository ID and repository-relative project path." .
 
 # Solution metadata
 rg:name a rdf:Property ; rdfs:domain rg:SolutionBuild ; rdfs:range xsd:string .
@@ -27,6 +28,9 @@ rg:configuration a rdf:Property ; rdfs:domain rg:SolutionBuild ; rdfs:range xsd:
 rg:platform a rdf:Property ; rdfs:domain rg:SolutionBuild ; rdfs:range xsd:string .
 rg:includesGraph a rdf:Property ; rdfs:comment "Named graph IRI of a component assembly artifact" ; rdfs:domain rg:SolutionBuild .
 rg:includesArtifact a rdf:Property ; rdfs:comment "Full SHA-256 artifact ID of a component" ; rdfs:domain rg:SolutionBuild ; rdfs:range xsd:string .
+rg:builtFromProject a rdf:Property ; rdfs:label "builtFromProject" ; rdfs:comment "Source project that produced a source assembly" ; rdfs:domain dt:Assembly ; rdfs:range rg:Project .
+rg:projectRepository a rdf:Property ; rdfs:label "projectRepository" ; rdfs:comment "Repository ID from the source component manifest" ; rdfs:domain rg:Project ; rdfs:range xsd:string .
+rg:projectRelativePath a rdf:Property ; rdfs:label "projectRelativePath" ; rdfs:comment "Project file path relative to the owning repository root, with forward slashes" ; rdfs:domain rg:Project ; rdfs:range xsd:string .
 
 # Logical-type projection
 rg:policy a rdf:Property ; rdfs:domain rg:LogicalTypeView ; rdfs:range xsd:string .

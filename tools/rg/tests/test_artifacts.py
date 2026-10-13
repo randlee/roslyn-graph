@@ -10,7 +10,7 @@ from roslyn_graph.result import RgError
 def source_manifest(**overrides):
     m = {
         "origin": {"kind": "source", "id": "Repo", "commit": "c1", "dirtyHash": ""},
-        "build": {"fingerprint": "debug-net10.0-abc", "targetFramework": "net10.0"},
+        "build": {"fingerprint": "debug-net10.0-abc", "targetFramework": "net10.0", "project": "src/Lib/Lib.csproj"},
         "assembly": {"sha256": "d" * 64},
         "extraction": {"extractorId": "e1"},
     }
@@ -25,6 +25,14 @@ def test_assembly_identity_changes_with_commit_dll_and_extractor():
     assert artifacts.assembly_identity(source_manifest(assembly={"sha256": "e" * 64})) != base
     assert artifacts.assembly_identity(source_manifest(extraction={"extractorId": "e2"})) != base
     assert artifacts.assembly_identity(source_manifest(origin={"dirtyHash": "x"})) != base
+    assert artifacts.assembly_identity(source_manifest(build={"project": "src/Other/Lib.csproj"})) != base
+    assert base.startswith("assembly/v3|source|")
+
+
+def test_legacy_source_identity_remains_valid():
+    manifest = source_manifest()
+    manifest["identity"] = "assembly/v2|source|Repo|c1||debug-net10.0-abc|net10.0|" + "d" * 64 + "|e1"
+    assert artifacts.assembly_identity(manifest) == manifest["identity"]
 
 
 def test_nuget_identity_uses_package_fields():
