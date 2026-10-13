@@ -116,7 +116,7 @@ commands that crash natively (for example Windows exit code 0xC0000005) are retr
 
 | Code | Meaning and fix |
 |---|---|
-| `RECORDS_INPUT` | pass exactly one of `--graph` (an existing `.nt`) or `--selection` (a `roslyn-graph-selection/2` payload) |
+| `RECORDS_INPUT` | pass exactly one of `--graph` (an existing `.nt`) or `--selection` (a `roslyn-graph-selection/2` payload); a broken `<graph>.context.json` also fails here: regenerate the graph |
 | `RECORDS_NO_STORE` | the input has no `.context.json` or `store`; pass the solution or view `manifest.json` with `--manifest` |
 | `RECORDS_TYPE_NOT_IN_STORE` | some input types (`context.missing`) are not component types of the store; the input came from another store, so pass its manifest |
 | `RECORDS_MANIFEST_BROKEN` | a component manifest of the store cannot be found from its artifact root; validate the store |
@@ -158,6 +158,8 @@ commands that crash natively (for example Windows exit code 0xC0000005) are retr
 | `OPENWIKI_BRIEF_SUMMARIZED` | (warning) more found types than `--max-listed-types`; the brief lists namespaces, the ignore file still opens every file |
 | `OPENWIKI_DIRECTORY_FALLBACK` | (warning) types without declaring files; their project directories were opened |
 | `OPENWIKI_FILE_MISSING` | (warning) opened paths are not in the checkout; check `--repo-root` |
+| `OPENWIKI_ROOT_PROJECT` | (warning) types without declaring files belong to a project at the repository root; they stay out of scope rather than opening the whole repository |
+| `OPENWIKI_FILE_UNREADABLE` | the existing `.openwikiignore` or `openwiki/INSTRUCTIONS.md` is not readable UTF-8; re-save it as UTF-8 |
 
 ## Always
 

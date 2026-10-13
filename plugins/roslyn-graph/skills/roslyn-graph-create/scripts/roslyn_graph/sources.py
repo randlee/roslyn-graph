@@ -108,20 +108,29 @@ class Project:
                 "drift": self.drift, "cached": self.cached, "declaredTypes": len(self.index), "languageVersion": self.language_version}
 
 
-def _locate(repository: Path, relative: str) -> Path | None:
-    """A profile-root-relative path (assembly/v2) or a repository-relative one: the first that exists."""
-    for candidate in (repository.parent / relative, repository / relative):
+def _locate(repository: Path, recorded: str, relative: str) -> Path | None:
+    """A profile-root-relative path (assembly/v2) or a repository-relative one: the first that exists.
+
+    Profile-root paths start with the recorded checkout's folder name, which a moved checkout (--repo-root) may
+    not share, so that prefix is stripped rather than resolved against the new checkout's parent.
+    """
+    prefix = Path(recorded).name + "/"
+    candidates = [repository / relative[len(prefix):]] if relative.startswith(prefix) else []
+    if repository == Path(recorded):
+        candidates.insert(0, repository.parent / relative)
+    for candidate in candidates + [repository / relative]:
         if candidate.is_file():
             return candidate
     return None
 
 
 def project_for(graph: str, component: dict[str, Any], relative: str, repo_roots: dict[str, Path]) -> Project:
+    """relative: the project's repository-relative path, computed from the component as recorded (records.project_path)."""
     origin = component["origin"]
     recorded = origin["repository"]
     repository = repo_roots.get(origin["id"], Path(recorded))
     build = component.get("build") or {}
-    solution = _locate(repository, build["solution"]) if build.get("solution") else None
+    solution = _locate(repository, recorded, build["solution"].replace("\\", "/")) if build.get("solution") else None
     return Project(graph, origin["id"], repository, recorded, origin.get("commit", ""), origin.get("dirtyHash", ""), relative, build,
                    solution)
 
@@ -241,8 +250,10 @@ def cache_key(p: Project, extractor_id: str) -> str:
 def index_project(p: Project, cache_dir: Path | None) -> None:
     """Fill p.index (full name -> repo-relative declaring files), from the cache when possible."""
     extractor_id = extractor.resolve().id
-    cache = cache_dir / f"{cache_key(p, extractor_id)}.json" if cache_dir else None
-    if cache and p.drift is None and cache.is_file():
+    # Only a clean checkout at the recorded commit is cached: the dirty hash cannot see edits to untracked files.
+    cacheable = cache_dir is not None and p.drift is None and not p.dirty_hash
+    cache = cache_dir / f"{cache_key(p, extractor_id)}.json" if cacheable else None
+    if cache and cache.is_file():
         try:
             data = json.loads(cache.read_text(encoding="utf-8"))
             p.index, p.language_version, p.symbols, p.cached = data["index"], data["languageVersion"], data["symbols"], True
@@ -264,7 +275,7 @@ def index_project(p: Project, cache_dir: Path | None) -> None:
         index.setdefault(t["name"], set()).add(path.relative_to(repo).as_posix())
     p.index = {name: sorted(files) for name, files in sorted(index.items())}
     p.language_version, p.symbols = response.get("languageVersion", ""), symbols_of(language, properties)
-    if cache and p.drift is None:
+    if cache:
         cache.parent.mkdir(parents=True, exist_ok=True)
         cache.write_text(json.dumps({"format": CACHE_VERSION, "project": p.to_json(), "languageVersion": p.language_version,
                                      "symbols": p.symbols, "index": p.index}, ensure_ascii=False), encoding="utf-8", newline="\n")

@@ -134,7 +134,7 @@ schema.
 | `repository` | string or null | manifest | repository ID of the source project; null for NuGet. A type spanning repositories fails with `RECORD_AMBIGUOUS_FIELD` |
 | `repositories` | list of string | manifest | repository IDs |
 | `projects` | list of string | manifest | repository-relative project paths |
-| `projectDirs` | list of string | manifest | directories of `projects`, with a trailing `/` |
+| `projectDirs` | list of string | manifest | directories of `projects`, with a trailing `/` (`./` for a project at the repository root) |
 | `files` | list of string | source | repository-relative declaring files (source locator) |
 | `locationStatus` | string | source | `found`, `compiler-generated`, `generated` or `nuget` |
 | `baseType` | string or null | store | full name of the base type's generic definition |
@@ -159,7 +159,7 @@ the store. For each source project behind the exported types:
 
 1. **Find the project.** The component manifest gives the checkout (`origin.repository`), the commit and the
    build: project, solution, configuration, target framework and platform.
-2. **Check the checkout.** It must be at the recorded commit, with the same uncommitted changes as the build
+2. **Check the checkout.** A moved checkout (`--repo-root`) may have any folder name. It must be at the recorded commit, with the same uncommitted changes as the build
    (usually none). Otherwise the export fails with `SOURCE_CHECKOUT_DRIFT`.
    - `--allow-drift` resolves from the current checkout anyway, with a warning. The index is then not cached.
    - `--repo-root ID=PATH` points at a checkout that has moved. It is repeatable, and the ID is the
@@ -171,7 +171,7 @@ the store. For each source project behind the exported types:
 4. **Ask Roslyn.** The extractor's `declarations` command parses those files with those symbols, for C# and
    VB, and names every declared type exactly as `dt:fullName`. An extractor without the command fails with
    `DECLARATIONS_UNSUPPORTED`; update it ([setup](../../roslyn-graph-create/reference/setup.md)).
-5. **Cache.** Clean checkouts are cached under `<data-root>/.roslyn-graph/cache/source-index/`, keyed by
+5. **Cache.** Clean checkouts at the recorded commit are cached (a dirty or drifted checkout is indexed every time) under `<data-root>/.roslyn-graph/cache/source-index/`, keyed by
    repository, commit, project, build and extractor. A re-export skips MSBuild and the scan (`cacheHits`).
 
 | `locationStatus` | Meaning | `files` |

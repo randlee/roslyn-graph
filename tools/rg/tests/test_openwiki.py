@@ -36,6 +36,13 @@ def test_chain_drops_paths_inside_an_opened_directory():
         ["*", "!/openwiki/", "!/src/", "/src/*", "!/src/A/", "!/src/AB/", "/src/AB/*", "!/src/AB/y.cs"]
 
 
+def test_chain_is_case_insensitive_like_openwiki():
+    assert openwiki.chain(["common/x.cs", "Common/y.cs"]) == \
+        ["*", "!/openwiki/", "!/Common/", "/Common/*", "!/Common/x.cs", "!/Common/y.cs"]
+    assert openwiki.chain(["src/a/", "src/A/x.cs", "SRC/b.cs"]) == ["*", "!/openwiki/", "!/SRC/", "/SRC/*", "!/SRC/A/", "!/SRC/b.cs"]
+    assert openwiki.chain(["A.cs", "a.cs"]) == ["*", "!/openwiki/", "!/A.cs"]
+
+
 @pytest.mark.parametrize("path", ["src/*.cs", "src/a?.cs", "src/!x.cs", "/abs.cs", "../up.cs", "src/./x.cs", "src//x.cs", " x.cs",
                                   "src\\x.cs", "C:/x.cs", "#x.cs", ""])
 def test_chain_rejects_paths_a_rule_cannot_match_exactly(path):
@@ -229,6 +236,28 @@ def test_unreadable_and_non_json_record_files(tmp_path, checkout):
     assert codes(info) == ["OPENWIKI_RECORDS_INVALID"]
 
 
+def test_a_root_project_is_never_opened(tmp_path, checkout):
+    rows = [rec("App.Root", dirs=("./",), namespace="App"), rec("App.Order", files=["src/Pay/Payment.cs"], namespace="App")]
+    result = openwiki.run([write_records(tmp_path / "r.jsonl", rows)], "p3", str(checkout), dry_run=True)
+    assert [w["code"] for w in result["warnings"]] == ["OPENWIKI_ROOT_PROJECT"] and result["warnings"][0]["types"] == ["App.Root"]
+    assert result["ignore"]["text"].splitlines()[1:-1] == ["*", "!/openwiki/", "!/src/", "/src/*", "!/src/Pay/", "/src/Pay/*",
+                                                           "!/src/Pay/Payment.cs"]
+
+
+def test_non_utf8_inputs_fail_cleanly(tmp_path, checkout):
+    bad = tmp_path / "bad.jsonl"
+    bad.write_bytes(b"\xff\xfe{")
+    with pytest.raises(RgError) as info:
+        openwiki.run([str(bad)], "p3", str(checkout))
+    assert codes(info) == ["OPENWIKI_RECORDS_INVALID"]
+    good = write_records(tmp_path / "r.jsonl", RECORDS)
+    (tmp_path / "r.context.json").write_bytes(b"\xff")  # an unreadable sidecar only loses provenance
+    (checkout / ".openwikiignore").write_bytes(b"secrets/\n\xff\n")
+    with pytest.raises(RgError) as info:
+        openwiki.run([good], "p3", str(checkout))
+    assert codes(info) == ["OPENWIKI_FILE_UNREADABLE"]
+
+
 def test_cli(tmp_path, checkout):
     path = write_records(tmp_path / "r.jsonl", RECORDS)
     proc = subprocess.run([sys.executable, str(SCRIPTS / "rg.py"), "openwiki-scope", "--records", path, "--repository", "p3",
@@ -269,13 +298,15 @@ console.log(JSON.stringify(probes.map(([p, dir]) => ignore.ignores(p, dir))));
 def test_chain_against_openwiki_matcher(tmp_path):
     script = tmp_path / "probe.mjs"
     script.write_text(PROBE % json.dumps(OPENWIKI_IGNORE_JS.as_uri()), encoding="utf-8")
-    body = openwiki.chain(["src/Billing/Orders/Order.cs", "src/Billing/Orders/OrderLine.cs", "src/Billing/Payments/", "Top.cs"])
+    body = openwiki.chain(["src/Billing/Orders/Order.cs", "src/Billing/Orders/OrderLine.cs", "src/Billing/Payments/", "Top.cs",
+                           "Common/y.cs", "common/x.cs"])
     text = openwiki.merge_block("secrets/\n", body, False, "f")
     allowed = [("src", True), ("src/Billing", True), ("src/Billing/Orders", True), ("src/Billing/Orders/Order.cs", False),
                ("SRC/billing/orders/order.cs", False), ("src/Billing/Orders/OrderLine.cs", False), ("src/Billing/Payments", True),
-               ("src/Billing/Payments/Deep/Pay.cs", False), ("Top.cs", False), ("openwiki", True), ("openwiki/x.md", False)]
+               ("src/Billing/Payments/Deep/Pay.cs", False), ("Top.cs", False), ("openwiki", True), ("openwiki/x.md", False),
+               ("Common", True), ("common", True), ("Common/y.cs", False), ("common/x.cs", False)]
     ignored = [("src/Billing/Orders/OrderMapper.cs", False), ("src/Billing/Other", True), ("src/Billing/Other/X.cs", False),
-               ("src/Other.cs", False), ("lib", True), ("lib/A.cs", False), ("README.md", False),
+               ("src/Other.cs", False), ("Common/z.cs", False), ("lib", True), ("lib/A.cs", False), ("README.md", False),
                ("src/Billing/Payments/secrets", True), ("src/Billing/Payments/secrets/key.txt", False)]
     probes = allowed + ignored
     proc = subprocess.run(["node", str(script)], input=json.dumps({"text": text, "probes": probes}), capture_output=True, text=True, encoding="utf-8")

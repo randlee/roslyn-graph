@@ -23,6 +23,7 @@ from .util import DT, RDF_TYPE, RG, nt_literal, resource, sha256_file
 
 SELECTION_FORMAT = "roslyn-graph-selection/2"
 MAX_VIOLATIONS = 20
+ROOT_DIR = "./"  # projectDirs of a project at the repository root
 
 # ---- field registry -------------------------------------------------------------------------
 
@@ -54,7 +55,7 @@ REGISTRY: dict[str, FieldSpec] = {f.name: f for f in [
               doc="repository ID of the source project; null for NuGet. A type spanning repositories fails with `RECORD_AMBIGUOUS_FIELD`"),
     FieldSpec("repositories", "list", "string", needs="manifest", doc="repository IDs"),
     FieldSpec("projects", "list", "string", needs="manifest", doc="repository-relative project paths"),
-    FieldSpec("projectDirs", "list", "string", needs="manifest", doc="directories of `projects`, with a trailing `/`"),
+    FieldSpec("projectDirs", "list", "string", needs="manifest", doc="directories of `projects`, with a trailing `/` (`./` for a project at the repository root)"),
     FieldSpec("files", "list", "string", needs="source", doc="repository-relative declaring files (source locator)"),
     FieldSpec("locationStatus", "scalar", "string", needs="source", doc="`found`, `compiler-generated`, `generated` or `nuget`"),
     FieldSpec("baseType", "scalar", "string", nullable=True, doc="full name of the base type's generic definition"),
@@ -289,7 +290,12 @@ def read_graph(path: Path) -> GraphInput:
     names = {s: n for s, n in names.items() if not classes.get(s, set()) & _NOT_TYPES}
     edges = {(s, o) for s, _, o in triples if s in names and o in names and s != o}
     sidecar = explore.context_path(path)
-    context = json.loads(sidecar.read_text(encoding="utf-8")) if sidecar.is_file() else None
+    try:
+        context = json.loads(sidecar.read_text(encoding="utf-8")) if sidecar.is_file() else None
+    except (OSError, ValueError) as exc:  # JSONDecodeError and UnicodeDecodeError
+        raise RgError.of("RECORDS_INPUT", f"{sidecar} is not a readable context file: {exc}",
+                         f"Regenerate {path.name} with rg.py graph or rg.py export, or delete the broken sidecar and pass --manifest.",
+                         path=str(sidecar)) from exc
     manifest = ((context or {}).get("source") or {}).get("manifest")
     return GraphInput("graph", path.resolve(), manifest, names, edges, context)
 
@@ -456,9 +462,8 @@ class Fields:
             origin = (self.store.components().get(graph) or {}).get("origin") or {}
             if origin.get("kind") == "source" and graph not in self.projects:
                 component = self.store.component_manifest(graph)
-                repository = repo_roots.get(origin["id"])
-                moved = component if repository is None else {**component, "origin": {**component["origin"], "repository": str(repository)}}
-                self.projects[graph] = sources.project_for(graph, moved, project_path(moved), repo_roots)
+                # The path comes from the component as recorded: a moved checkout may have another folder name.
+                self.projects[graph] = sources.project_for(graph, component, project_path(component), repo_roots)
         warnings = sources.index_all(list(self.projects.values()), self.store.root() / "cache" / "source-index", allow_drift)
         self.locations = {p: sources.locate(self.projects.get(self.graph_of[p]), names[p][0]) for p in physicals}
         return warnings
@@ -508,7 +513,7 @@ class Fields:
                     out[t] = [origin.get("id")]
                 else:
                     project = project_path(self.store.component_manifest(graph))
-                    out[t] = [project if name == "projects" else (project.rsplit("/", 1)[0] + "/" if "/" in project else "")]
+                    out[t] = [project if name == "projects" else (project.rsplit("/", 1)[0] + "/" if "/" in project else ROOT_DIR)]
         else:
             raise AssertionError(name)
         return out

@@ -484,3 +484,13 @@ def test_source_locations_from_moved_drifted_checkouts(tmp_path, view, monkeypat
     context = json.loads((tmp_path / "loc.context.json").read_text(encoding="utf-8"))
     assert context["repositories"]["App"]["checkout"] == str(app) and context["repositories"]["App"]["drift"].startswith("checkout is at")
     assert not (view.parents[2] / "cache" / "source-index").exists()  # drifted indexes are never cached
+
+
+def test_a_broken_graph_context_is_an_input_error(tmp_path):
+    graph = tmp_path / "g.nt"
+    graph.write_text('<urn:t> <https://roslyn-graph.dev/dt#fullName> "A" .\n', encoding="utf-8")
+    for broken in (b"{", b"\xff"):
+        graph.with_suffix(".context.json").write_bytes(broken)
+        with pytest.raises(RgError) as info:
+            records.read_graph(graph)
+        assert [p.code for p in info.value.problems] == ["RECORDS_INPUT"]

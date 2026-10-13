@@ -1,6 +1,7 @@
 """sources: names, MSBuild arguments, symbols, checkout drift, the index cache, locate, and a real MSBuild + Roslyn run."""
 
 import json
+import os
 import shutil
 from pathlib import Path
 
@@ -224,6 +225,17 @@ def test_a_drifted_checkout_is_never_read_from_or_written_to_the_cache(tmp_path,
     assert not drifted.cached and calls["evaluate"] == 3
 
 
+def test_a_dirty_checkout_is_never_cached(tmp_path, indexed):
+    # The dirty hash cannot see edits to untracked files, so a dirty build's index could go stale unnoticed.
+    repo, calls = indexed
+    cache = tmp_path / "cache"
+    for _ in range(2):
+        p = project(repo, commit="c", dirty_hash="d")
+        sources.index_project(p, cache)
+        assert not p.cached
+    assert not cache.exists() and calls["evaluate"] == 2
+
+
 def test_a_corrupt_cache_entry_is_rebuilt(tmp_path, indexed):
     repo, calls = indexed
     cache = tmp_path / "cache"
@@ -232,6 +244,25 @@ def test_a_corrupt_cache_entry_is_rebuilt(tmp_path, indexed):
     p = project(repo, commit="c")
     sources.index_project(p, cache)
     assert not p.cached and p.index and calls["evaluate"] == 2
+
+
+def test_a_checkout_moved_under_another_folder_name_keeps_project_and_solution(tmp_path):
+    new = tmp_path / "x" / "p3-new"
+    (new / "src" / "Billing").mkdir(parents=True)
+    (new / "src" / "Billing" / "Billing.csproj").write_text("")
+    (new / "P3.sln").write_text("")
+    component = {"identity": "assembly/v2|source|p3", "origin": {"id": "p3", "repository": str(tmp_path / "gone" / "p3")},
+                 "build": {"project": "p3/src/Billing/Billing.csproj", "solution": "p3\\P3.sln"}}
+    p = sources.project_for("urn:g", component, records.project_path(component), {"p3": new})
+    assert p.relative == "src/Billing/Billing.csproj" and p.path.is_file()
+    assert p.solution == new / "P3.sln" and f"-p:SolutionDir={new}{os.sep}" in sources.msbuild_args(p)
+    unmoved = tmp_path / "work" / "p3"
+    (unmoved / "src" / "Billing").mkdir(parents=True)
+    (unmoved / "src" / "Billing" / "Billing.csproj").write_text("")
+    (unmoved / "P3.sln").write_text("")
+    component["origin"]["repository"] = str(unmoved)
+    p = sources.project_for("urn:g", component, records.project_path(component), {})
+    assert p.relative == "src/Billing/Billing.csproj" and p.solution == unmoved / "P3.sln"
 
 
 def test_cache_key_covers_the_build_and_the_extractor(tmp_path):

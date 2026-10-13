@@ -27,6 +27,7 @@ BRIEF_FILE = "openwiki/INSTRUCTIONS.md"
 MAX_LISTED_TYPES = 400
 UNSUPPORTED = set("*?!")
 OPENED = ("found", "compiler-generated")
+ROOT_DIR = records.ROOT_DIR
 
 
 # ---- ignore chain ---------------------------------------------------------------------------
@@ -57,23 +58,46 @@ def chain(paths: list[str]) -> list[str]:
         except RgError as exc:
             problems.extend(exc)
     problems.raise_if_any()
-    targets = sorted(set(paths))
-    directories = [t for t in targets if t.endswith("/")]
-    targets = [t for t in targets if not any(t != d and t.startswith(d) for d in directories)]
+    # OpenWiki matches case-insensitively, so 'Common/' and 'common/' are one directory to it: every comparison
+    # uses a casefolded key, and each directory keeps the first spelling in sorted order.
+    spelling: dict[str, str] = {}
+
+    def canonical(path: str) -> str:
+        parts = path.rstrip("/").split("/")
+        out = []
+        for i in range(len(parts)):
+            out.append(spelling.setdefault("/".join(parts[:i + 1]).casefold(), parts[i]))
+        return "/".join(out) + ("/" if path.endswith("/") else "")
+
+    targets = sorted({canonical(p).casefold(): canonical(p) for p in sorted(paths)}.values(), key=str.casefold)
+    directories = [t.casefold() for t in targets if t.endswith("/")]
+    targets = [t for t in targets if not any(t.casefold() != d and t.casefold().startswith(d) for d in directories)]
     lines = ["*", "!/openwiki/"]
     opened: set[str] = set()
     for t in targets:
         parts = t.rstrip("/").split("/")
         for i in range(1, len(parts)):
             ancestor = "/".join(parts[:i])
-            if ancestor not in opened:
+            if ancestor.casefold() not in opened:
                 lines += [f"!/{ancestor}/", f"/{ancestor}/*"]
-                opened.add(ancestor)
+                opened.add(ancestor.casefold())
         lines.append(f"!/{t}")
     return lines
 
 
 # ---- managed blocks -------------------------------------------------------------------------
+
+
+def _read_existing(path: Path) -> str | None:
+    """The current text of a file that gets a managed block, or None when it does not exist."""
+    if not path.is_file():
+        return None
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise RgError.of("OPENWIKI_FILE_UNREADABLE", f"Cannot read {path} as UTF-8 text: {exc}",
+                         "Fix or re-save the file as UTF-8; openwiki-scope keeps its lines and only replaces its own block.",
+                         path=str(path)) from exc
 
 
 def merge_block(existing: str | None, body: list[str], markdown: bool, where: str) -> str:
@@ -106,6 +130,9 @@ def read_records(path: Path, schema: records.Schema) -> tuple[list[dict[str, Any
     except OSError as exc:
         raise RgError.of("OPENWIKI_RECORDS_NOT_FOUND", f"Cannot read {path}: {exc}", "Pass a file written by rg.py records.",
                          path=str(path)) from exc
+    except UnicodeDecodeError as exc:
+        raise RgError.of("OPENWIKI_RECORDS_INVALID", f"{path} is not UTF-8: {exc}", "Pass a file written by rg.py records.",
+                         path=str(path)) from exc
     try:
         if text.lstrip().startswith("["):
             items = list(enumerate(json.loads(text), 1))
@@ -122,7 +149,7 @@ def read_records(path: Path, schema: records.Schema) -> tuple[list[dict[str, Any
     if context_file.is_file():
         try:
             context = json.loads(context_file.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, UnicodeDecodeError):
             context = {}
     return [r for _, r in items], context
 
@@ -274,7 +301,13 @@ def run(record_files: list[str], repository: str | None, repo_root: str | None, 
     fallback = sorted({d for r in mine if r["locationStatus"] in OPENED and not r["files"] for d in r["projectDirs"]})
     for r in mine:
         if r["locationStatus"] in OPENED:
-            paths_to_open.update(r["files"] or r["projectDirs"])
+            paths_to_open.update(r["files"] or [d for d in r["projectDirs"] if d != ROOT_DIR])
+    if ROOT_DIR in fallback:
+        fallback.remove(ROOT_DIR)
+        warnings.append({"code": "OPENWIKI_ROOT_PROJECT", "types": sorted(r["name"] for r in mine if r["locationStatus"] in OPENED
+                                                                          and not r["files"] and ROOT_DIR in r["projectDirs"]),
+                         "message": "Some types without declaring files belong to a project at the repository root; opening the "
+                                    "root would open the whole repository, so they stay out of scope."})
     if fallback:
         warnings.append({"code": "OPENWIKI_DIRECTORY_FALLBACK", "directories": fallback,
                          "message": "Some types have no declaring files; their whole project directories are opened."})
@@ -292,8 +325,8 @@ def run(record_files: list[str], repository: str | None, repo_root: str | None, 
                          "message": "The brief lists namespaces with type counts instead of every type; the ignore file still opens every file."})
 
     ignore_path, brief_path = root / IGNORE_FILE, root / BRIEF_FILE
-    ignore_text = merge_block(ignore_path.read_text(encoding="utf-8") if ignore_path.is_file() else None, ignore_lines, False, str(ignore_path))
-    brief_text = merge_block(brief_path.read_text(encoding="utf-8") if brief_path.is_file() else None, brief_lines, True, str(brief_path))
+    ignore_text = merge_block(_read_existing(ignore_path), ignore_lines, False, str(ignore_path))
+    brief_text = merge_block(_read_existing(brief_path), brief_lines, True, str(brief_path))
     if not dry_run:
         brief_path.parent.mkdir(parents=True, exist_ok=True)
         ignore_path.write_text(ignore_text, encoding="utf-8", newline="\n")

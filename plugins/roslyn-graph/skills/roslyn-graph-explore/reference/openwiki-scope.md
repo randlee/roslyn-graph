@@ -16,7 +16,7 @@ python <skill>/scripts/rg.py openwiki-scope --records out/billing.jsonl [--recor
 Both are **managed blocks** between `BEGIN roslyn-graph openwiki-scope` and `END` lines. A new block goes at
 the top of the file; a later run replaces it in place. Every other line is kept, so user exclusions after the
 block (such as `secrets/`) still apply inside the opened paths. Unpaired markers fail with
-`OPENWIKI_BLOCK_BROKEN`.
+`OPENWIKI_BLOCK_BROKEN`, and a file that is not UTF-8 fails with `OPENWIKI_FILE_UNREADABLE`.
 
 ## Input
 
@@ -51,7 +51,10 @@ How the chain works:
 - `/openwiki/` stays writable.
 - `found` and `compiler-generated` types open their files.
 - `generated` and `nuget` types open nothing.
-- A type without files opens its project directories instead, and warns `OPENWIKI_DIRECTORY_FALLBACK`.
+- A type without files opens its project directories instead, and warns `OPENWIKI_DIRECTORY_FALLBACK`. A project at
+  the repository root (`./`) is never opened, since that would open everything; it warns `OPENWIKI_ROOT_PROJECT`.
+- OpenWiki matches case-insensitively, so paths differing only in case share one rule, spelled as the first in
+  sorted order.
 - Paths containing `*`, `?`, `!` or `..`, or not repository-relative, fail with `OPENWIKI_PATH_UNSUPPORTED`,
   because no rule would match exactly them.
 - Opened paths missing from the checkout warn `OPENWIKI_FILE_MISSING`.
