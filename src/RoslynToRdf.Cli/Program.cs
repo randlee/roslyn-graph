@@ -12,7 +12,14 @@ public class Program
 {
     public static async Task<int> Main(string[] args)
     {
+        if (args.Length > 0 && string.Equals(args[0], "skill", StringComparison.OrdinalIgnoreCase))
+        {
+            var skillCommand = CreateSkillCommand();
+            return await skillCommand.InvokeAsync(args[1..]);
+        }
+
         var rootCommand = new RootCommand("Extract .NET assembly type graphs to RDF format") { Name = "roslyn2rdf" };
+        rootCommand.AddCommand(CreateSkillCommand());
 
         var assemblyArg = new Argument<FileInfo>("assembly", "Path to a .NET assembly (.dll) or C# source project (.csproj) to analyze");
         var additionalAssembliesOption = new Option<FileInfo[]>(["--assembly", "-a"], () => [], "Additional target assemblies to include in the same graph");
@@ -29,6 +36,10 @@ public class Program
         var quietOption = new Option<bool>(["--quiet", "-q"], () => false, "Quiet output");
         var refsOption = new Option<string[]>(["--reference", "-r"], () => [], "Additional assembly references");
         var searchDirOption = new Option<string[]>(["--search-dir", "-s"], () => [], "Search directories");
+        var solutionDirOption = new Option<DirectoryInfo?>("--solution-dir", "Solution directory used to evaluate a source project (defaults to the project directory)");
+        var configurationOption = new Option<string?>("--configuration", "MSBuild configuration used to evaluate a source project");
+        var platformOption = new Option<string?>("--platform", "MSBuild platform used to evaluate a source project");
+        var targetFrameworkOption = new Option<string?>("--target-framework", "Target framework used to evaluate a source project");
 
         rootCommand.AddArgument(assemblyArg);
         rootCommand.AddOption(additionalAssembliesOption);
@@ -45,6 +56,10 @@ public class Program
         rootCommand.AddOption(quietOption);
         rootCommand.AddOption(refsOption);
         rootCommand.AddOption(searchDirOption);
+        rootCommand.AddOption(solutionDirOption);
+        rootCommand.AddOption(configurationOption);
+        rootCommand.AddOption(platformOption);
+        rootCommand.AddOption(targetFrameworkOption);
         rootCommand.AddCommand(DeclarationsCommand.Create());
 
         rootCommand.SetHandler(async (context) =>
@@ -64,17 +79,47 @@ public class Program
             var quiet = context.ParseResult.GetValueForOption(quietOption);
             var refs = context.ParseResult.GetValueForOption(refsOption)!;
             var searchDirs = context.ParseResult.GetValueForOption(searchDirOption)!;
+            var solutionDir = context.ParseResult.GetValueForOption(solutionDirOption);
+            var configuration = context.ParseResult.GetValueForOption(configurationOption);
+            var platform = context.ParseResult.GetValueForOption(platformOption);
+            var targetFramework = context.ParseResult.GetValueForOption(targetFrameworkOption);
 
             context.ExitCode = await RunExtraction([assembly, ..additionalAssemblies], output, format, baseUri, includePrivate, includeInternal,
-                excludeAttributes, excludeExternalTypes, extractExceptions, extractSeeAlso, verbose, quiet, refs, searchDirs);
+                excludeAttributes, excludeExternalTypes, extractExceptions, extractSeeAlso, verbose, quiet, refs, searchDirs,
+                solutionDir?.FullName, configuration, platform, targetFramework);
         });
 
         return await rootCommand.InvokeAsync(args);
     }
 
+    private static Command CreateSkillCommand()
+    {
+        var skillCommand = new Command("skill", "Install the bundled roslyn-graph plugin skills into a repository.");
+        var installOption = new Option<DirectoryInfo>("--install", "Target repository directory") { IsRequired = true };
+        var claudeOption = new Option<bool>("--claude", "Install only the Claude Code plugin location.");
+        var codexOption = new Option<bool>("--codex", "Install only the Codex plugin location.");
+        var dryRunOption = new Option<bool>("--dry-run", "Show the install paths without writing files.");
+        skillCommand.AddOption(installOption);
+        skillCommand.AddOption(claudeOption);
+        skillCommand.AddOption(codexOption);
+        skillCommand.AddOption(dryRunOption);
+        skillCommand.SetHandler(context =>
+        {
+            context.ExitCode = PluginInstaller.Install(
+                context.ParseResult.GetValueForOption(installOption)!,
+                context.ParseResult.GetValueForOption(claudeOption),
+                context.ParseResult.GetValueForOption(codexOption),
+                context.ParseResult.GetValueForOption(dryRunOption),
+                Console.Out,
+                Console.Error);
+        });
+        return skillCommand;
+    }
+
     private static async Task<int> RunExtraction(IEnumerable<FileInfo> requestedAssemblies, FileInfo? output, OutputFormat format, string baseUri,
         bool includePrivate, bool includeInternal, bool excludeAttributes, bool excludeExternalTypes,
-        bool extractExceptions, bool extractSeeAlso, bool verbose, bool quiet, string[] refs, string[] searchDirs)
+        bool extractExceptions, bool extractSeeAlso, bool verbose, bool quiet, string[] refs, string[] searchDirs,
+        string? solutionDir, string? configuration, string? platform, string? targetFramework)
     {
         var assemblies = requestedAssemblies
             .GroupBy(assembly => assembly.FullName, StringComparer.OrdinalIgnoreCase)
@@ -133,7 +178,16 @@ public class Program
                 if (!MSBuildLocator.IsRegistered)
                     MSBuildLocator.RegisterDefaults();
 
-                using var workspace = MSBuildWorkspace.Create();
+                var projectDirectory = Path.GetDirectoryName(projectPath)!;
+                var properties = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["SolutionDir"] = EnsureTrailingSeparator(Path.GetFullPath(solutionDir ?? projectDirectory)),
+                    ["Configuration"] = configuration ?? "Debug"
+                };
+                if (!string.IsNullOrWhiteSpace(platform)) properties["Platform"] = platform;
+                if (!string.IsNullOrWhiteSpace(targetFramework)) properties["TargetFramework"] = targetFramework;
+
+                using var workspace = MSBuildWorkspace.Create(properties);
                 workspace.WorkspaceFailed += (_, args) => log?.Invoke($"MSBuild workspace: {args.Diagnostic.Message}");
                 var project = await workspace.OpenProjectAsync(projectPath);
                 if (project.Language != LanguageNames.CSharp)
@@ -171,6 +225,14 @@ public class Program
             if (verbose) Console.Error.WriteLine(ex.StackTrace);
             return 1;
         }
+    }
+
+    private static string EnsureTrailingSeparator(string path)
+    {
+        var separator = Path.DirectorySeparatorChar;
+        return path.EndsWith(separator) || path.EndsWith(Path.AltDirectorySeparatorChar)
+            ? path
+            : path + separator;
     }
 }
 

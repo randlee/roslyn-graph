@@ -45,6 +45,10 @@ public class UnsafeAnalysisTests
                 }
                 public class NestedType { public void NestedMethod() { } }
             }
+            public static unsafe class SpanExtensionsBCL
+            {
+                public static Span<int> AsSpan(int[] values) => values;
+            }
             """;
         var compilation = TestUtilities.CreateCompilation(source + "\npublic struct Sample { public int Value; }", "UnsafeCases", allowUnsafe: true);
         compilation = compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(
@@ -58,7 +62,7 @@ public class UnsafeAnalysisTests
         AssertMethodUnsafe(compilation, emitter, "Ordinary", false);
         AssertMethodUnsafe(compilation, emitter, "SpanStackalloc", false);
         AssertMethodUnsafe(compilation, emitter, "ReadOnlySpanStackalloc", false);
-        AssertMethodUnsafe(compilation, emitter, "InheritedContext", true, "UnsafeTypeContext");
+        AssertMethodUnsafe(compilation, emitter, "InheritedContext", false);
         AssertMethodUnsafe(compilation, emitter, "Modified", true, "UnsafeMethodModifier");
         AssertMethodUnsafe(compilation, emitter, "Block", true, "UnsafeBlock", "PointerType");
         AssertMethodUnsafe(compilation, emitter, "Pointer", true, "PointerType");
@@ -67,16 +71,23 @@ public class UnsafeAnalysisTests
         AssertMethodUnsafe(compilation, emitter, "Address", true, "PointerAddressOf", "PointerType");
         AssertMethodUnsafe(compilation, emitter, "PointerMember", true, "PointerMemberAccess", "PointerType");
         AssertMethodUnsafe(compilation, emitter, "PointerStackalloc", true, "PointerStackAlloc", "PointerType");
-        AssertMethodUnsafe(compilation, emitter, "Generic", true, "UnsafeTypeContext");
-        AssertMethodUnsafe(compilation, emitter, "Async", true, "UnsafeTypeContext");
-        AssertMethodUnsafe(compilation, emitter, "Iterator", true, "UnsafeTypeContext");
-        AssertMethodUnsafe(compilation, emitter, "NestedExecutables", true, "UnsafeBlock", "UnsafeTypeContext");
-        AssertMethodUnsafe(compilation, emitter, "NestedMethod", true, "UnsafeTypeContext");
-        AssertMethodUnsafe(compilation, emitter, "GeneratedPointer", true, "UnsafeTypeContext", "PointerType");
+        AssertMethodUnsafe(compilation, emitter, "Generic", false);
+        AssertMethodUnsafe(compilation, emitter, "Async", false);
+        AssertMethodUnsafe(compilation, emitter, "Iterator", false);
+        AssertMethodUnsafe(compilation, emitter, "NestedExecutables", true, "UnsafeBlock");
+        AssertMethodUnsafe(compilation, emitter, "NestedMethod", false);
+        AssertMethodUnsafe(compilation, emitter, "GeneratedPointer", true, "PointerType");
+        AssertMethodUnsafe(compilation, emitter, "AsSpan", false);
 
         var unsafeClass = GetType(compilation, "UnsafeCases");
         var unsafeClassIri = new IriMinter().Type(unsafeClass);
         Assert.Contains(emitter.Triples, triple => triple.Subject == unsafeClassIri
+                                                   && triple.Predicate.EndsWith("/containsUnsafeCode", StringComparison.Ordinal)
+                                                   && triple.Object == "true");
+        var spanExtensions = compilation.Assembly.GlobalNamespace.GetNamespaceMembers()
+            .Single(ns => ns.Name == "UnsafeSample").GetTypeMembers("SpanExtensionsBCL").Single();
+        var spanExtensionsIri = new IriMinter().Type(spanExtensions);
+        Assert.Contains(emitter.Triples, triple => triple.Subject == spanExtensionsIri
                                                    && triple.Predicate.EndsWith("/containsUnsafeCode", StringComparison.Ordinal)
                                                    && triple.Object == "true");
         var assemblyIri = new IriMinter().Assembly(compilation.Assembly);
@@ -164,6 +175,8 @@ public class UnsafeAnalysisTests
             ?? compilation.Assembly.GlobalNamespace.GetNamespaceMembers().Single(ns => ns.Name == "UnsafeSample")
                 .GetTypeMembers("GeneratedCases").SingleOrDefault()?
                 .GetMembers(name).OfType<IMethodSymbol>().SingleOrDefault()
+            ?? compilation.Assembly.GlobalNamespace.GetNamespaceMembers().Single(ns => ns.Name == "UnsafeSample")
+                .GetTypeMembers("SpanExtensionsBCL").SingleOrDefault()?.GetMembers(name).OfType<IMethodSymbol>().SingleOrDefault()
             ?? GetType(compilation, "UnsafeCases")
                 .GetTypeMembers("NestedType").SingleOrDefault()?.GetMembers(name).OfType<IMethodSymbol>().SingleOrDefault();
         Assert.NotNull(method);

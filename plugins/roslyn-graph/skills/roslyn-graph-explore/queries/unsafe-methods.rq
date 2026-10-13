@@ -1,5 +1,5 @@
 # Title: Unsafe source methods
-# Description: methods from source projects with evaluated AllowUnsafeBlocks=true, including deterministic reason and location facts.
+# Description: source methods with their own unsafe modifier or unsafe syntax, including deterministic reason and location facts; an enclosing unsafe type alone does not qualify.
 PREFIX dt: <http://dotnet.example/ontology/>
 
 SELECT ?assembly ?typeName ?methodName ?reason ?location WHERE {

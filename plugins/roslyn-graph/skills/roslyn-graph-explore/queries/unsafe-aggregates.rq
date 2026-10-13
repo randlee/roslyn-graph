@@ -1,5 +1,5 @@
 # Title: Unsafe method counts by type
-# Description: count graph-exported unsafe methods per aggregated type and assembly.
+# Description: count methods with their own unsafe modifier or unsafe syntax per type and assembly.
 PREFIX dt: <http://dotnet.example/ontology/>
 
 SELECT ?assemblyName ?typeName (COUNT(DISTINCT ?method) AS ?unsafeMethodCount) WHERE {
