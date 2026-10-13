@@ -112,6 +112,55 @@ commands that crash natively (for example Windows exit code 0xC0000005) are retr
 | `RESOURCE_MISSING` | the command needs the ontology or visualizers, which only the roslyn-graph-explore skill carries; run that skill's `scripts/rg.py` |
 | `ONTOLOGY_DOC_STALE`, `ONTOLOGY_PARSE` | (maintainers) regenerate the ontology reference or fix the ontology file |
 
+## Records
+
+| Code | Meaning and fix |
+|---|---|
+| `RECORDS_INPUT` | pass exactly one of `--graph` (an existing `.nt`) or `--selection` (a `roslyn-graph-selection/2` payload); a broken `<graph>.context.json` also fails here: regenerate the graph |
+| `RECORDS_NO_STORE` | the input has no `.context.json` or `store`; pass the solution or view `manifest.json` with `--manifest` |
+| `RECORDS_TYPE_NOT_IN_STORE` | some input types (`context.missing`) are not component types of the store; the input came from another store, so pass its manifest |
+| `RECORDS_MANIFEST_BROKEN` | a component manifest of the store cannot be found from its artifact root; validate the store |
+| `RECORDS_FIELD_UNAVAILABLE` | the schema binds fields this input or version cannot fill (`context.fields`): graph edge fields need `--graph` |
+| `RECORDS_EMPTY` | the filters removed every type; the hint names the filter that removed the most |
+| `RECORD_AMBIGUOUS_FIELD` | a logical type is built in several repositories; bind `repositories` instead of `repository` |
+| `RECORD_SCHEMA_VIOLATION` | records do not match the schema (`context.violations`, first 20); relax the schema, for example allow `null`, or narrow the input |
+| `RECORD_FIELD_VARIES` | (warning) a scalar field differs between versions of a logical type; the first value in sorted order was written |
+| `SCHEMA_NOT_FOUND`, `SCHEMA_JSON` | the schema file is missing or not JSON, or no built-in schema has that name |
+| `SCHEMA_INVALID`, `SCHEMA_RECORD_UNSUPPORTED` | the schema is not an object schema with properties, a keyword has a bad value, or `x-rg-record` is not `type` |
+| `SCHEMA_UNSUPPORTED_KEYWORD` | the schema uses a keyword outside the supported subset; remove it so the schema is not silently unenforced |
+| `SCHEMA_FIELD_MISSING`, `SCHEMA_FIELD_UNKNOWN` | every property needs exactly one of `x-rg-field` (a registry field name) or `const` |
+| `SCHEMA_FIELD_CARDINALITY` | a list field is bound to a non-array property, or a scalar field to an array property |
+
+## Source locations
+
+`files` and `locationStatus` are resolved on export from the checkouts the store was built from.
+
+| Code | Meaning and fix |
+|---|---|
+| `SOURCE_CHECKOUT_MISSING` | the recorded repository path does not exist; pass `--repo-root <id>=<path>` if the checkout moved |
+| `SOURCE_CHECKOUT_DRIFT` | a checkout is at another commit or has other uncommitted changes than the build (`context.drift`); check out the recorded commit, or pass `--allow-drift` (then a warning, and nothing is cached) |
+| `SOURCE_PROJECT_MISSING` | the project file is not in the checkout; the checkout does not match the build |
+| `MSBUILD_FAILED` | MSBuild could not evaluate a project (`context.output`); the project must restore in this checkout; `ROSLYN_GRAPH_MSBUILD` selects MSBuild (Visual Studio MSBuild 17.8+ for non-SDK projects) |
+| `DECLARATIONS_UNSUPPORTED` | the installed extractor predates the `declarations` command; update the extractor (setup.md) |
+| `DECLARATIONS_FAILED` | the extractor's `declarations` command failed; read `context.stderr` |
+
+## OpenWiki scope
+
+| Code | Meaning and fix |
+|---|---|
+| `OPENWIKI_RECORDS_NOT_FOUND` | a `--records` file cannot be read |
+| `OPENWIKI_RECORDS_INVALID` | a records file is not JSONL or a JSON array, or its records do not match `openwiki-type` (`context.invalid`); export with `rg.py records --schema openwiki-type` |
+| `OPENWIKI_REPOSITORY_REQUIRED` | the records span several repositories; pass `--repository` with one of `context.repositories` |
+| `OPENWIKI_REPOSITORY_EMPTY` | no record belongs to `--repository` |
+| `OPENWIKI_REPO_ROOT_REQUIRED`, `OPENWIKI_REPO_ROOT_MISSING` | no checkout is recorded beside the records, or the path is not a directory; pass `--repo-root` |
+| `OPENWIKI_PATH_UNSUPPORTED` | a file path contains `*`, `?`, `!`, `..` or is not repository-relative, so no ignore rule opens exactly it |
+| `OPENWIKI_BLOCK_BROKEN` | `.openwikiignore` or `INSTRUCTIONS.md` has unpaired roslyn-graph BEGIN/END lines; delete the block by hand and rerun |
+| `OPENWIKI_BRIEF_SUMMARIZED` | (warning) more found types than `--max-listed-types`; the brief lists namespaces, the ignore file still opens every file |
+| `OPENWIKI_DIRECTORY_FALLBACK` | (warning) types without declaring files; their project directories were opened |
+| `OPENWIKI_FILE_MISSING` | (warning) opened paths are not in the checkout; check `--repo-root` |
+| `OPENWIKI_ROOT_PROJECT` | (warning) types without declaring files belong to a project at the repository root; they stay out of scope rather than opening the whole repository |
+| `OPENWIKI_FILE_UNREADABLE` | the existing `.openwikiignore` or `openwiki/INSTRUCTIONS.md` is not readable UTF-8; re-save it as UTF-8 |
+
 ## Always
 
 | Code | Meaning and fix |

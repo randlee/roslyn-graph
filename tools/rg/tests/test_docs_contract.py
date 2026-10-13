@@ -77,3 +77,26 @@ def test_missing_and_malformed_params():
     with pytest.raises(RgError) as info:
         explore.read_query("x", None, ["lower=1"])
     assert info.value.problems[0].code == "QUERY_PARAM_INVALID"
+
+
+def test_records_reference_matches_the_field_registry_and_filters():
+    from roslyn_graph import records
+
+    doc = (EXPLORE / "reference" / "records.md").read_text(encoding="utf-8")
+    table = doc.split("## Field registry", 1)[1].split("\n## ", 1)[0]
+    rows = {m[0]: (m[1], m[2]) for m in re.findall(r"^\| `(\w+)` \| ([a-z ]+) \| (\w+) \|", table, re.MULTILINE)}
+    expected = {}
+    for f in records.REGISTRY.values():
+        value_type = f"list of {f.json_type}" if f.cardinality == "list" else f.json_type + (" or null" if f.nullable else "")
+        expected[f.name] = (value_type, f.needs)
+    assert rows == expected
+    for option, _, _ in records.FILTERS:
+        assert f"`--{option} " in doc, f"--{option} is not documented"
+
+
+@pytest.mark.parametrize("schema", sorted((EXPLORE / "schemas").glob("*.schema.json")), ids=lambda p: p.name)
+def test_built_in_schemas_load(schema):
+    from roslyn_graph import records
+
+    loaded = records.load_schema(schema.name.removesuffix(".schema.json"))
+    assert loaded.name == schema.name.removesuffix(".schema.json") and loaded.fields() <= set(records.REGISTRY)

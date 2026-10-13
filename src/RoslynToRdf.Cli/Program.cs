@@ -60,6 +60,7 @@ public class Program
         rootCommand.AddOption(configurationOption);
         rootCommand.AddOption(platformOption);
         rootCommand.AddOption(targetFrameworkOption);
+        rootCommand.AddCommand(DeclarationsCommand.Create());
 
         rootCommand.SetHandler(async (context) =>
         {

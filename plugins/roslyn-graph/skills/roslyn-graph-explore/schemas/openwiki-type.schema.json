@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "openwiki-type",
+  "description": "One type to document with OpenWiki; the input of rg.py openwiki-scope. See reference/openwiki-scope.md.",
+  "type": "object",
+  "x-rg-record": "type",
+  "properties": {
+    "name": {"type": "string", "x-rg-field": "fullName"},
+    "kind": {"type": "string", "x-rg-field": "kind"},
+    "namespace": {"type": ["string", "null"], "x-rg-field": "namespace"},
+    "assemblies": {"type": "array", "items": {"type": "string"}, "x-rg-field": "assemblies"},
+    "repository": {"type": ["string", "null"], "x-rg-field": "repository"},
+    "projectDirs": {"type": "array", "items": {"type": "string"}, "x-rg-field": "projectDirs"},
+    "files": {"type": "array", "items": {"type": "string"}, "x-rg-field": "files"},
+    "locationStatus": {"type": "string", "enum": ["found", "compiler-generated", "generated", "nuget"], "x-rg-field": "locationStatus"},
+    "origin": {"type": "string", "enum": ["source", "nuget", "mixed"], "x-rg-field": "origin"}
+  },
+  "required": ["name", "kind", "repository", "projectDirs", "files", "locationStatus", "origin"],
+  "additionalProperties": false
+}

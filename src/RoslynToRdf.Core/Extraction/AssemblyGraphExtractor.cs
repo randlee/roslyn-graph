@@ -14,7 +14,7 @@ public sealed partial class AssemblyGraphExtractor
     private readonly ITriplesEmitter _emitter;
     private readonly ExtractionOptions _options;
     // Type names must not depend on how a type was referenced: Foo? and Foo share one IRI, so they share one name.
-    private static readonly SymbolDisplayFormat TypeNameFormat = SymbolDisplayFormat.CSharpErrorMessageFormat
+    internal static readonly SymbolDisplayFormat TypeNameFormat = SymbolDisplayFormat.CSharpErrorMessageFormat
         .RemoveMiscellaneousOptions(SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier);
 
     // Types with at least a reference stub (EnsureTypeEmitted) versus types fully extracted (ExtractType).
