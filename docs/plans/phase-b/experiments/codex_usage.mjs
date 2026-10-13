@@ -59,6 +59,7 @@ if (out && original) {
       let text = "";
       try {
         for await (const chunk of mine) text += decoder.decode(chunk, { stream: true });
+        text += decoder.decode();
       } catch {
         // the agent cancelled the stream; log what arrived
       }

@@ -321,7 +321,7 @@ Settled by B0 and B7:
 
 3. Model-level adherence and cost ([openwiki-run-radiant-data-2026-10-13.md](openwiki-run-radiant-data-2026-10-13.md),
    Radiant.Data with `gpt-6-luna`): the agent read no file outside the scope, the wiki covers the scope by topic
-   (59 of 272 type names), and a 186-file scope cost about 1.25 M input tokens in 398 s.
+   (63 of 270 type names), and 7 pages over a 186-file scope cost about 1.25 M input tokens in 398 s.
 
 Still open:
 

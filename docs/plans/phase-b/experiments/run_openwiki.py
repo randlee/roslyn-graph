@@ -101,7 +101,9 @@ def main() -> int:
     in_scope = set(scope["files"])
     ancestors = {"/".join(f.split("/")[:i]) for f in in_scope for i in range(1, f.count("/") + 1)} | {""}
     allowed_dirs = {f.rsplit("/", 1)[0] for f in in_scope} if a.mode == "dirs" else set()
+    # The agent's read_file shows up as `open`; OpenWiki's own repository scan uses `readFile` on nearly every file.
     reads_outside: set[str] = set()
+    scan_reads_outside: set[str] = set()
     listed_outside: set[str] = set()
     for line in trace.read_text(encoding="utf-8").splitlines() if trace.exists() else []:
         e = json.loads(line)
@@ -112,7 +114,12 @@ def main() -> int:
             continue
         if p in in_scope or p in ancestors or any(p == d or p.startswith(d + "/") for d in allowed_dirs):
             continue
-        (reads_outside if e["op"] in ("readFile", "open", "createReadStream", "readFileSync", "openSync") else listed_outside).add(p)
+        if e["op"] in ("open", "openSync", "createReadStream"):
+            reads_outside.add(p)
+        elif e["op"] in ("readFile", "readFileSync"):
+            scan_reads_outside.add(p)
+        else:
+            listed_outside.add(p)
 
     calls, tools, totals = 0, {}, {}
     model_paths: set[str] = set()
@@ -136,7 +143,7 @@ def main() -> int:
     result = {
         "type": "openwiki-run", "name": a.name, "provider": a.provider, "model": a.model, "mode": a.mode, "jsonl": a.jsonl, "types": len(scope["types"]), "files": len(in_scope),
         "exit": exit_code, "seconds": seconds, "apiCalls": calls, "usage": totals, "tools": tools,
-        "readsOutside": sorted(reads_outside), "listedOutside": len(listed_outside), "listedOutsideExamples": sorted(listed_outside)[:15],
+        "readsOutside": sorted(reads_outside), "scanReadsOutside": len(scan_reads_outside), "listedOutside": len(listed_outside), "listedOutsideExamples": sorted(listed_outside)[:15],
         "pages": len(pages), "wikiChars": len(text), "typesCovered": len(covered), "typesMissing": sorted(set(scope["types"]) - set(covered)),
         "citedFiles": [c for c in cited if c not in in_scope][:40], "citedInScope": len([c for c in cited if c in in_scope]),
         "citesJsonl": any(c.endswith(".jsonl") for c in cited), "modelPathsSample": sorted(model_paths)[:40],
