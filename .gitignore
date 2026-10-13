@@ -1,6 +1,8 @@
 # Build results
 [Dd]ebug/
 [Rr]elease/
+!release/
+!release/release-manifest.json
 x64/
 x86/
 [Bb]in/
