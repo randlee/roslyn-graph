@@ -25,6 +25,7 @@ when every applicable check passes.
 | S6 | the assembly defines at least one type | empty or failed extraction |
 | S7 | every type has exactly one `dt:fullName` | the extractor named one type two ways (for example with and without a nullable annotation); queries by name would return duplicates |
 | S8 | every own type (defined by the assembly, not a constructed generic) has exactly one `dt:fullName`, `dt:typeKind` and `dt:accessibility` | a type was written as a reference stub instead of being fully extracted (missing members, class and flags) |
+| S9 | a v3 source assembly links to the project, repository ID and repository-relative path in its manifest | project provenance is missing or disagrees with the manifest |
 
 ## Solution stores
 

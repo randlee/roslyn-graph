@@ -1,4 +1,5 @@
 import os
+import subprocess
 import time
 from pathlib import Path
 
@@ -65,6 +66,38 @@ def test_components_record_exact_provenance(git_repo):
     assert origin["id"] == "repo" and len(origin["commit"]) == 40 and origin["dirtyHash"] == ""
     assert components[0].manifest["build"]["project"] == "src/Alpha/Alpha.csproj"
     assert components[0].search_dirs[0] == (git_repo / "bin" / "Debug").resolve()
+
+
+def test_project_path_is_relative_to_owning_repository_when_nested(git_repo):
+    nested = git_repo / "src" / "NestedRepo"
+    nested.mkdir(parents=True)
+    (nested / ".git").mkdir()
+    subprocess.run(["git", "-C", str(nested), "init", "-q", "-b", "main"], check=True)
+    subprocess.run(["git", "-C", str(nested), "config", "user.email", "test@example.invalid"], check=True)
+    subprocess.run(["git", "-C", str(nested), "config", "user.name", "Test"], check=True)
+    project = nested / "src" / "Lib"
+    project.mkdir(parents=True)
+    (project / "Lib.csproj").write_text('<Project Sdk="Microsoft.NET.Sdk" />')
+    (project / "Code.cs").write_text("class C {}")
+    (nested / ".gitignore").write_text("bin/\n")
+    subprocess.run(["git", "-C", str(nested), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(nested), "commit", "-q", "-m", "nested project"], check=True)
+    gitinfo.repo_state.cache_clear()
+    (git_repo / "App.sln").write_text(
+        'Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lib", "src\\NestedRepo\\src\\Lib\\Lib.csproj", "{22222222-2222-2222-2222-222222222222}"\n'
+    )
+    (git_repo / "Directory.Build.props").write_text("<Project />")
+    out = git_repo / "bin" / "Debug"
+    out.mkdir(parents=True)
+    dll = out / "Lib.dll"
+    dll.write_bytes(b"Lib")
+    os.utime(dll, (time.time() + 5, time.time() + 5))
+
+    problems = ProblemList()
+    components = plan._solution_components(profile(git_repo), "base", TOOL, False, problems)
+    assert not problems
+    assert components[0].manifest["origin"]["id"] == "NestedRepo"
+    assert components[0].manifest["build"]["project"] == "src/Lib/Lib.csproj"
 
 
 def test_missing_output_is_reported_with_a_fix(git_repo):

@@ -262,7 +262,7 @@ def _solution_components(profile: SolutionProfile, role: str, tool: extractor.Ex
             "build": {
                 "profile": profile.name, "fingerprint": fp, "configuration": profile.configuration,
                 "targetFramework": profile.target_framework, "platform": profile.platform,
-                "project": rel, "solution": rel_posix(profile.solution, profile.root),
+                "project": rel_posix(project.path, repo.root), "solution": rel_posix(profile.solution, profile.root),
             },
             "assembly": {"inputPath": str(dll), "sha256": sha256_file(dll), "expectedName": name},
             "extraction": {"extractorId": tool.id},

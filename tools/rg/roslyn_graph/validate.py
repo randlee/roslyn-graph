@@ -11,7 +11,7 @@ from typing import Any, Callable
 
 from . import artifacts, oxigraph
 from .result import RgError
-from .util import DT, OWL_SAME_AS, RG, assembly_iri
+from .util import DT, OWL_SAME_AS, RG, assembly_iri, project_iri
 
 
 @dataclass
@@ -98,6 +98,8 @@ def assembly(directory: Path, m: dict[str, Any], published: bool = True) -> Chec
                OPTIONAL {{ ?t dt:fullName ?f }} OPTIONAL {{ ?t dt:typeKind ?k }} OPTIONAL {{ ?t dt:accessibility ?a }}
              }} GROUP BY ?t }}
           FILTER(?fc != 1 || ?kc != 1 || ?ac != 1) }}"""), 0))
+    if m.get("origin", {}).get("kind") == "source" and m.get("identity", "").startswith("assembly/v3|"):
+        checks.run("S9", "source assembly links to its repository-relative project", lambda: _source_project(store, iri, m))
     return checks
 
 
@@ -209,6 +211,17 @@ def _assembly_node(store: Path, iri: str) -> tuple[bool, str]:
     rows = oxigraph.select(store, f"PREFIX dt: <{DT}> SELECT ?a WHERE {{ ?a a dt:Assembly }}")
     found = [r["a"] for r in rows]
     return found == [iri], f"found={found} expected={iri}"
+
+
+def _source_project(store: Path, assembly: str, manifest: dict[str, Any]) -> tuple[bool, str]:
+    origin, build = manifest["origin"], manifest["build"]
+    expected = project_iri(origin["id"], build["project"])
+    rows = oxigraph.select(store, f"PREFIX rg: <{RG}> SELECT ?project ?repository ?path WHERE {{ "
+                                  f"<{assembly}> rg:builtFromProject ?project . ?project a rg:Project ; "
+                                  f"rg:projectRepository ?repository ; rg:projectRelativePath ?path }}")
+    actual = [(r.get("project"), r.get("repository"), r.get("path")) for r in rows]
+    wanted = [(expected, origin["id"], build["project"])]
+    return actual == wanted, f"actual={actual} expected={wanted}"
 
 
 def _eq(actual: Any, expected: Any) -> tuple[bool, str]:

@@ -24,7 +24,7 @@ recomputes it (check `M2`). Anything that can change the stored triples is part 
 
 | Kind | Identity parts |
 |---|---|
-| source assembly | `assembly/v2 \| source \| repository \| commit \| dirty hash \| build fingerprint \| target framework \| DLL sha256 \| extractor id` |
+| source assembly | `assembly/v3 \| source \| repository \| commit \| dirty hash \| build fingerprint \| target framework \| project path \| DLL sha256 \| extractor id` |
 | package assembly | `assembly/v2 \| nuget \| package id \| version \| nupkg sha256 \| asset path \| dependency-set hash \| restore target \| DLL sha256 \| extractor id` |
 | solution | `solution/v2 \| profile \| root folder \| solution path \| commit \| dirty hash \| fingerprint \| framework \| configuration \| platform \| sorted component IDs` |
 | view | `view/v2 \| base solution ID \| policy name \| sorted policy assemblies \| projection version \| sorted overlay IDs` |
@@ -39,7 +39,9 @@ Graph IRIs are `urn:roslyn-graph:<kind>:<first 32 hex of the ID>`; solutions add
 
 ## Store contents
 
-- **Assembly store**: the extractor's triples in the default graph; exactly one `dt:Assembly`.
+- **Assembly store**: the extractor's triples in the default graph; exactly one `dt:Assembly`. Source
+  assemblies also link with `rg:builtFromProject` to an `rg:Project` carrying its repository ID and
+  project path relative to that repository root. Package assemblies have no source project.
 - **Solution store**: each component in its own named graph (the component's graph IRI) plus the metadata
   graph describing the `rg:SolutionBuild` (profile, repository, branch, commit, fingerprint, framework,
   configuration, platform, `rg:includesGraph`, `rg:includesArtifact`). The default graph is empty.

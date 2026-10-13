@@ -13,7 +13,7 @@ from typing import Any
 from . import artifacts, extractor, oxigraph, validate
 from .plan import Component, Plan
 from .result import RgError
-from .util import DT, RDF_TYPE, RG, assembly_iri, nt_iri, nt_literal, sha256_file, sha256_text
+from .util import DT, RDF_TYPE, RG, assembly_iri, nt_iri, nt_literal, project_iri, sha256_file, sha256_text
 
 
 def _workspace_block(plan: Plan, profile: str) -> dict[str, Any]:
@@ -50,6 +50,21 @@ def unique_nt_lines(path: Path) -> int:
     return len(seen)
 
 
+def project_provenance_lines(manifest: dict[str, Any], assembly: str) -> list[str]:
+    """Return provenance triples for source builds; NuGet assemblies have no source project."""
+    if manifest.get("origin", {}).get("kind") != "source":
+        return []
+    repository_id = manifest["origin"]["id"]
+    relative_path = manifest["build"]["project"]
+    project = project_iri(repository_id, relative_path)
+    return [
+        f"{nt_iri(assembly)} {nt_iri(RG + 'builtFromProject')} {nt_iri(project)} .",
+        f"{nt_iri(project)} {nt_iri(RDF_TYPE)} {nt_iri(RG + 'Project')} .",
+        f"{nt_iri(project)} {nt_iri(RG + 'projectRepository')} {nt_literal(repository_id)} .",
+        f"{nt_iri(project)} {nt_iri(RG + 'projectRelativePath')} {nt_literal(relative_path)} .",
+    ]
+
+
 # ---- assemblies -----------------------------------------------------------------------------
 
 
@@ -68,6 +83,14 @@ def snapshot(plan: Plan, c: Component) -> dict[str, Any]:
         rows = oxigraph.select(store, f"PREFIX dt: <{DT}> SELECT ?a ?name ?version ?token WHERE {{ ?a a dt:Assembly ; dt:name ?name ; dt:version ?version . OPTIONAL {{ ?a dt:publicKeyToken ?token }} }}")
         if len(rows) != 1:
             raise RgError.of("ASSEMBLY_NODE_COUNT", f"{c.assembly_path.name}: expected one dt:Assembly, found {len(rows)}.", rows=rows[:5])
+        provenance = project_provenance_lines(c.manifest, assembly_iri(rows[0]["name"], rows[0]["version"]))
+        if provenance:
+            with ttl.open("a", encoding="utf-8", newline="\n") as handle:
+                handle.write("\n" + "\n".join(provenance) + "\n")
+            oxigraph.convert(ttl, nt)
+            oxigraph.load(store, nt)
+            ttl_unique = unique_nt_lines(nt)
+            count = oxigraph.default_graph_count(store)
         m = dict(c.manifest)
         m["assembly"] = dict(m["assembly"], name=rows[0]["name"], version=rows[0]["version"], publicKeyToken=rows[0].get("token", ""))
         m["extraction"] = {
