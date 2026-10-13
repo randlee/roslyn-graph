@@ -29,6 +29,10 @@ public class Program
         var quietOption = new Option<bool>(["--quiet", "-q"], () => false, "Quiet output");
         var refsOption = new Option<string[]>(["--reference", "-r"], () => [], "Additional assembly references");
         var searchDirOption = new Option<string[]>(["--search-dir", "-s"], () => [], "Search directories");
+        var solutionDirOption = new Option<DirectoryInfo?>("--solution-dir", "Solution directory used to evaluate a source project (defaults to the project directory)");
+        var configurationOption = new Option<string?>("--configuration", "MSBuild configuration used to evaluate a source project");
+        var platformOption = new Option<string?>("--platform", "MSBuild platform used to evaluate a source project");
+        var targetFrameworkOption = new Option<string?>("--target-framework", "Target framework used to evaluate a source project");
 
         rootCommand.AddArgument(assemblyArg);
         rootCommand.AddOption(additionalAssembliesOption);
@@ -45,6 +49,10 @@ public class Program
         rootCommand.AddOption(quietOption);
         rootCommand.AddOption(refsOption);
         rootCommand.AddOption(searchDirOption);
+        rootCommand.AddOption(solutionDirOption);
+        rootCommand.AddOption(configurationOption);
+        rootCommand.AddOption(platformOption);
+        rootCommand.AddOption(targetFrameworkOption);
 
         rootCommand.SetHandler(async (context) =>
         {
@@ -63,9 +71,14 @@ public class Program
             var quiet = context.ParseResult.GetValueForOption(quietOption);
             var refs = context.ParseResult.GetValueForOption(refsOption)!;
             var searchDirs = context.ParseResult.GetValueForOption(searchDirOption)!;
+            var solutionDir = context.ParseResult.GetValueForOption(solutionDirOption);
+            var configuration = context.ParseResult.GetValueForOption(configurationOption);
+            var platform = context.ParseResult.GetValueForOption(platformOption);
+            var targetFramework = context.ParseResult.GetValueForOption(targetFrameworkOption);
 
             context.ExitCode = await RunExtraction([assembly, ..additionalAssemblies], output, format, baseUri, includePrivate, includeInternal,
-                excludeAttributes, excludeExternalTypes, extractExceptions, extractSeeAlso, verbose, quiet, refs, searchDirs);
+                excludeAttributes, excludeExternalTypes, extractExceptions, extractSeeAlso, verbose, quiet, refs, searchDirs,
+                solutionDir?.FullName, configuration, platform, targetFramework);
         });
 
         return await rootCommand.InvokeAsync(args);
@@ -73,7 +86,8 @@ public class Program
 
     private static async Task<int> RunExtraction(IEnumerable<FileInfo> requestedAssemblies, FileInfo? output, OutputFormat format, string baseUri,
         bool includePrivate, bool includeInternal, bool excludeAttributes, bool excludeExternalTypes,
-        bool extractExceptions, bool extractSeeAlso, bool verbose, bool quiet, string[] refs, string[] searchDirs)
+        bool extractExceptions, bool extractSeeAlso, bool verbose, bool quiet, string[] refs, string[] searchDirs,
+        string? solutionDir, string? configuration, string? platform, string? targetFramework)
     {
         var assemblies = requestedAssemblies
             .GroupBy(assembly => assembly.FullName, StringComparer.OrdinalIgnoreCase)
@@ -132,7 +146,16 @@ public class Program
                 if (!MSBuildLocator.IsRegistered)
                     MSBuildLocator.RegisterDefaults();
 
-                using var workspace = MSBuildWorkspace.Create();
+                var projectDirectory = Path.GetDirectoryName(projectPath)!;
+                var properties = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["SolutionDir"] = EnsureTrailingSeparator(Path.GetFullPath(solutionDir ?? projectDirectory)),
+                    ["Configuration"] = configuration ?? "Debug"
+                };
+                if (!string.IsNullOrWhiteSpace(platform)) properties["Platform"] = platform;
+                if (!string.IsNullOrWhiteSpace(targetFramework)) properties["TargetFramework"] = targetFramework;
+
+                using var workspace = MSBuildWorkspace.Create(properties);
                 workspace.WorkspaceFailed += (_, args) => log?.Invoke($"MSBuild workspace: {args.Diagnostic.Message}");
                 var project = await workspace.OpenProjectAsync(projectPath);
                 if (project.Language != LanguageNames.CSharp)
@@ -170,6 +193,14 @@ public class Program
             if (verbose) Console.Error.WriteLine(ex.StackTrace);
             return 1;
         }
+    }
+
+    private static string EnsureTrailingSeparator(string path)
+    {
+        var separator = Path.DirectorySeparatorChar;
+        return path.EndsWith(separator) || path.EndsWith(Path.AltDirectorySeparatorChar)
+            ? path
+            : path + separator;
     }
 }
 

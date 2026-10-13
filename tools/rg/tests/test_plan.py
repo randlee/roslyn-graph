@@ -100,6 +100,11 @@ def test_project_path_is_relative_to_owning_repository_when_nested(git_repo):
     assert not problems
     assert components[0].manifest["origin"]["id"] == "NestedRepo"
     assert components[0].manifest["build"]["project"] == "src/Lib/Lib.csproj"
+    assert components[0].msbuild_properties == {
+        "SolutionDir": str(git_repo) + os.sep,
+        "Configuration": "Debug",
+        "TargetFramework": "net10.0",
+    }
 
 
 def test_missing_output_is_reported_with_a_fix(git_repo):
