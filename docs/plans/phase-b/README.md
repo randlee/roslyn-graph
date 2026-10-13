@@ -327,7 +327,7 @@ Still open:
 
 - The P3 XCore runs (experiment 4 b and c, experiments 5 and 6 at 50 and 200 types). They were not run, to keep
   model runs small; `run_openwiki.py --provider openai-chatgpt --model gpt-6-luna` runs them.
-- OpenWiki's process (not the agent) reads nearly every repository file during its scan. Worth reporting upstream
-  alongside the `glob` defect.
+- OpenWiki's `grep` tool reads ignored files and filters its results afterwards, so the process reads far more than
+  the scope. Worth reporting upstream alongside the `glob` defect.
 
 See [implementation-plan.md](implementation-plan.md) for the sprints and acceptance checks.

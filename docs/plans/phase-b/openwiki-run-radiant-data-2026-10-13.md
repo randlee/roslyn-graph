@@ -34,7 +34,7 @@ files, 11 SDK files and `openwiki/INSTRUCTIONS.md`.
 | API calls | 101, all `200`, all `gpt-6-luna` |
 | Tokens | 1,248,648 input (253,952 cached), 20,483 output, 200 reasoning |
 | Tool calls | `read_file` 91, `ls` 58, `grep` 10, `glob` 8, `submit_page` 8, `write_file` 7, `edit_file` 1, `submit_plan` 1 |
-| Agent reads outside scope | none served. 7 of 91 `read_file` calls asked for an ignored path (one SDK test, six non-existent `/repo/src/...` paths) and were refused; one read OpenWiki's built-in `/skills/mermaid-diagrams/SKILL.md`. The 198 distinct paths opened through the agent's backend (reads and `grep`) are the 197 readable files plus `.openwikiignore` |
+| Agent reads outside scope | none served. Of 91 `read_file` calls, 77 read scope files, 7 read OpenWiki's built-in `/skills/mermaid-diagrams/SKILL.md`, and 7 asked for an ignored path (one SDK test, six non-existent `/repo/src/...` paths) and were refused |
 | Output | 22 files under `openwiki/`: 7 content pages, 5 indexes (`index.md` and one per section), the brief, 7 `.claims/*.json`, `.page-manifest.json`, `.last-update.json` |
 | Size | 545 lines of wiki, excluding the brief |
 | Coverage | 63 of 270 distinct short type names (67 of 276 types) appear in the pages; 61 distinct source files are cited, and every one exists |
@@ -48,17 +48,19 @@ Findings:
    `grep test_sdk_surface`, `read_file /bindings/python/sdk/tests/test_sdk_surface.py`) and got nothing back. The
    pages name `tests/test_sdk_surface.py` and `scripts/generate_python_sdk.py` only because in-scope files
    (`FILE_CONTRACT.md`, the SDK README) mention them.
-2. **The process reads everything.** `fs_trace.mjs` shows OpenWiki's own code (not the agent) opening 827 distinct
-   paths, nearly every file in the repository, including `.claude/` and `.just/`. That is its repository scan; the
-   ignore file limits only what the model can request. Content outside the scope does not reach the provider
-   through tool calls, but a scope is not a guarantee that no file is read on the machine.
+2. **`grep` reads ignored files, then filters.** `fs_trace.mjs` shows the OpenWiki process reading 827 distinct
+   paths, 611 of them ignored (`tests/`, `reports/`, `schema-output/`, `.claude/`). Almost all of those reads follow
+   the agent's `grep` calls: the grep tool reads files outside the scope and drops them from its results. The
+   results are filtered (after `grep test_sdk_surface` over `/`, the next call's input grew by 69 tokens), so the
+   content does not reach the provider. But the scope limits what the agent receives, not what the process reads.
+   This belongs in the upstream report next to the `glob` defect.
 3. **Coverage is thematic, not per type.** 63 of the 270 short type names appear in the 7 content pages. The
    brief lists every type, but OpenWiki plans pages by topic. Per-type coverage would need the brief to ask for it.
 4. **Side effects of `--init`.** OpenWiki adds an `OPENWIKI` block to `AGENTS.md` and `CLAUDE.md`, and writes
    `.github/workflows/openwiki-update.yml`: a daily `--update` job whose `openai-chatgpt` login cannot run
    unattended. The workflow was not committed.
 5. **Cost follows calls, not scope size.** About 1.25 M input tokens (20 % cached) over 101 calls, roughly 12 k of
-   context per call, for 7 content pages. The agent read 54 distinct files of the 198 readable (186 C# files,
+   context per call, for 7 content pages. The agent read 46 distinct files of the 198 readable (186 C# files,
    26,085 lines; 9,690 lines of SDK Python). A larger scope costs more mainly through more pages and calls, so
    per-page cost (about 180 k input tokens) is the better estimate; a linear guess from line counts (about 30 M for
    P3's 4,807 files) is only an upper bound. Runs on P3 should still stay scoped to one project or namespace.
@@ -76,7 +78,8 @@ OPENWIKI_PROVIDER=openai-chatgpt OPENWIKI_MODEL_ID=gpt-6-luna OPENWIKI_CHATGPT_*
 ```
 
 `run_openwiki.py --provider openai-chatgpt --model gpt-6-luna` does the same for the clone-based P3 runs. Its
-`readsOutside` counts the agent's reads (`open`); `scanReadsOutside` counts OpenWiki's own scan (`readFile`).
+`requestsOutside` lists `read_file` requests for files outside the scope, taken from the tool inputs;
+`processReadsOutside` counts ignored files the process read (mostly the `grep` tool), which the agent did not receive.
 
 The Codex login is shared: if OpenWiki refreshes the access token (it does so within 60 s of expiry), it rotates the
 refresh token, and the Codex CLI's copy in `~/.codex/auth.json` can stop working until `codex login`. The harness passes the
