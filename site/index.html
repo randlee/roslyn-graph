@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>roslyn-graph — Turn any .NET assembly into a queryable knowledge graph</title>
+  <meta name="description" content="RoslynToRdf extracts .NET assembly type graphs to RDF (N-Triples or Turtle) using Roslyn — load into Oxigraph or any triple store and query the type hierarchy, dependencies, exceptions, and attributes with SPARQL.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #020617;
+      --surface: #0f172a;
+      --border: #1e293b;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #7c3aed;
+      --secondary: #34d399;
+      --code-bg: #0b1220;
+      --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      --sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 16px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: var(--accent); text-decoration: none; }
+    code, pre { font-family: var(--mono); }
+
+    .container { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+    /* ---------- Header ---------- */
+    .site-header {
+      position: sticky; top: 0; z-index: 50;
+      background: rgba(2, 6, 23, 0.82);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+    .site-header .container {
+      display: flex; align-items: center; justify-content: space-between;
+      height: 64px;
+    }
+    .site-title { font-family: var(--mono); font-weight: 700; font-size: 18px; color: var(--accent); }
+    .site-nav { display: flex; gap: 24px; align-items: center; }
+    .site-nav a { color: var(--muted); font-size: 14px; transition: color .15s; }
+    .site-nav a:hover { color: var(--text); }
+    .site-nav a.primary { color: var(--text); font-weight: 500; }
+
+    /* ---------- Hero ---------- */
+    .hero { padding: 96px 0 80px; text-align: center; }
+    .hero h1 {
+      font-family: var(--mono); font-weight: 700;
+      font-size: clamp(30px, 5.5vw, 46px); line-height: 1.12;
+      letter-spacing: -0.01em;
+    }
+    .hero h1 .accent { color: var(--accent); }
+    .hero .subtitle {
+      max-width: 660px; margin: 24px auto 0;
+      color: var(--muted); font-size: 17px; line-height: 1.65;
+    }
+    .hero .install {
+      display: inline-flex; align-items: center; gap: 12px;
+      margin-top: 40px;
+      background: var(--code-bg); border: 1px solid var(--border);
+      border-radius: 8px; padding: 15px 22px;
+      font-family: var(--mono); font-size: 15px; color: var(--text);
+    }
+    .hero .install .prompt { color: var(--secondary); user-select: none; }
+    .hero .cta { margin-top: 30px; }
+    .btn {
+      display: inline-block; padding: 11px 24px; border-radius: 6px;
+      font-size: 14px; font-weight: 500; border: 1px solid var(--accent);
+      color: var(--accent); transition: background .15s;
+    }
+    .btn:hover { background: rgba(124, 58, 237, 0.12); }
+
+    /* ---------- Sections ---------- */
+    .section { padding: 72px 0; }
+    .section-head { margin-bottom: 8px; }
+    .section-label {
+      font-family: var(--mono); font-size: 13px; letter-spacing: .14em;
+      text-transform: uppercase; color: var(--accent);
+    }
+    .section h2 { font-family: var(--mono); font-size: 28px; font-weight: 700; margin: 8px 0 10px; }
+    .section .lede { color: var(--muted); max-width: 680px; }
+
+    /* ---------- Stories (personas) ---------- */
+    .stories { margin-top: 24px; }
+    .story {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: center;
+      padding: 44px 0; border-top: 1px solid var(--border);
+    }
+    .story:first-child { border-top: none; padding-top: 16px; }
+    .story-copy h3 { font-family: var(--mono); font-size: 20px; font-weight: 700; margin-bottom: 12px; }
+    .story-copy p { color: var(--muted); }
+    .story-code pre {
+      background: var(--code-bg); border: 1px solid var(--border);
+      border-radius: 8px; padding: 20px; overflow-x: auto;
+      font-size: 13.5px; line-height: 1.65; color: var(--text);
+    }
+    .story-code pre .c { color: var(--muted); }
+    .story-powers {
+      grid-column: 1 / -1; display: flex; align-items: baseline; gap: 12px;
+      font-family: var(--mono); font-size: 13px; color: var(--muted);
+    }
+    .story-powers .powers-label { color: var(--accent); white-space: nowrap; }
+    .story.reverse .story-copy { order: 2; }
+    .story.reverse .story-code { order: 1; }
+
+    /* ---------- How it works ---------- */
+    .steps {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      margin-top: 36px; border: 1px solid var(--border);
+      border-radius: 8px; overflow: hidden; background: var(--surface);
+    }
+    .step { padding: 28px; }
+    .step + .step { border-left: 1px solid var(--border); }
+    .step h3 { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); margin-bottom: 14px; }
+    .step ul { list-style: none; font-family: var(--mono); font-size: 13px; color: var(--muted); line-height: 2; }
+
+    /* ---------- Footer ---------- */
+    .site-footer { border-top: 1px solid var(--border); padding: 40px 0; margin-top: 48px; }
+    .site-footer .container {
+      display: flex; justify-content: space-between; align-items: center;
+      font-family: var(--mono); font-size: 13px; color: var(--muted);
+      flex-wrap: wrap; gap: 12px;
+    }
+    .site-footer a { color: var(--muted); }
+    .site-footer a:hover { color: var(--text); }
+    .site-footer .links { display: flex; gap: 18px; }
+
+    /* ---------- Responsive ---------- */
+    @media (max-width: 768px) {
+      .story { grid-template-columns: 1fr; gap: 20px; }
+      .story.reverse .story-copy { order: 1; }
+      .story.reverse .story-code { order: 2; }
+      .story-powers { grid-column: 1; flex-wrap: wrap; }
+      .steps { grid-template-columns: 1fr; }
+      .step + .step { border-left: none; border-top: 1px solid var(--border); }
+      .site-footer .container { flex-direction: column; text-align: center; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      * { transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="container">
+      <a href="#top" class="site-title">roslyn-graph</a>
+      <nav class="site-nav">
+        <a href="#use-cases">Use cases</a>
+        <a href="#how-it-works">How it works</a>
+        <a href="#install">Install</a>
+        <a href="announcements/">Announcements</a>
+        <a href="https://github.com/randlee/roslyn-graph" class="primary">GitHub ↗</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <h1>Turn any .NET assembly<br><span class="accent">into a queryable knowledge graph.</span></h1>
+      <p class="subtitle">
+        RoslynToRdf extracts a complete type graph — classes, members, parameters,
+        inheritance, interfaces, exceptions, and attributes — and emits standards-compliant
+        RDF (N-Triples or Turtle) you can load into Oxigraph or any triple store and query with SPARQL.
+      </p>
+      <div class="install"><span class="prompt">$</span> dotnet tool install --global RoslynToRdf</div>
+      <div class="cta">
+        <a href="#use-cases" class="btn">See what you can build ↓</a>
+      </div>
+    </section>
+
+    <section id="use-cases" class="section">
+      <div class="section-head">
+        <span class="section-label">Use cases</span>
+        <h2>What people do with it</h2>
+        <p class="lede">Five jobs. One graph. Each is a real workflow grounded in the extracted ontology.</p>
+      </div>
+
+      <div class="stories">
+        <article class="story">
+          <div class="story-copy">
+            <h3>“I'm refactoring a legacy codebase and need a map”</h3>
+            <p>
+              Get the inheritance tree, every interface implementation, and all
+              cross-type dependencies in one artifact. <code>--include-private</code>
+              exposes the hidden coupling that grep misses, so you can plan a safe,
+              incremental refactor instead of discovering landmines mid-edit.
+            </p>
+          </div>
+          <div class="story-code">
+            <pre><code># Every subclass of a legacy base type
+PREFIX dt: &lt;http://dotnet.example/ontology/&gt;
+
+SELECT ?type ?name WHERE {
+  ?type dt:inherits* ?base .
+  ?base dt:name "LegacyController" .
+  ?type dt:name ?name .
+}</code></pre>
+          </div>
+          <div class="story-powers">
+            <span class="powers-label">── powers ──</span>
+            <span>inherits · implements · nestedIn · hasMember · --include-private</span>
+          </div>
+        </article>
+
+        <article class="story reverse">
+          <div class="story-copy">
+            <h3>“I audit architecture rules as declarative queries”</h3>
+            <p>
+              Exception contracts (<code>&lt;exception&gt;</code>), cross-references
+              (<code>&lt;seealso&gt;</code>), and attributes all become queryable edges.
+              A boundary violation or a deprecated-API touchpoint is one SPARQL
+              statement, not a code review.
+            </p>
+          </div>
+          <div class="story-code">
+            <pre><code># Every method documented to throw ArgumentNullException
+SELECT ?method ?typeName WHERE {
+  ?method a dt:Method ;
+          dt:throws ?ex ;
+          dt:memberOf ?type .
+  ?type dt:name ?typeName .
+  ?ex dt:name "ArgumentNullException" .
+}</code></pre>
+          </div>
+          <div class="story-powers">
+            <span class="powers-label">── powers ──</span>
+            <span>throws · relatedTo · hasAttribute · hasMember</span>
+          </div>
+        </article>
+
+        <article class="story">
+          <div class="story-copy">
+            <h3>“I load .NET types into a knowledge graph”</h3>
+            <p>
+              Standards-compliant output with deterministic, collision-safe IRIs.
+              Emit Turtle for humans or N-Triples for streaming loads into Oxigraph,
+              then link your assembly's types to the rest of your graph.
+            </p>
+          </div>
+          <div class="story-code">
+            <pre><code># Turtle, custom base URI
+roslyn2rdf MyAssembly.dll -o types.ttl -f turtle \
+    -b "http://mycompany.com/types/"</code></pre>
+          </div>
+          <div class="story-powers">
+            <span class="powers-label">── powers ──</span>
+            <span>NTriples · Turtle · --base-uri · IriMinter</span>
+          </div>
+        </article>
+
+        <article class="story reverse">
+          <div class="story-copy">
+            <h3>“I build a complete migration checklist”</h3>
+            <p>
+              Enumerate every type and member carrying a given attribute — deprecated
+              markers, serialization contracts, dangerous reflection surfaces — and get
+              the full, ranked set of touchpoints before you touch anything.
+            </p>
+          </div>
+          <div class="story-code">
+            <pre><code># Find every type decorated with a given attribute
+SELECT ?type ?name WHERE {
+  ?type dt:hasAttribute ?attr .
+  ?attr dt:attributeType ?attrType .
+  ?attrType dt:name "ObsoleteAttribute" .
+  ?type dt:name ?name .
+}</code></pre>
+          </div>
+          <div class="story-powers">
+            <span class="powers-label">── powers ──</span>
+            <span>hasAttribute · attributeType · constructorArguments</span>
+          </div>
+        </article>
+
+        <article class="story">
+          <div class="story-copy">
+            <h3>“Every build publishes an up-to-date graph”</h3>
+            <p>
+              The CLI is a thin wrapper over <code>RoslynToRdf.Core</code>, so you can
+              consume the extractor programmatically or run the dotnet tool in CI and
+              ship a fresh type-graph artifact with every build — no manual steps.
+            </p>
+          </div>
+          <div class="story-code">
+            <pre><code># Deterministic pipeline artifact
+roslyn2rdf src/bin/Release/MyApp.dll \
+    -o artifacts/types.nt -q</code></pre>
+          </div>
+          <div class="story-powers">
+            <span class="powers-label">── powers ──</span>
+            <span>RoslynToRdf.Core · dotnet tool · --quiet · CI-ready</span>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section id="how-it-works" class="section">
+      <div class="section-head">
+        <span class="section-label">How it works</span>
+        <h2>Three steps, no magic</h2>
+      </div>
+      <div class="steps">
+        <div class="step">
+          <h3>1 · Extract</h3>
+          <ul>
+            <li>Roslyn loads the assembly</li>
+            <li>walks types + members</li>
+            <li>parses XML docs</li>
+          </ul>
+        </div>
+        <div class="step">
+          <h3>2 · Emit</h3>
+          <ul>
+            <li>N-Triples or Turtle</li>
+            <li>collision-safe IRIs</li>
+            <li>deterministic output</li>
+          </ul>
+        </div>
+        <div class="step">
+          <h3>3 · Query</h3>
+          <ul>
+            <li>load into Oxigraph</li>
+            <li>SPARQL your graph</li>
+            <li>or browse with the viewer</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="install" class="section">
+      <div class="section-head">
+        <span class="section-label">Install</span>
+        <h2>Get it in one command</h2>
+        <p class="lede">
+          Ships as a <code>.NET global tool</code>. Requires .NET 8 SDK to build from source.
+        </p>
+      </div>
+      <div class="story-code" style="margin-top: 28px;">
+        <pre><code># Install the tool
+dotnet tool install --global RoslynToRdf
+
+# Extract a type graph
+roslyn2rdf MyAssembly.dll
+
+# With options
+roslyn2rdf MyAssembly.dll -o types.ttl -f turtle --include-private</code></pre>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <span>roslyn-graph · RoslynToRdf · MIT licensed · randlee</span>
+      <span class="links">
+        <a href="announcements/">Announcements</a>
+        <a href="https://github.com/randlee/roslyn-graph">GitHub</a>
+      </span>
+    </div>
+  </footer>
+</body>
+</html>
