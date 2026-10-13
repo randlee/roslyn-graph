@@ -129,6 +129,19 @@ SELECT ?class ?className WHERE {
 }
 ```
 
+## Website
+
+GitHub Pages content lives under `site/`. The landing page and announcements are
+hand-edited; the `roslyn2rdf` CLI reference is generated with [docli](https://github.com/randlee/docli)
+from a sibling checkout (`../docli` by default):
+
+```bash
+./scripts/regenerate-site.sh
+```
+
+That runs `scripts/regenerate-site-cli.sh`, which uses
+`tools/RoslynToRdf.DocliExport/` and writes `site/cli/index.html`.
+
 ## Building
 
 ```bash

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Render roslyn2rdf CLI reference to site/cli/index.html via sibling docli checkout.
+# Prefer scripts/regenerate-site.sh for the full Pages tree (static home + CLI docs).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
