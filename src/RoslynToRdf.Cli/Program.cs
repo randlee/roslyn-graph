@@ -14,6 +14,27 @@ public class Program
     {
         var rootCommand = new RootCommand("Extract .NET assembly type graphs to RDF format") { Name = "roslyn2rdf" };
 
+        var skillCommand = new Command("skill", "Install the bundled roslyn-graph plugin skills into a repository.");
+        var installOption = new Option<DirectoryInfo>("--install", "Target repository directory") { IsRequired = true };
+        var claudeOption = new Option<bool>("--claude", "Install only the Claude Code plugin location.");
+        var codexOption = new Option<bool>("--codex", "Install only the Codex plugin location.");
+        var dryRunOption = new Option<bool>("--dry-run", "Show the install paths without writing files.");
+        skillCommand.AddOption(installOption);
+        skillCommand.AddOption(claudeOption);
+        skillCommand.AddOption(codexOption);
+        skillCommand.AddOption(dryRunOption);
+        skillCommand.SetHandler(context =>
+        {
+            context.ExitCode = PluginInstaller.Install(
+                context.ParseResult.GetValueForOption(installOption)!,
+                context.ParseResult.GetValueForOption(claudeOption),
+                context.ParseResult.GetValueForOption(codexOption),
+                context.ParseResult.GetValueForOption(dryRunOption),
+                Console.Out,
+                Console.Error);
+        });
+        rootCommand.AddCommand(skillCommand);
+
         var assemblyArg = new Argument<FileInfo>("assembly", "Path to a .NET assembly (.dll) or C# source project (.csproj) to analyze");
         var additionalAssembliesOption = new Option<FileInfo[]>(["--assembly", "-a"], () => [], "Additional target assemblies to include in the same graph");
         var outputOption = new Option<FileInfo?>(["--output", "-o"], "Output file path");
