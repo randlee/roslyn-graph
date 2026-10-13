@@ -112,6 +112,25 @@ commands that crash natively (for example Windows exit code 0xC0000005) are retr
 | `RESOURCE_MISSING` | the command needs the ontology or visualizers, which only the roslyn-graph-explore skill carries; run that skill's `scripts/rg.py` |
 | `ONTOLOGY_DOC_STALE`, `ONTOLOGY_PARSE` | (maintainers) regenerate the ontology reference or fix the ontology file |
 
+## Records
+
+| Code | Meaning and fix |
+|---|---|
+| `RECORDS_INPUT` | pass exactly one of `--graph` (an existing `.nt`) or `--selection` (a `roslyn-graph-selection/2` payload) |
+| `RECORDS_NO_STORE` | the input has no `.context.json` or `store`; pass the solution or view `manifest.json` with `--manifest` |
+| `RECORDS_TYPE_NOT_IN_STORE` | some input types (`context.missing`) are not component types of the store; the input came from another store, so pass its manifest |
+| `RECORDS_MANIFEST_BROKEN` | a component manifest of the store cannot be found from its artifact root; validate the store |
+| `RECORDS_FIELD_UNAVAILABLE` | the schema binds fields this input or version cannot fill (`context.fields`): graph edge fields need `--graph` |
+| `RECORDS_EMPTY` | the filters removed every type; the hint names the filter that removed the most |
+| `RECORD_AMBIGUOUS_FIELD` | a logical type is built in several repositories; bind `repositories` instead of `repository` |
+| `RECORD_SCHEMA_VIOLATION` | records do not match the schema (`context.violations`, first 20); relax the schema, for example allow `null`, or narrow the input |
+| `RECORD_FIELD_VARIES` | (warning) a scalar field differs between versions of a logical type; the first value in sorted order was written |
+| `SCHEMA_NOT_FOUND`, `SCHEMA_JSON` | the schema file is missing or not JSON, or no built-in schema has that name |
+| `SCHEMA_INVALID`, `SCHEMA_RECORD_UNSUPPORTED` | the schema is not an object schema with properties, a keyword has a bad value, or `x-rg-record` is not `type` |
+| `SCHEMA_UNSUPPORTED_KEYWORD` | the schema uses a keyword outside the supported subset; remove it so the schema is not silently unenforced |
+| `SCHEMA_FIELD_MISSING`, `SCHEMA_FIELD_UNKNOWN` | every property needs exactly one of `x-rg-field` (a registry field name) or `const` |
+| `SCHEMA_FIELD_CARDINALITY` | a list field is bound to a non-array property, or a scalar field to an array property |
+
 ## Always
 
 | Code | Meaning and fix |
