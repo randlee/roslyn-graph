@@ -55,8 +55,14 @@ def _slnx_paths(solution: Path) -> list[str]:
 class ProjectInfo:
     path: Path
     assembly_name: str
-    assembly_name_source: str  # "csproj" or "file-name"
+    assembly_name_source: str  # "csproj", "vbproj" or "file-name"
     target_frameworks: list[str] = field(default_factory=list)
+    output_type: str = "Library"
+
+    @property
+    def output_extension(self) -> str:
+        """Extension used by managed outputs from classic executable projects."""
+        return ".exe" if self.output_type.casefold() in {"exe", "winexe"} else ".dll"
 
 
 def read_project(project: Path) -> ProjectInfo:
@@ -71,6 +77,8 @@ def read_project(project: Path) -> ProjectInfo:
         return [(node.text or "").strip() for node in root.iter() if _local(node.tag) == tag and (node.text or "").strip()]
 
     names = values("AssemblyName")
+    output_types = values("OutputType")
+    output_type = output_types[-1] if output_types else "Library"
     frameworks: list[str] = []
     for value in values("TargetFramework") + values("TargetFrameworks"):
         frameworks.extend(part.strip() for part in value.split(";") if part.strip())
@@ -83,8 +91,8 @@ def read_project(project: Path) -> ProjectInfo:
                 "Add the evaluated name under [profiles.<name>.assembly_names] keyed by the project path.",
                 project=str(project),
             )
-        return ProjectInfo(project, name, "csproj", frameworks)
-    return ProjectInfo(project, project.stem, "file-name", frameworks)
+        return ProjectInfo(project, name, project.suffix.lower().lstrip("."), frameworks, output_type)
+    return ProjectInfo(project, project.stem, "file-name", frameworks, output_type)
 
 
 def _local(tag: str) -> str:

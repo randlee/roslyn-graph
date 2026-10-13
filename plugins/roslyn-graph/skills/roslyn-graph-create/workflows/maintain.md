@@ -4,7 +4,7 @@ Goal: capture a new version without touching earlier artifacts, show what change
 valid and tidy.
 
 Artifacts are immutable and content-addressed ([../reference/artifact-layout.md](../reference/artifact-layout.md)).
-A new commit, rebuilt DLL, package version, extractor build or build-file change produces new artifact
+A new commit, rebuilt assembly output, package version, extractor build or build-file change produces new artifact
 IDs; anything unchanged is reused by ID.
 
 ## New version of a solution or package

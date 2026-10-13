@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from roslyn_graph import config, gitinfo, plan
+from roslyn_graph import config, discover, gitinfo, plan
 from roslyn_graph.extractor import Extractor
 from roslyn_graph.result import ProblemList, RgError
 
@@ -155,6 +155,75 @@ def test_output_overrides_and_assembly_names(git_repo):
     components = plan._solution_components(p, "base", TOOL, True, problems)
     assert not problems
     assert components[1].assembly_path == special / "Renamed.dll"
+
+
+@pytest.mark.parametrize(
+    ("project_extension", "output_type"),
+    [("csproj", "Exe"), ("csproj", "WinExe"), ("vbproj", "Exe"), ("vbproj", "WinExe")],
+)
+def test_executable_project_output_resolution(git_repo, project_extension, output_type):
+    project_dir = git_repo / "src" / "DesktopApp"
+    project_dir.mkdir(parents=True)
+    project = project_dir / f"DesktopApp.{project_extension}"
+    project.write_text(
+        f'<Project><PropertyGroup><AssemblyName>DesktopApp</AssemblyName><OutputType>{output_type}</OutputType></PropertyGroup></Project>'
+    )
+    source_extension = "cs" if project_extension == "csproj" else "vb"
+    (project_dir / f"Program.{source_extension}").write_text("class Program {}")
+    (git_repo / "App.sln").write_text(
+        f'Project("{{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}}") = "DesktopApp", "src\\DesktopApp\\DesktopApp.{project_extension}", "{{22222222-2222-2222-2222-222222222222}}"\n'
+    )
+    (git_repo / "Directory.Build.props").write_text("<Project />")
+    git_repo.git("add", ".")
+    git_repo.git("commit", "-q", "-m", f"add {project_extension} {output_type} project")
+    gitinfo.repo_state.cache_clear()
+
+    output_dir = git_repo / "bin" / "Debug"
+    output_dir.mkdir(parents=True)
+    executable = output_dir / "DesktopApp.exe"
+    executable.write_bytes(b"managed executable")
+    os.utime(executable, (time.time() + 5, time.time() + 5))
+
+    if project_extension == "vbproj":
+        source = project_dir / f"Program.{source_extension}"
+        source_time = time.time() + 60
+        os.utime(source, (source_time, source_time))
+        stale_problems = ProblemList()
+        plan._solution_components(profile(git_repo), "base", TOOL, True, stale_problems)
+        assert [problem.code for problem in stale_problems.items] == ["BUILD_OUTPUT_STALE"]
+        os.utime(executable, (source_time + 5, source_time + 5))
+
+    problems = ProblemList()
+    components = plan._solution_components(profile(git_repo), "base", TOOL, True, problems)
+
+    assert not problems
+    assert len(components) == 1
+    assert components[0].assembly_path == executable
+    assert components[0].manifest["assembly"]["inputPath"] == str(executable)
+
+
+def test_discovery_finds_winexe_project_output(git_repo):
+    project_dir = git_repo / "src" / "DesktopApp"
+    project_dir.mkdir(parents=True)
+    project = project_dir / "DesktopApp.vbproj"
+    project.write_text('<Project><PropertyGroup><OutputType>WinExe</OutputType></PropertyGroup></Project>')
+    (project_dir / "Program.vb").write_text("Module Program\nEnd Module\n")
+    solution = git_repo / "App.sln"
+    solution.write_text(
+        'Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DesktopApp", "src\\DesktopApp\\DesktopApp.vbproj", "{22222222-2222-2222-2222-222222222222}"\n'
+    )
+    output = git_repo / "bin" / "Debug" / "DesktopApp.exe"
+    output.parent.mkdir(parents=True)
+    output.write_bytes(b"managed executable")
+    git_repo.git("add", ".")
+    git_repo.git("commit", "-q", "-m", "add WinExe project")
+    gitinfo.repo_state.cache_clear()
+
+    result = discover.solution(solution, git_repo, None)
+
+    assert result["projects"][0]["outputType"] == "WinExe"
+    assert result["projects"][0]["assemblyExtension"] == ".exe"
+    assert result["projects"][0]["outputCandidates"] == [str(output)]
 
 
 def test_newest_input_skips_build_folders(tmp_path):

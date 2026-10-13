@@ -60,7 +60,7 @@ python <skill>/scripts/rg.py check-workspace --workspace <workspace.toml>
 python <skill>/scripts/rg.py plan --workspace <workspace.toml> --collection <name>
 ```
 
-`check-workspace` reports every schema problem at once. `plan` resolves every DLL, runs the build checks
+`check-workspace` reports every schema problem at once. `plan` resolves every managed assembly output, runs the build checks
 and restores packages (it writes only the NuGet cache). Show the user the `summary`, the component count
 per profile and any `warnings`, and get confirmation. Then continue with
 [generate-initial](generate-initial.md).

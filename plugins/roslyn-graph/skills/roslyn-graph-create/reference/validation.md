@@ -20,8 +20,8 @@ when every applicable check passes.
 | S1 | the store reopens and holds the recorded triple count | corrupted or modified store |
 | S2 | the extracted Turtle's unique triples equal the store's triples | the load dropped or added data |
 | S3 | the store has no named graphs | unexpected content |
-| S4 | exactly one `dt:Assembly`, whose IRI matches the manifest's name and version | wrong DLL or extractor output |
-| S5 | the assembly's name equals the expected output name (project AssemblyName or package asset file name) | the DLL at that path is not the project's output |
+| S4 | exactly one `dt:Assembly`, whose IRI matches the manifest's name and version | wrong assembly input or extractor output |
+| S5 | the assembly's name equals the expected output name (project AssemblyName or package asset file name) | the file at that path is not the project's output |
 | S6 | the assembly defines at least one type | empty or failed extraction |
 | S7 | every type has exactly one `dt:fullName` | the extractor named one type two ways (for example with and without a nullable annotation); queries by name would return duplicates |
 | S8 | every own type (defined by the assembly, not a constructed generic) has exactly one `dt:fullName`, `dt:typeKind` and `dt:accessibility` | a type was written as a reference stub instead of being fully extracted (missing members, class and flags) |
