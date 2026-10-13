@@ -25,6 +25,12 @@
 
   <ItemGroup>
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <!-- The NuGet tool must carry the complete plugin bundle beside its entry point. -->
+    <None Include="..\..\plugins\roslyn-graph\**\*"
+          Pack="true"
+          PackagePath="tools\net8.0\any\roslyn-graph\%(RecursiveDir)%(Filename)%(Extension)"
+          Link="roslyn-graph\%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

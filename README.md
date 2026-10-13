@@ -28,7 +28,16 @@ roslyn2rdf MyAssembly.dll -v
 
 # Add reference paths for dependencies
 roslyn2rdf MyAssembly.dll -r /path/to/dependency.dll -s /path/to/deps/
+
+# Install the bundled Claude Code and Codex skills in a repository
+roslyn2rdf skill --install /path/to/repository
+
+# Install for one host, or preview paths without writing
+roslyn2rdf skill --install /path/to/repository --claude
+roslyn2rdf skill --install /path/to/repository --dry-run
 ```
+
+`skill --install` installs both host plugins by default. Use `--claude` or `--codex` to select one host; the package includes the plugin manifests, skills, scripts, and reference assets.
 
 ## Options
 
