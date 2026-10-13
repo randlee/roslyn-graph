@@ -119,7 +119,20 @@ public partial class IriMinter
             IParameterSymbol param => Parameter(param.ContainingSymbol, param),
             _ => throw new ArgumentException($"Unexpected target type: {target.GetType()}")
         };
-        return $"{targetIri}/attr/{index}";
+        return Attribute(targetIri, index);
+    }
+
+    /// <summary>
+    /// IRI for an attribute instance on an already minted target IRI.
+    /// </summary>
+    public string Attribute(string targetIri, int index)
+    {
+        var attributeIri = $"{targetIri}/attr/{index}";
+        if (Uri.TryCreate(attributeIri, UriKind.Absolute, out var absoluteIri) && !absoluteIri.IsFile)
+            return attributeIri;
+
+        var baseUri = new Uri($"{_baseUri.TrimEnd('/')}/", UriKind.Absolute);
+        return new Uri(baseUri, attributeIri.TrimStart('/')).AbsoluteUri;
     }
 
     /// <summary>
