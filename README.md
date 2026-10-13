@@ -31,7 +31,19 @@ roslyn2rdf MyAssembly.dll -r /path/to/dependency.dll -s /path/to/deps/
 
 # Analyze an evaluated C# source project
 roslyn2rdf MyProject.csproj -o source-graph.nt
+
+# Install the bundled Claude Code and Codex skills in a repository
+roslyn2rdf skill --install /path/to/repository
+
+# Install for one host, or preview paths without writing
+roslyn2rdf skill --install /path/to/repository --claude
+roslyn2rdf skill --install /path/to/repository --dry-run
+
+# Supply the solution build context when the project depends on it
+roslyn2rdf MyProject.csproj -o source-graph.nt --solution-dir ./ --configuration Debug --platform AnyCPU --target-framework net8.0
 ```
+
+`skill --install` installs both host plugins by default. Use `--claude` or `--codex` to select one host; the package includes the plugin manifests, skills, scripts, and reference assets.
 
 ## Options
 
@@ -48,6 +60,10 @@ roslyn2rdf MyProject.csproj -o source-graph.nt
 | `--extract-seealso` | Extract seealso references from XML docs (default: true) |
 | `-r, --reference` | Additional assembly reference paths |
 | `-s, --search-dir` | Additional directories to search for dependencies |
+| `--solution-dir` | Solution directory for source-project evaluation (defaults to the project directory) |
+| `--configuration` | MSBuild configuration for source-project evaluation (defaults to `Debug`) |
+| `--platform` | MSBuild platform for source-project evaluation |
+| `--target-framework` | Target framework for source-project evaluation |
 | `-v, --verbose` | Verbose output |
 | `-q, --quiet` | Quiet output |
 
@@ -55,8 +71,13 @@ Passing a `.csproj` opens the evaluated C# project with MSBuild and analyzes its
 including source syntax and the evaluated `AllowUnsafeBlocks` setting. Projects where that setting is
 false still receive the ordinary type graph, while unsafe-method facts are omitted. Source generators
 are represented when their generated trees are present in the compilation supplied by the workspace.
-Unsafe reason nodes carry project-relative source paths with one-based line and column numbers. The
-`.dll` mode remains metadata-only and does not report method-body unsafe facts.
+The MSBuild options above are passed as project-evaluation properties, without changing the caller's
+environment. The `rg` generator supplies `SolutionDir`, `Configuration`, `Platform` and
+`TargetFramework` from each solution profile automatically.
+Unsafe reason nodes describe a method's own unsafe modifier or unsafe syntax and carry project-relative
+source paths with one-based line and column numbers. An unsafe enclosing type contributes to type and
+assembly `containsUnsafeCode` aggregates, but does not mark each ordinary method in that type unsafe.
+The `.dll` mode remains metadata-only and does not report method-body unsafe facts.
 
 ## RDF Schema
 

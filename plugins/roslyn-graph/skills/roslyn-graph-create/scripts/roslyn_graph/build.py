@@ -75,7 +75,8 @@ def snapshot(plan: Plan, c: Component) -> dict[str, Any]:
     art = staging / "artifact"
     ttl, nt, store = staging / "graph.ttl", staging / "graph.nt", art / "store.oxigraph"
     try:
-        warnings = extractor.extract(plan.extractor, c.extraction_path or c.assembly_path, ttl, c.search_dirs)
+        warnings = extractor.extract(plan.extractor, c.extraction_path or c.assembly_path, ttl, c.search_dirs,
+                                     c.msbuild_properties if (c.extraction_path or c.assembly_path).suffix.lower() == ".csproj" else None)
         oxigraph.convert(ttl, nt)
         ttl_unique = unique_nt_lines(nt)
         oxigraph.load(store, ttl)
@@ -98,6 +99,7 @@ def snapshot(plan: Plan, c: Component) -> dict[str, Any]:
             "inputKind": c.manifest.get("extraction", {}).get("inputKind", "assembly"),
             "extractor": plan.extractor.to_json(),
             "searchDirs": [str(d) for d in c.search_dirs],
+            **({"msbuildProperties": c.msbuild_properties} if (c.extraction_path or c.assembly_path).suffix.lower() == ".csproj" else {}),
             "ttlSha256": sha256_file(ttl),
             "ttlUniqueTriples": ttl_unique,
             "warnings": warnings,

@@ -98,10 +98,14 @@ def resolve() -> Extractor:
     return Extractor(entry, sha256_text(identity)[:16], runtime, files_hash, source)
 
 
-def extract(extractor: Extractor, assembly: Path, output: Path, search_dirs: list[Path]) -> list[str]:
+def extract(extractor: Extractor, assembly: Path, output: Path, search_dirs: list[Path],
+            msbuild_properties: dict[str, str] | None = None) -> list[str]:
     args = ["dotnet", str(extractor.entry), str(assembly), "--output", str(output), *FLAGS]
     for directory in search_dirs:
         args += ["--search-dir", str(directory)]
+    for name, value in (msbuild_properties or {}).items():
+        option = re.sub(r"(?<!^)(?=[A-Z])", "-", name).lower()
+        args += [f"--{option}", value]
     completed = run(args)
     if completed.returncode != 0 or not output.is_file():
         raise RgError.of(

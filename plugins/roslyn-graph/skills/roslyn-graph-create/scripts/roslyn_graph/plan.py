@@ -31,6 +31,7 @@ class Component:
     search_dirs: list[Path]
     manifest: dict[str, Any]  # partial manifest: origin/build or package, assembly.sha256, extraction.extractorId
     extraction_path: Path | None = None
+    msbuild_properties: dict[str, str] = field(default_factory=dict)
     artifact_id: str = ""
     destination: Path | None = None
     exists: bool = False
@@ -46,6 +47,7 @@ class Component:
             "destination": artifacts.relative(root, self.destination) if self.destination else None,
             "exists": self.exists,
             "searchDirs": [str(d) for d in self.search_dirs],
+            "msbuildProperties": self.msbuild_properties,
             "origin": self.manifest.get("origin"),
             "package": self.manifest.get("package"),
         }
@@ -274,7 +276,16 @@ def _solution_components(profile: SolutionProfile, role: str, tool: extractor.Ex
             },
         }
         extraction_path = project.path if project.path.suffix.lower() == ".csproj" else assembly_path
-        components.append(Component(profile.name, role, assembly_path, name, _unique(search), manifest, extraction_path))
+        msbuild_properties = {
+            "SolutionDir": str(profile.solution.parent) + os.sep,
+            "Configuration": profile.configuration,
+        }
+        if profile.platform:
+            msbuild_properties["Platform"] = profile.platform
+        if profile.target_framework:
+            msbuild_properties["TargetFramework"] = profile.target_framework
+        components.append(Component(profile.name, role, assembly_path, name, _unique(search), manifest, extraction_path,
+                                    msbuild_properties))
     return components
 
 

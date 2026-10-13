@@ -43,6 +43,32 @@ def test_ontology_doc_is_current():
     assert code == 0 and payload["upToDate"] is True, payload
 
 
+def test_source_extractor_passes_msbuild_properties_as_cli_options(tmp_path, monkeypatch):
+    output = tmp_path / "graph.ttl"
+    captured = []
+
+    def fake_run(args):
+        captured.extend(args)
+        output.write_text("graph")
+        return SimpleNamespace(returncode=0, stderr="")
+
+    monkeypatch.setattr(build.extractor, "run", fake_run)
+    build.extractor.extract(
+        SimpleNamespace(entry=tmp_path / "RoslynToRdf.Cli.dll"),
+        tmp_path / "Main.csproj",
+        output,
+        [],
+        {"SolutionDir": str(tmp_path) + "/", "Configuration": "Debug", "Platform": "AnyCPU", "TargetFramework": "net8.0"},
+    )
+
+    assert captured[-8:] == [
+        "--solution-dir", str(tmp_path) + "/",
+        "--configuration", "Debug",
+        "--platform", "AnyCPU",
+        "--target-framework", "net8.0",
+    ]
+
+
 @requires_oxigraph
 def test_load_select_and_graph_counts(tmp_path):
     ttl = tmp_path / "a.ttl"
@@ -197,8 +223,9 @@ def test_snapshot_publishes_validated_type_to_project_provenance(tmp_path, monke
 
     extracted_from = []
 
-    def fake_extract(_extractor, extraction_path, output, _search_dirs):
+    def fake_extract(_extractor, extraction_path, output, _search_dirs, msbuild_properties=None):
         extracted_from.append(extraction_path)
+        assert msbuild_properties == {}
         output.write_text(f"""@prefix dt: <http://dotnet.example/ontology/> .
 <{assembly}> a dt:Assembly ; dt:name "Lib" ; dt:version "1.0.0.0" .
 <{type_iri}> a dt:Type, dt:Class ; dt:name "Widget" ; dt:fullName "Lib.Widget" ;
@@ -215,6 +242,7 @@ def test_snapshot_publishes_validated_type_to_project_provenance(tmp_path, monke
     assert manifest["assembly"]["sha256"] == sha256_file(dll)
     assert manifest["assembly"]["inputPath"] == str(dll)
     assert manifest["extraction"]["inputKind"] == "source-project"
+    assert manifest["extraction"]["msbuildProperties"] == {}
     assert {c["id"]: c["status"] for c in manifest["validation"]["staging"]}["S9"] == "pass"
     rows = oxigraph.select(component.destination / "store.oxigraph", f"""PREFIX dt: <http://dotnet.example/ontology/> PREFIX rg: <{RG}>
       SELECT ?repository ?path WHERE {{
