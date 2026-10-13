@@ -1,6 +1,7 @@
 # Phase B implementation plan
 
-Design: [README.md](README.md). Each sprint is one PR to `develop`. Python only, standard library only, every
+Design: [README.md](README.md). The sprints are one stack of PRs on `integrate/phase-b`, which lands on `develop`
+when the phase is done. Python only, standard library only, every
 command returns one JSON object, and tests run on ubuntu, macos and windows in CI.
 
 ## B0: Experiments (no product code)
@@ -27,6 +28,13 @@ commands, versions and numbers.
 
 Exit: README amended where the results disagree with it. Open decisions 1-3 settled.
 
+**Done 2026-10-13**: [reference-run-2026-10-13.md](reference-run-2026-10-13.md). Experiments 1-3 and the tool level
+of 4 are complete. The model-level parts of 4-6 are blocked by a rejected API key. Their harness
+(`experiments/run_openwiki.py`) is ready and they move to the acceptance checks. Changes the results made to the
+design: manifest-based project resolution, MSBuild with solution context and `-t:AddImplicitDefineConstants`,
+Roslyn declarations in the extractor instead of a Python lexer, and the `compiler-generated` / `generated`
+statuses.
+
 ## B1: `records` command (store fields only)
 
 - `records.py`: load `--graph` (`.nt` + `.context.json`) or `--selection` (`roslyn-graph-selection/2`); resolve
@@ -52,27 +60,43 @@ Tests (`test_records.py`):
 
 ## B2: Source locator
 
+- Extractor (`RoslynToRdf`):
+  - `DeclarationIndexer` in Core: parse files with the given language version and preprocessor symbols, build a
+    reference-free compilation, and list every source-declared named type (`TypeNameFormat` name, kind, file, line;
+    one entry per declaring file).
+  - `roslyn2rdf declarations --request <file.json> --output <file.json>`: request
+    `{language, langVersion, preprocessorSymbols, files}`, response `{type: "declarations", types: [...]}`.
 - `sources.py`:
+  - project resolution from the type's named graph and the component manifests, with the v2 profile-root rule, and
+    the v3 provenance triples as a cross-check;
   - checkout check against the manifest commit and dirty hash (`SOURCE_CHECKOUT_DRIFT`, `--allow-drift`,
     `--repo-root ID=PATH`);
-  - MSBuild Compile items with the build's configuration, platform and target framework (`ROSLYN_GRAPH_MSBUILD`,
-    `MSBUILD_FAILED` carrying MSBuild's stderr);
-  - C# and VB declaration scanners;
+  - MSBuild Compile items, `DefineConstants` and `LangVersion` with the build properties, solution context and
+    `-t:AddImplicitDefineConstants` (`ROSLYN_GRAPH_MSBUILD`, `MSBUILD_FAILED` carrying MSBuild's output);
+  - the `declarations` call through `extractor.resolve()` (`DECLARATIONS_UNSUPPORTED` when the installed extractor
+    predates the command, with the update hint);
+  - statuses `found`, `compiler-generated` (owner's files), `generated`, `nuget`;
   - source-index cache under `<data-root>/.roslyn-graph/cache/source-index/`.
 - `records` gains `files` and `locationStatus`, and the `locations` summary in its result.
 
-Tests (`test_sources.py`):
+Tests:
 
-- Scanners, as table-driven cases per language:
-  - C#: block and file-scoped namespaces, nested and generic types, `partial`, `record struct`;
-  - comments, strings, verbatim/raw strings and `#if` around declarations;
-  - VB: `Namespace`, `Partial Class`, `Module`.
-- Name matching against `dt:fullName` samples recorded in B0.
-- Checkout check: matching, other commit, dirty, and `--allow-drift`.
-- Cache: hit, miss on a different commit, never written for a drifted checkout.
-- `requires_dotnet` (skipped without the SDK): a fixture SDK project with a linked file outside its directory, a
-  `Compile Remove`, and a `Condition`ed item. The Compile items and the resulting `files` are exactly right.
-- `locationStatus` for every value, using the fixture plus a type that exists only in `obj/`.
+- C# (`DeclarationIndexerTests`), table-driven:
+  - block and file-scoped namespaces, nested and generic types (`Outer<T>.Inner<U>`), `partial` across files,
+    `record`, `record struct`, delegates, enums;
+  - `#if` with and without the symbol, `#elif`, nested `#if`, braces inside inactive branches (the B0
+    `CameraExtensions.cs` case);
+  - VB: `Namespace`, `Partial Class`, `Module`, `#If ... Then`;
+  - names equal to what the extractor emits for the same source compiled as an assembly.
+- Python (`test_sources.py`):
+  - project resolution for v2 (profile-root-relative) and v3 manifests;
+  - MSBuild argument construction: build properties, solution context, the implicit-symbols target;
+  - checkout check: matching, other commit, dirty, and `--allow-drift`;
+  - cache: hit, miss on a different commit, never written for a drifted checkout;
+  - `locationStatus` for every value, with the owner rule for compiler-generated names;
+  - `requires_dotnet` (skipped without the SDK and a built extractor): a fixture SDK project with a linked file
+    outside its directory, a `Compile Remove`, a `Condition`ed item and a `#if` on a custom constant set in an
+    imported `$(SolutionDir)` file. The Compile items, symbols and resulting `files` are exactly right.
 
 ## B3: OpenWiki adapter
 
@@ -101,6 +125,9 @@ Tests (`test_openwiki.py`):
 - `python scripts/check_plugin_sync.py --fix`, then confirm CI's sync check passes.
 
 ## Acceptance checks
+
+- With a working model key, B0 experiments 4-6 at model level (`experiments/run_openwiki.py`): reads outside the
+  scope (expected none), types covered, and time and tokens for 10, 50 and 200 types.
 
 - `records` with `--schema openwiki-type` on the saved `measurement-database` graph (`p3_with_current_radiant`,
   logical) writes one valid record per drawn type.
