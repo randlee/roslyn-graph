@@ -494,3 +494,10 @@ def test_a_broken_graph_context_is_an_input_error(tmp_path):
         with pytest.raises(RgError) as info:
             records.read_graph(graph)
         assert [p.code for p in info.value.problems] == ["RECORDS_INPUT"]
+    graph.write_bytes(b"<urn:t> \xff .\n")
+    selection = tmp_path / "s.json"
+    selection.write_bytes(b'{"format": "\xff"}')
+    for read, path in ((records.read_graph, graph), (records.read_selection, selection)):
+        with pytest.raises(RgError) as info:
+            read(path)
+        assert [p.code for p in info.value.problems] == ["RECORDS_INPUT"]

@@ -41,6 +41,9 @@ def test_chain_is_case_insensitive_like_openwiki():
         ["*", "!/openwiki/", "!/Common/", "/Common/*", "!/Common/x.cs", "!/Common/y.cs"]
     assert openwiki.chain(["src/a/", "src/A/x.cs", "SRC/b.cs"]) == ["*", "!/openwiki/", "!/SRC/", "/SRC/*", "!/SRC/A/", "!/SRC/b.cs"]
     assert openwiki.chain(["A.cs", "a.cs"]) == ["*", "!/openwiki/", "!/A.cs"]
+    # JavaScript's /i folds simply: 'ß' is not 'ss' to OpenWiki, so these stay two directories.
+    assert openwiki.chain(["Straße/a.cs", "STRASSE/b.cs"]) == \
+        ["*", "!/openwiki/", "!/STRASSE/", "/STRASSE/*", "!/STRASSE/b.cs", "!/Straße/", "/Straße/*", "!/Straße/a.cs"]
 
 
 @pytest.mark.parametrize("path", ["src/*.cs", "src/a?.cs", "src/!x.cs", "/abs.cs", "../up.cs", "src/./x.cs", "src//x.cs", " x.cs",
@@ -242,6 +245,9 @@ def test_a_root_project_is_never_opened(tmp_path, checkout):
     assert [w["code"] for w in result["warnings"]] == ["OPENWIKI_ROOT_PROJECT"] and result["warnings"][0]["types"] == ["App.Root"]
     assert result["ignore"]["text"].splitlines()[1:-1] == ["*", "!/openwiki/", "!/src/", "/src/*", "!/src/Pay/", "/src/Pay/*",
                                                            "!/src/Pay/Payment.cs"]
+    rows = [rec("Root.Program", files=["Program.cs"], dirs=("./",), namespace="Root"), rows[1]]
+    brief = openwiki.run([write_records(tmp_path / "r2.jsonl", rows)], "p3", str(checkout), dry_run=True)["brief"]["text"]
+    assert "### (repository root)" in brief and "such as `src/Billing/**/*`" in brief and "./" not in brief
 
 
 def test_non_utf8_inputs_fail_cleanly(tmp_path, checkout):

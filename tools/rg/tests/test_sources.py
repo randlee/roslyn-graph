@@ -265,6 +265,17 @@ def test_a_checkout_moved_under_another_folder_name_keeps_project_and_solution(t
     assert p.relative == "src/Billing/Billing.csproj" and p.solution == unmoved / "P3.sln"
 
 
+def test_a_workspace_solution_beside_the_repositories_moves_with_them(tmp_path):
+    for ws in ("ws1", "ws2"):
+        (tmp_path / ws / "p3").mkdir(parents=True)
+        (tmp_path / ws / "All.sln").write_text("")
+    component = {"identity": "assembly/v3|source|p3", "origin": {"id": "p3", "repository": str(tmp_path / "ws1" / "p3")},
+                 "build": {"project": "src/A.csproj", "solution": "All.sln"}}
+    assert sources.project_for("urn:g", component, "src/A.csproj", {}).solution == tmp_path / "ws1" / "All.sln"
+    moved = sources.project_for("urn:g", component, "src/A.csproj", {"p3": tmp_path / "ws2" / "p3"})
+    assert moved.solution == tmp_path / "ws2" / "All.sln"
+
+
 def test_cache_key_covers_the_build_and_the_extractor(tmp_path):
     base = project(tmp_path, commit="c", build={"configuration": "Release"})
     keys = {sources.cache_key(base, "e1"), sources.cache_key(base, "e2"),

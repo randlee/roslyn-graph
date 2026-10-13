@@ -270,23 +270,27 @@ def read_graph(path: Path) -> GraphInput:
     names: dict[str, str] = {}
     classes: dict[str, set[str]] = {}
     triples: list[tuple[str, str, str]] = []
-    with open(path, encoding="utf-8") as handle:
-        for line in handle:
-            match = explore._NT_LINE.match(line.strip())
-            if not match:
-                continue
-            s, p, o = match.groups()
-            if not s.startswith("<"):
-                continue
-            s, p = s[1:-1], p[1:-1]
-            if p == DT + "fullName":
-                value = _literal(o)
-                if value is not None:
-                    names[s] = value
-            elif p == RDF_TYPE and o.startswith("<"):
-                classes.setdefault(s, set()).add(o[1:-1])
-            elif p in _EDGE_PREDICATES and o.startswith("<"):
-                triples.append((s, p, o[1:-1]))
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError) as exc:
+        raise RgError.of("RECORDS_INPUT", f"Cannot read {path} as UTF-8 N-Triples: {exc}",
+                         "Pass a .nt file written by rg.py graph or rg.py export.", path=str(path)) from exc
+    for line in lines:
+        match = explore._NT_LINE.match(line.strip())
+        if not match:
+            continue
+        s, p, o = match.groups()
+        if not s.startswith("<"):
+            continue
+        s, p = s[1:-1], p[1:-1]
+        if p == DT + "fullName":
+            value = _literal(o)
+            if value is not None:
+                names[s] = value
+        elif p == RDF_TYPE and o.startswith("<"):
+            classes.setdefault(s, set()).add(o[1:-1])
+        elif p in _EDGE_PREDICATES and o.startswith("<"):
+            triples.append((s, p, o[1:-1]))
     names = {s: n for s, n in names.items() if not classes.get(s, set()) & _NOT_TYPES}
     edges = {(s, o) for s, _, o in triples if s in names and o in names and s != o}
     sidecar = explore.context_path(path)
@@ -305,8 +309,8 @@ def read_selection(path: Path) -> GraphInput:
         data = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
         raise RgError.of("RECORDS_INPUT", f"{path} does not exist.") from exc
-    except json.JSONDecodeError as exc:
-        raise RgError.of("RECORDS_INPUT", f"{path} is not JSON: {exc}") from exc
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise RgError.of("RECORDS_INPUT", f"{path} is not UTF-8 JSON: {exc}") from exc
     if not isinstance(data, dict) or data.get("format") != SELECTION_FORMAT or not isinstance(data.get("types"), list):
         raise RgError.of("RECORDS_INPUT", f"{path} is not a {SELECTION_FORMAT} payload.",
                          "Use the explorer's Copy for Claude or JSON download (reference/selection-format.md).")
@@ -355,7 +359,7 @@ def project_path(component: dict[str, Any]) -> str:
             except ValueError:
                 break
     prefix = repo.name + "/"
-    return project[len(prefix):] if project.startswith(prefix) else project
+    return project[len(prefix):] if project.lower().startswith(prefix.lower()) else project
 
 
 class Store:

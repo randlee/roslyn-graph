@@ -115,10 +115,15 @@ def _locate(repository: Path, recorded: str, relative: str) -> Path | None:
     not share, so that prefix is stripped rather than resolved against the new checkout's parent.
     """
     prefix = Path(recorded).name + "/"
-    candidates = [repository / relative[len(prefix):]] if relative.startswith(prefix) else []
+    candidates = [repository / relative[len(prefix):]] if relative.lower().startswith(prefix.lower()) else []
+    candidates.append(repository / relative)
+    # The profile root is the recorded checkout's parent; a moved workspace (a solution beside the repositories,
+    # such as ws/All.sln for ws/p3) is assumed to have moved with it.
     if repository == Path(recorded):
         candidates.insert(0, repository.parent / relative)
-    for candidate in candidates + [repository / relative]:
+    else:
+        candidates.append(repository.parent / relative)
+    for candidate in candidates:
         if candidate.is_file():
             return candidate
     return None

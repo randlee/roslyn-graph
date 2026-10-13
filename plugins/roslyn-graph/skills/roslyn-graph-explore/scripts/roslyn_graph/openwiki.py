@@ -59,28 +59,29 @@ def chain(paths: list[str]) -> list[str]:
             problems.extend(exc)
     problems.raise_if_any()
     # OpenWiki matches case-insensitively, so 'Common/' and 'common/' are one directory to it: every comparison
-    # uses a casefolded key, and each directory keeps the first spelling in sorted order.
+    # uses a lowered key, and each directory keeps the first spelling in sorted order. str.lower, not casefold:
+    # JavaScript's /i folds simply, so 'Straße' and 'STRASSE' stay different to it.
     spelling: dict[str, str] = {}
 
     def canonical(path: str) -> str:
         parts = path.rstrip("/").split("/")
         out = []
         for i in range(len(parts)):
-            out.append(spelling.setdefault("/".join(parts[:i + 1]).casefold(), parts[i]))
+            out.append(spelling.setdefault("/".join(parts[:i + 1]).lower(), parts[i]))
         return "/".join(out) + ("/" if path.endswith("/") else "")
 
-    targets = sorted({canonical(p).casefold(): canonical(p) for p in sorted(paths)}.values(), key=str.casefold)
-    directories = [t.casefold() for t in targets if t.endswith("/")]
-    targets = [t for t in targets if not any(t.casefold() != d and t.casefold().startswith(d) for d in directories)]
+    targets = sorted({canonical(p).lower(): canonical(p) for p in sorted(paths)}.values(), key=str.lower)
+    directories = [t.lower() for t in targets if t.endswith("/")]
+    targets = [t for t in targets if not any(t.lower() != d and t.lower().startswith(d) for d in directories)]
     lines = ["*", "!/openwiki/"]
     opened: set[str] = set()
     for t in targets:
         parts = t.rstrip("/").split("/")
         for i in range(1, len(parts)):
             ancestor = "/".join(parts[:i])
-            if ancestor.casefold() not in opened:
+            if ancestor.lower() not in opened:
                 lines += [f"!/{ancestor}/", f"/{ancestor}/*"]
-                opened.add(ancestor.casefold())
+                opened.add(ancestor.lower())
         lines.append(f"!/{t}")
     return lines
 
@@ -178,7 +179,7 @@ def merge(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
 
 
 def _project_of(r: dict[str, Any]) -> str:
-    return ", ".join(r["projectDirs"]) or "(no project)"
+    return ", ".join("(repository root)" if d == ROOT_DIR else d for d in r["projectDirs"]) or "(no project)"
 
 
 def _namespace_of(r: dict[str, Any]) -> str:
@@ -189,7 +190,7 @@ def brief(repository: str, listed: list[dict[str, Any]], external: list[str], co
           max_listed: int) -> tuple[list[str], bool]:
     """The managed block of INSTRUCTIONS.md. Returns (lines, summarized)."""
     summarized = len(listed) > max_listed
-    example = next((d for r in listed for d in r["projectDirs"]), "src/")
+    example = next((d for r in listed for d in r["projectDirs"] if d != ROOT_DIR), "src/")
     out = [
         "# Scope",
         "",
