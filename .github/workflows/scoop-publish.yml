@@ -1,0 +1,93 @@
+name: Prepare Scoop update
+
+# Deliberately manual: publishing is never coupled to release creation.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published stable GitHub Release tag (for example v0.1.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scoop-update-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  update-bucket:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify published release assets and checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: >-
+          python .github/scripts/distribution_channels.py verify
+          --repo "$RELEASE_REPOSITORY" --tag "$RELEASE_TAG" --output release-assets
+
+      - name: Require a configured bucket repository
+        env:
+          BUCKET_REPOSITORY: ${{ vars.SCOOP_BUCKET_REPOSITORY }}
+        run: test -n "$BUCKET_REPOSITORY" || { echo 'Set repository variable SCOOP_BUCKET_REPOSITORY.' >&2; exit 1; }
+
+      - name: Require bucket write credential
+        env:
+          BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
+        run: test -n "$BUCKET_TOKEN" || { echo 'Set secret SCOOP_BUCKET_TOKEN with write access to the configured bucket.' >&2; exit 1; }
+
+      - name: Checkout configured bucket
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.SCOOP_BUCKET_REPOSITORY }}
+          token: ${{ secrets.SCOOP_BUCKET_TOKEN }}
+          path: scoop-bucket
+
+      - name: Render manifest from verified assets
+        env:
+          MANIFEST_PATH: ${{ vars.SCOOP_MANIFEST_PATH || 'bucket/roslyn-to-rdf.json' }}
+        run: >-
+          python .github/scripts/distribution_channels.py scoop
+          --verified release-assets/verified-release.json
+          --output "scoop-bucket/$MANIFEST_PATH"
+
+      - name: Validate manifest and update bucket idempotently
+        env:
+          MANIFEST_PATH: ${{ vars.SCOOP_MANIFEST_PATH || 'bucket/roslyn-to-rdf.json' }}
+          RELEASE_VERSION: ${{ inputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd scoop-bucket
+          python -m json.tool "$MANIFEST_PATH" >/dev/null
+          git add -- "$MANIFEST_PATH"
+          if git diff --cached --quiet; then
+            echo 'Configured manifest already matches the verified release.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git commit -m "chore: update RoslynToRdf ${RELEASE_VERSION}"
+          branch="$(git branch --show-current)"
+          for attempt in 1 2 3 4 5; do
+            if git push origin "HEAD:${branch}"; then exit 0; fi
+            git fetch origin "$branch"
+            if git diff --quiet "origin/${branch}" -- "$MANIFEST_PATH"; then
+              echo 'Remote manifest already matches the verified release.'
+              exit 0
+            fi
+            git rebase "origin/${branch}"
+          done
+          echo 'Could not update bucket after five safe push attempts.' >&2
+          exit 1

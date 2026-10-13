@@ -1,0 +1,157 @@
+name: Prepare WinGet submission
+
+# Deliberately manual. Without a configured fork token this prepares an
+# artifact for review and exits successfully without submitting anything.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published stable GitHub Release tag (for example v0.1.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: winget-update-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install manifest validator
+        run: python -m pip install --disable-pip-version-check PyYAML
+
+      - name: Verify published release assets and checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: >-
+          python .github/scripts/distribution_channels.py verify
+          --repo "$RELEASE_REPOSITORY" --tag "$RELEASE_TAG" --output release-assets
+
+      - name: Render and validate WinGet manifests
+        run: |
+          set -euo pipefail
+          python .github/scripts/distribution_channels.py winget \
+            --verified release-assets/verified-release.json --output winget-manifests
+          python - <<'PY'
+          from pathlib import Path
+          import yaml
+          for path in sorted(Path("winget-manifests").glob("*.yaml")):
+              value = yaml.safe_load(path.read_text(encoding="utf-8"))
+              if not isinstance(value, dict) or value.get("ManifestVersion") != "1.6.0":
+                  raise SystemExit(f"invalid WinGet manifest: {path}")
+          PY
+
+      - name: Upload reviewed manifest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: winget-manifests-${{ inputs.tag }}
+          path: winget-manifests/*.yaml
+          if-no-files-found: error
+
+      - id: submission
+        name: Detect optional submission configuration
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_GITHUB_TOKEN }}
+          WINGET_FORK: ${{ vars.WINGET_FORK_REPOSITORY }}
+        run: |
+          if [[ -n "$WINGET_TOKEN" && -n "$WINGET_FORK" ]]; then
+            echo 'enabled=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'enabled=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Explain credential-free preparation
+        if: ${{ steps.submission.outputs.enabled != 'true' }}
+        run: |
+          {
+            echo 'WinGet manifests are prepared and attached as a workflow artifact.'
+            echo 'To enable automatic PR upsert, configure WINGET_FORK_REPOSITORY and WINGET_GITHUB_TOKEN as documented in docs/release/distribution-channels.md.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Checkout configured WinGet fork
+        if: ${{ steps.submission.outputs.enabled == 'true' }}
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.WINGET_FORK_REPOSITORY }}
+          token: ${{ secrets.WINGET_GITHUB_TOKEN }}
+          path: winget-fork
+
+      - name: Upsert fork branch and microsoft/winget-pkgs pull request
+        if: ${{ steps.submission.outputs.enabled == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.WINGET_GITHUB_TOKEN }}
+          FORK_REPOSITORY: ${{ vars.WINGET_FORK_REPOSITORY }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          PACKAGE_ID: Randlee.RoslynToRdf
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#v}"
+          owner="${FORK_REPOSITORY%%/*}"
+          branch="roslyn-to-rdf-${version}"
+          manifest_dir="manifests/r/randlee/roslyntordf/${version}"
+          mkdir -p "winget-fork/${manifest_dir}"
+          cp winget-manifests/*.yaml "winget-fork/${manifest_dir}/"
+          cd winget-fork
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add "$manifest_dir"
+          if ! git diff --cached --quiet; then
+            git commit -m "Add ${PACKAGE_ID} ${version}"
+          fi
+          set +e
+          git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1
+          branch_state=$?
+          set -e
+          if [[ "$branch_state" -gt 1 ]]; then
+            echo 'Could not determine whether the version branch exists in the configured fork.' >&2
+            exit 1
+          elif [[ "$branch_state" -eq 0 ]]; then
+            git fetch origin "$branch"
+            git checkout -B "$branch" FETCH_HEAD
+            git add "$manifest_dir"
+            if ! git diff --cached --quiet; then
+              git commit -m "Update ${PACKAGE_ID} ${version}"
+            fi
+          else
+            git checkout -b "$branch"
+          fi
+          git push origin "HEAD:${branch}"
+          gh auth setup-git
+          existing="$(gh api -X GET repos/microsoft/winget-pkgs/pulls \
+            -f state=all -f head="${owner}:${branch}")"
+          count="$(python -c 'import json,sys; print(len(json.load(sys.stdin)))' <<<"$existing")"
+          if [[ "$count" -gt 1 ]]; then
+            echo 'Multiple WinGet PRs reference the configured fork branch; failing closed.' >&2
+            exit 1
+          elif [[ "$count" -eq 1 ]]; then
+            state="$(python -c 'import json,sys; print(json.load(sys.stdin)[0]["state"])' <<<"$existing")"
+            merged="$(python -c 'import json,sys; print(json.load(sys.stdin)[0]["merged_at"] or "")' <<<"$existing")"
+            if [[ -n "$merged" ]]; then
+              echo "WinGet PR for ${PACKAGE_ID} ${version} is already merged; no action needed."
+            elif [[ "$state" == open ]]; then
+              echo "WinGet PR for ${PACKAGE_ID} ${version} already exists: $(python -c 'import json,sys; print(json.load(sys.stdin)[0]["html_url"])' <<<"$existing")"
+            else
+              echo 'A prior WinGet PR is closed but unmerged; inspect it before retrying.' >&2
+              exit 1
+            fi
+          else
+            gh pr create --repo microsoft/winget-pkgs --base master \
+              --head "${owner}:${branch}" \
+              --title "Add ${PACKAGE_ID} ${version}" \
+              --body "Adds ${PACKAGE_ID} ${version} from the immutable GitHub release ${RELEASE_TAG}. Installer SHA-256 is taken from and verified against checksums.txt."
+          fi
