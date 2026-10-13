@@ -63,7 +63,7 @@ public partial class IriMinter
     {
         var typeIri = Type(member.ContainingType);
         var sig = GetMemberSignature(member);
-        return $"{typeIri}/member/{Escape(member.Name)}{sig}";
+        return $"{typeIri}/member/{Escape(member.Name + sig)}";
     }
 
     /// <summary>
@@ -73,6 +73,20 @@ public partial class IriMinter
     {
         var methodIri = Member(method);
         return $"{methodIri}/param/{param.Ordinal}";
+    }
+
+    /// <summary>
+    /// IRI for a parameter owned by a method or an indexer property.
+    /// </summary>
+    public string Parameter(ISymbol owner, IParameterSymbol param)
+    {
+        var ownerIri = owner switch
+        {
+            IMethodSymbol method => Member(method),
+            IPropertySymbol property => Member(property),
+            _ => throw new ArgumentException($"Unexpected parameter owner type: {owner.GetType()}")
+        };
+        return $"{ownerIri}/param/{param.Ordinal}";
     }
 
     /// <summary>
@@ -102,10 +116,23 @@ public partial class IriMinter
             IPropertySymbol prop => Member(prop),
             IFieldSymbol field => Member(field),
             IEventSymbol evt => Member(evt),
-            IParameterSymbol param => Parameter((IMethodSymbol)param.ContainingSymbol, param),
+            IParameterSymbol param => Parameter(param.ContainingSymbol, param),
             _ => throw new ArgumentException($"Unexpected target type: {target.GetType()}")
         };
-        return $"{targetIri}/attr/{index}";
+        return Attribute(targetIri, index);
+    }
+
+    /// <summary>
+    /// IRI for an attribute instance on an already minted target IRI.
+    /// </summary>
+    public string Attribute(string targetIri, int index)
+    {
+        var attributeIri = $"{targetIri}/attr/{index}";
+        if (Uri.TryCreate(attributeIri, UriKind.Absolute, out var absoluteIri) && !absoluteIri.IsFile)
+            return attributeIri;
+
+        var baseUri = new Uri($"{_baseUri.TrimEnd('/')}/", UriKind.Absolute);
+        return new Uri(baseUri, attributeIri.TrimStart('/')).AbsoluteUri;
     }
 
     /// <summary>
@@ -149,9 +176,10 @@ public partial class IriMinter
         }
 
         // Namespace
-        if (!namedType.ContainingNamespace.IsGlobalNamespace)
+        var containingNamespace = namedType.ContainingNamespace;
+        if (containingNamespace is { IsGlobalNamespace: false })
         {
-            sb.Append(namedType.ContainingNamespace.ToDisplayString());
+            sb.Append(containingNamespace.ToDisplayString());
             sb.Append('.');
         }
 

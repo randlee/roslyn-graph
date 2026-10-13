@@ -1,0 +1,14 @@
+# Title: Find types by simple name
+# Description: every physical version with assembly, version, kind and named graph; the usual first step.
+# Parameters:
+#   NAME  case-insensitive substring of the simple type name (example: Repository)
+PREFIX dt: <http://dotnet.example/ontology/>
+SELECT ?type ?fullName ?kind ?assemblyName ?version ?graph WHERE {
+  GRAPH ?graph {
+    ?asm a dt:Assembly ; dt:name ?assemblyName ; dt:version ?version .
+    ?type dt:definedInAssembly ?asm ; dt:name ?name ; dt:fullName ?fullName ; dt:typeKind ?kind .
+    FILTER(CONTAINS(LCASE(?name), LCASE("{{NAME}}")))
+  }
+}
+ORDER BY ?fullName ?version
+LIMIT 200

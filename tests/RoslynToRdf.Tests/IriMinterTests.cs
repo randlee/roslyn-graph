@@ -532,6 +532,28 @@ public class C
     }
 
     [Fact]
+    public void Member_GenericParameterSignature_IsEscapedForUseInAnIri()
+    {
+        var source = @"
+namespace Sample;
+public class C
+{
+    public void Method<T>(T value) { }
+}";
+        var compilation = TestUtilities.CreateCompilation(source, "TestAsm");
+        var type = compilation.GetTypeByMetadataName("Sample.C")!;
+        var method = type.GetMembers("Method").OfType<IMethodSymbol>().Single();
+
+        var minter = new IriMinter();
+        var iri = minter.Member(method);
+
+        Assert.Contains("%28", iri);
+        Assert.Contains("%3C", iri);
+        Assert.DoesNotContain('<', iri);
+        Assert.True(Uri.IsWellFormedUriString(iri, UriKind.Absolute));
+    }
+
+    [Fact]
     public void Member_OverloadedMethods_HaveDifferentIris()
     {
         var source = @"
@@ -973,6 +995,27 @@ public class C
     }
 
     [Fact]
+    public void Attribute_OnIndexerParameter_ReturnsValidIri()
+    {
+        var source = @"
+namespace Sample;
+public class C
+{
+    public int this[[System.Obsolete] int index] => index;
+}";
+        var compilation = TestUtilities.CreateCompilation(source, "TestAsm");
+        var type = compilation.GetTypeByMetadataName("Sample.C")!;
+        var property = type.GetMembers().OfType<IPropertySymbol>().Single();
+        var param = property.Parameters[0];
+        var attr = param.GetAttributes()[0];
+
+        var minter = new IriMinter();
+        var iri = minter.Attribute(param, attr, 0);
+
+        Assert.Contains("/param/0/attr/0", iri);
+    }
+
+    [Fact]
     public void Attribute_OnAssembly_ReturnsValidIri()
     {
         var source = @"
@@ -1009,6 +1052,67 @@ public class C { }";
         Assert.Contains("/attr/0", iri0);
         Assert.Contains("/attr/1", iri1);
         Assert.NotEqual(iri0, iri1);
+    }
+
+    [Fact]
+    public void Attribute_OnSupportedTargets_UsesConfiguredAbsoluteBase()
+    {
+        var source = @"
+[assembly: System.Reflection.AssemblyVersion(""1.0.0.0"")]
+namespace Sample;
+[System.Obsolete]
+public class C
+{
+    [System.Obsolete]
+    public int Method([System.Obsolete] int value) => value;
+
+    [System.Obsolete]
+    public int Property { get; set; }
+
+    [System.Obsolete]
+    public int Field;
+
+    [System.Obsolete]
+    public event System.Action? Changed;
+}";
+        var compilation = TestUtilities.CreateCompilation(source, "TestAsm");
+        var type = compilation.GetTypeByMetadataName("Sample.C")!;
+        var method = type.GetMembers("Method").OfType<IMethodSymbol>().Single();
+        var property = type.GetMembers("Property").OfType<IPropertySymbol>().Single();
+        var field = type.GetMembers("Field").OfType<IFieldSymbol>().Single();
+        var evt = type.GetMembers("Changed").OfType<IEventSymbol>().Single();
+        var targets = new ISymbol[]
+        {
+            compilation.Assembly,
+            type,
+            method,
+            method.Parameters[0],
+            property,
+            field,
+            evt
+        };
+        var minter = new IriMinter("https://configured.example/root/");
+
+        var iris = targets.Select(target => minter.Attribute(target, target.GetAttributes()[0], 0));
+
+        Assert.All(iris, iri =>
+        {
+            Assert.True(Uri.TryCreate(iri, UriKind.Absolute, out var parsed));
+            Assert.Equal("https://configured.example", parsed!.GetLeftPart(UriPartial.Authority));
+            Assert.StartsWith("https://configured.example/root/", iri);
+        });
+    }
+
+    [Fact]
+    public void Attribute_OnExplicitRelativeOwner_ResolvesAgainstBase_AndPreservesAbsoluteOwner()
+    {
+        var minter = new IriMinter("https://configured.example/root/");
+
+        var relativeOwner = minter.Attribute("/return", 0);
+        var absoluteOwner = minter.Attribute("https://owner.example/method/return", 1);
+
+        Assert.Equal("https://configured.example/root/return/attr/0", relativeOwner);
+        Assert.Equal("https://owner.example/method/return/attr/1", absoluteOwner);
     }
 
     [Fact]

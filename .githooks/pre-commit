@@ -1,0 +1,4 @@
+#!/bin/sh
+# Enable with: git config core.hooksPath .githooks
+# Keeps the plugin's copies of the ontology and viewer identical to the repository originals.
+python scripts/check_plugin_sync.py > /dev/null || { python scripts/check_plugin_sync.py; exit 1; }

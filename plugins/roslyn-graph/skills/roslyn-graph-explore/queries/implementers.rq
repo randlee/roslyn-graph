@@ -1,0 +1,21 @@
+# Title: Implementers of an interface
+# Description: viewer-ready; every component type implementing one interface (all physical versions), plus the interface.
+# Parameters:
+#   INTERFACE  full name of the interface (example: Contoso.Data.IRecord)
+PREFIX dt: <http://dotnet.example/ontology/>
+CONSTRUCT {
+  ?t a ?class ; dt:name ?name ; dt:fullName ?full ; dt:inNamespace ?ns ; dt:implements ?iface .
+  ?ns dt:name ?nsFull .
+  ?iface a dt:Interface ; dt:name ?ifaceName ; dt:fullName "{{INTERFACE}}" ; dt:inNamespace ?ifaceNs .
+  ?ifaceNs dt:name ?ifaceNsFull .
+}
+WHERE {
+  GRAPH ?g {
+    ?asm a dt:Assembly .
+    ?t dt:definedInAssembly ?asm ; a ?class ; dt:name ?name ; dt:fullName ?full ; dt:implements ?iface .
+    VALUES ?class { dt:Class dt:Struct dt:Interface dt:Record }
+    ?iface dt:fullName "{{INTERFACE}}" ; dt:name ?ifaceName .
+    OPTIONAL { ?t dt:inNamespace ?ns . ?ns dt:fullName ?nsFull }
+    OPTIONAL { ?iface dt:inNamespace ?ifaceNs . ?ifaceNs dt:fullName ?ifaceNsFull }
+  }
+}
