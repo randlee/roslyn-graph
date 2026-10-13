@@ -120,6 +120,7 @@ public static class DotNetOntology
         public const string OverridesMethod = "overridesMethod";
         public const string ExplicitInterfaceImpl = "explicitInterfaceImplementation";
         public const string HasUnsafeFact = "hasUnsafeFact";
+        public const string HasAccessor = "hasAccessor";
     }
 
     // Parameter properties

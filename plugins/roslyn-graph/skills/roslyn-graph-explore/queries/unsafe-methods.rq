@@ -1,13 +1,19 @@
-# Title: Unsafe source methods
-# Description: source methods with their own unsafe modifier or unsafe syntax, including deterministic reason and location facts; an enclosing unsafe type alone does not qualify.
+# Title: Unsafe source methods and accessors
+# Description: source methods and property/event accessors with unsafe syntax, including deterministic reason and location facts; an enclosing unsafe type alone does not qualify.
 PREFIX dt: <http://dotnet.example/ontology/>
 
 SELECT ?assembly ?typeName ?methodName ?reason ?location WHERE {
   GRAPH ?g {
     ?assembly a dt:Assembly ; dt:name ?assemblyName .
-    ?type dt:definedInAssembly ?assembly ; dt:fullName ?typeName ; dt:hasMember ?method .
-    ?method dt:name ?methodName ; dt:containsUnsafeCode true ; dt:requiresUnsafeCompilation true ;
-            dt:hasUnsafeFact ?fact .
+    ?type dt:definedInAssembly ?assembly ; dt:fullName ?typeName ; dt:hasMember ?member .
+    {
+      ?member dt:name ?methodName ; dt:containsUnsafeCode true ; dt:requiresUnsafeCompilation true ;
+              dt:hasUnsafeFact ?fact .
+    } UNION {
+      ?member dt:hasAccessor ?method .
+      ?method dt:containsUnsafeCode true ; dt:requiresUnsafeCompilation true ; dt:hasUnsafeFact ?fact .
+      BIND(STR(?method) AS ?methodName)
+    }
     ?fact dt:unsafeReason ?reason ; dt:unsafeLocation ?location .
   }
 }

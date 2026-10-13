@@ -33,24 +33,7 @@ public sealed partial class AssemblyGraphExtractor
         _emitter.EmitBool(methodIri, Prop(DotNetOntology.MemberProps.IsReadOnly), method.IsReadOnly);
 
         if (_unsafeCompilationEnabled)
-        {
-            var unsafeFacts = UnsafeMethodAnalyzer.Analyze(_compilation!, method, _options.SourceRoot);
-            if (unsafeFacts.Count > 0)
-            {
-                _emitter.EmitBool(methodIri, Prop(DotNetOntology.MemberProps.ContainsUnsafeCode), true);
-                _emitter.EmitBool(methodIri, Prop(DotNetOntology.MemberProps.RequiresUnsafeCompilation), true);
-                for (var index = 0; index < unsafeFacts.Count; index++)
-                {
-                    var fact = unsafeFacts[index];
-                    var factIri = $"{methodIri}/unsafe/{index}";
-                    _emitter.EmitIri(methodIri, Prop(DotNetOntology.MemberRels.HasUnsafeFact), factIri);
-                    _emitter.EmitIri(factIri, RdfType, Prop(DotNetOntology.Classes.UnsafeFact));
-                    _emitter.EmitLiteral(factIri, Prop(DotNetOntology.MemberProps.UnsafeReason), fact.Reason);
-                    _emitter.EmitLiteral(factIri, Prop(DotNetOntology.MemberProps.UnsafeLocation), fact.Location);
-                }
-                _unsafeTypes.Add(typeIri);
-            }
-        }
+            ExtractUnsafeFacts(typeIri, methodIri, method);
 
         _emitter.EmitIri(typeIri, Prop(DotNetOntology.TypeRels.HasMember), methodIri);
         _emitter.EmitIri(methodIri, Prop(DotNetOntology.MemberRels.MemberOf), typeIri);
@@ -124,6 +107,12 @@ public sealed partial class AssemblyGraphExtractor
         _emitter.EmitIri(propIri, Prop(DotNetOntology.MemberRels.MemberOf), typeIri);
         _emitter.EmitIri(propIri, Prop(DotNetOntology.MemberRels.PropertyType), EnsureTypeEmitted(prop.Type));
 
+        if (_unsafeCompilationEnabled)
+        {
+            ExtractAccessorUnsafeFacts(typeIri, propIri, prop.GetMethod);
+            ExtractAccessorUnsafeFacts(typeIri, propIri, prop.SetMethod);
+        }
+
         foreach (var param in prop.Parameters)
             ExtractParameter(propIri, null, param);
 
@@ -195,6 +184,12 @@ public sealed partial class AssemblyGraphExtractor
         _emitter.EmitIri(evtIri, Prop(DotNetOntology.MemberRels.MemberOf), typeIri);
         _emitter.EmitIri(evtIri, Prop(DotNetOntology.MemberRels.EventType), EnsureTypeEmitted(evt.Type));
 
+        if (_unsafeCompilationEnabled)
+        {
+            ExtractAccessorUnsafeFacts(typeIri, evtIri, evt.AddMethod);
+            ExtractAccessorUnsafeFacts(typeIri, evtIri, evt.RemoveMethod);
+        }
+
         if (evt.OverriddenEvent != null)
             _emitter.EmitIri(evtIri, Prop(DotNetOntology.MemberRels.OverridesMethod), _iris.Member(evt.OverriddenEvent));
 
@@ -207,6 +202,37 @@ public sealed partial class AssemblyGraphExtractor
             foreach (var attr in evt.GetAttributes())
                 ExtractAttribute(evtIri, evt, attr, attrIndex++);
         }
+    }
+
+    private void ExtractAccessorUnsafeFacts(string typeIri, string memberIri, IMethodSymbol? accessor)
+    {
+        if (accessor == null) return;
+
+        var accessorIri = _iris.Member(accessor);
+        var facts = ExtractUnsafeFacts(typeIri, accessorIri, accessor);
+        if (facts)
+            _emitter.EmitIri(memberIri, Prop(DotNetOntology.MemberRels.HasAccessor), accessorIri);
+    }
+
+    private bool ExtractUnsafeFacts(string typeIri, string methodIri, IMethodSymbol method)
+    {
+        var unsafeFacts = UnsafeMethodAnalyzer.Analyze(_compilation!, method, _options.SourceRoot);
+        if (unsafeFacts.Count == 0)
+            return false;
+
+        _emitter.EmitBool(methodIri, Prop(DotNetOntology.MemberProps.ContainsUnsafeCode), true);
+        _emitter.EmitBool(methodIri, Prop(DotNetOntology.MemberProps.RequiresUnsafeCompilation), true);
+        for (var index = 0; index < unsafeFacts.Count; index++)
+        {
+            var fact = unsafeFacts[index];
+            var factIri = $"{methodIri}/unsafe/{index}";
+            _emitter.EmitIri(methodIri, Prop(DotNetOntology.MemberRels.HasUnsafeFact), factIri);
+            _emitter.EmitIri(factIri, RdfType, Prop(DotNetOntology.Classes.UnsafeFact));
+            _emitter.EmitLiteral(factIri, Prop(DotNetOntology.MemberProps.UnsafeReason), fact.Reason);
+            _emitter.EmitLiteral(factIri, Prop(DotNetOntology.MemberProps.UnsafeLocation), fact.Location);
+        }
+        _unsafeTypes.Add(typeIri);
+        return true;
     }
 
     private void ExtractParameter(string memberIri, IMethodSymbol? method, IParameterSymbol param)
