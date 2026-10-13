@@ -24,7 +24,8 @@ recomputes it (check `M2`). Anything that can change the stored triples is part 
 
 | Kind | Identity parts |
 |---|---|
-| source assembly | `assembly/v3 \| source \| repository \| commit \| dirty hash \| build fingerprint \| target framework \| project path \| DLL sha256 \| extractor id` |
+| C# source assembly | `assembly/v4 \| source \| repository \| commit \| dirty hash \| build fingerprint \| target framework \| project path \| source-project \| built DLL sha256 \| extractor id` |
+| other source assembly (including VB) | `assembly/v3 \| source \| repository \| commit \| dirty hash \| build fingerprint \| target framework \| project path \| DLL sha256 \| extractor id` |
 | package assembly | `assembly/v2 \| nuget \| package id \| version \| nupkg sha256 \| asset path \| dependency-set hash \| restore target \| DLL sha256 \| extractor id` |
 | solution | `solution/v2 \| profile \| root folder \| solution path \| commit \| dirty hash \| fingerprint \| framework \| configuration \| platform \| sorted component IDs` |
 | view | `view/v2 \| base solution ID \| policy name \| sorted policy assemblies \| projection version \| sorted overlay IDs` |
@@ -33,6 +34,11 @@ Consequences:
 - same inputs → same ID → `generate` reuses the artifact and writes nothing;
 - a new commit, rebuilt DLL, different package bytes or dependencies, changed build files or a new
   extractor → new ID → a new artifact beside the old one; nothing is overwritten.
+
+C# solution components are extracted from their `.csproj` so the graph includes source-only method facts.
+The manifest still records the built DLL path and SHA-256, and freshness checks still compare that DLL
+with the source and fingerprint inputs. VB solution components and package assets continue to be extracted
+from their DLLs.
 
 Graph IRIs are `urn:roslyn-graph:<kind>:<first 32 hex of the ID>`; solutions add `:metadata`, views add
 `:logical-types`.

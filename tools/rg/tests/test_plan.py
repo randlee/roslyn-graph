@@ -66,6 +66,8 @@ def test_components_record_exact_provenance(git_repo):
     assert origin["id"] == "repo" and len(origin["commit"]) == 40 and origin["dirtyHash"] == ""
     assert components[0].manifest["build"]["project"] == "src/Alpha/Alpha.csproj"
     assert components[0].search_dirs[0] == (git_repo / "bin" / "Debug").resolve()
+    assert components[0].extraction_path == git_repo / "src" / "Alpha" / "Alpha.csproj"
+    assert components[0].manifest["extraction"]["inputKind"] == "source-project"
 
 
 def test_project_path_is_relative_to_owning_repository_when_nested(git_repo):
@@ -200,6 +202,12 @@ def test_executable_project_output_resolution(git_repo, project_extension, outpu
     assert len(components) == 1
     assert components[0].assembly_path == executable
     assert components[0].manifest["assembly"]["inputPath"] == str(executable)
+    if project_extension == "csproj":
+        assert components[0].extraction_path == project
+        assert components[0].manifest["extraction"]["inputKind"] == "source-project"
+    else:
+        assert components[0].extraction_path == executable
+        assert components[0].manifest["extraction"]["inputKind"] == "assembly"
 
 
 def test_discovery_finds_winexe_project_output(git_repo):

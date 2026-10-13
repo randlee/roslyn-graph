@@ -75,7 +75,7 @@ def snapshot(plan: Plan, c: Component) -> dict[str, Any]:
     art = staging / "artifact"
     ttl, nt, store = staging / "graph.ttl", staging / "graph.nt", art / "store.oxigraph"
     try:
-        warnings = extractor.extract(plan.extractor, c.assembly_path, ttl, c.search_dirs)
+        warnings = extractor.extract(plan.extractor, c.extraction_path or c.assembly_path, ttl, c.search_dirs)
         oxigraph.convert(ttl, nt)
         ttl_unique = unique_nt_lines(nt)
         oxigraph.load(store, ttl)
@@ -95,6 +95,7 @@ def snapshot(plan: Plan, c: Component) -> dict[str, Any]:
         m["assembly"] = dict(m["assembly"], name=rows[0]["name"], version=rows[0]["version"], publicKeyToken=rows[0].get("token", ""))
         m["extraction"] = {
             "extractorId": plan.extractor.id,
+            "inputKind": c.manifest.get("extraction", {}).get("inputKind", "assembly"),
             "extractor": plan.extractor.to_json(),
             "searchDirs": [str(d) for d in c.search_dirs],
             "ttlSha256": sha256_file(ttl),
