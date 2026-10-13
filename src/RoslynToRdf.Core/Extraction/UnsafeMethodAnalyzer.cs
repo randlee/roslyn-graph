@@ -12,10 +12,19 @@ internal static class UnsafeMethodAnalyzer
 {
     internal sealed record Fact(string Reason, string Location);
 
-    public static bool HasUnsafeTypeModifier(INamedTypeSymbol type) => type.DeclaringSyntaxReferences
-        .Select(reference => reference.GetSyntax())
-        .OfType<TypeDeclarationSyntax>()
-        .Any(declaration => declaration.Modifiers.Any(SyntaxKind.UnsafeKeyword));
+    public static bool HasUnsafeTypeModifier(INamedTypeSymbol type)
+    {
+        for (var current = type; current != null; current = current.ContainingType)
+        {
+            if (current.DeclaringSyntaxReferences
+                .Select(reference => reference.GetSyntax())
+                .OfType<TypeDeclarationSyntax>()
+                .Any(declaration => declaration.Modifiers.Any(SyntaxKind.UnsafeKeyword)))
+                return true;
+        }
+
+        return false;
+    }
 
     public static IReadOnlyList<Fact> Analyze(Compilation compilation, IMethodSymbol method, string? sourceRoot)
     {

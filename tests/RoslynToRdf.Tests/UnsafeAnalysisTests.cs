@@ -10,6 +10,87 @@ namespace RoslynToRdf.Tests;
 public class UnsafeAnalysisTests
 {
     [Fact]
+    public void Extraction_ReportsUnsafeFactsForAccessorsAndInheritedNestedTypeContext()
+    {
+        var source = """
+            using System;
+            public class C
+            {
+                public int Value
+                {
+                    get { unsafe { int* p = stackalloc int[1]; return *p; } }
+                    set { unsafe { int* p = &value; } }
+                }
+                public int this[int index]
+                {
+                    get { unsafe { int* p = stackalloc int[1]; return *p; } }
+                    set { unsafe { int* p = &value; } }
+                }
+                public event Action Changed
+                {
+                    add { unsafe { int* p = stackalloc int[1]; } }
+                    remove { unsafe { int* p = stackalloc int[1]; } }
+                }
+            }
+            public unsafe class Outer
+            {
+                public class Nested { public void Ordinary() { } }
+            }
+            """;
+        var compilation = TestUtilities.CreateCompilation(source, "UnsafeAccessors", allowUnsafe: true);
+        var emitter = new TestEmitter();
+        new AssemblyGraphExtractor(emitter, new ExtractionOptions { IncludePrivate = true })
+            .Extract(compilation, compilation.Assembly);
+
+        var c = compilation.Assembly.GlobalNamespace.GetTypeMembers("C").Single();
+        foreach (var property in c.GetMembers().OfType<IPropertySymbol>())
+        {
+            var accessors = new[] { property.GetMethod, property.SetMethod }.OfType<IMethodSymbol>();
+            foreach (var accessor in accessors)
+                AssertUnsafeAccessor(emitter, accessor);
+        }
+        var evt = c.GetMembers("Changed").OfType<IEventSymbol>().Single();
+        AssertUnsafeAccessor(emitter, evt.AddMethod!);
+        AssertUnsafeAccessor(emitter, evt.RemoveMethod!);
+        var cIri = new IriMinter().Type(c);
+        Assert.Contains(emitter.Triples, triple => triple.Subject == cIri
+            && triple.Predicate.EndsWith("/containsUnsafeCode", StringComparison.Ordinal) && triple.Object == "true");
+
+        var propertyIri = new IriMinter().Member(c.GetMembers("Value").OfType<IPropertySymbol>().Single());
+        Assert.Equal(2, emitter.Triples.Count(triple => triple.Subject == propertyIri
+            && triple.Predicate.EndsWith("/hasAccessor", StringComparison.Ordinal)));
+        Assert.DoesNotContain(emitter.Triples, triple => triple.Subject == new IriMinter().Member(c.GetMembers("Value").OfType<IPropertySymbol>().Single().GetMethod!)
+            && triple.Predicate.EndsWith("/type", StringComparison.Ordinal));
+
+        var nested = compilation.Assembly.GlobalNamespace.GetTypeMembers("Outer").Single().GetTypeMembers("Nested").Single();
+        var nestedIri = new IriMinter().Type(nested);
+        Assert.Contains(emitter.Triples, triple => triple.Subject == nestedIri
+            && triple.Predicate.EndsWith("/containsUnsafeCode", StringComparison.Ordinal) && triple.Object == "true");
+        var ordinary = nested.GetMembers("Ordinary").OfType<IMethodSymbol>().Single();
+        var ordinaryIri = new IriMinter().Member(ordinary);
+        Assert.DoesNotContain(emitter.Triples, triple => triple.Subject == ordinaryIri
+            && triple.Predicate.EndsWith("/containsUnsafeCode", StringComparison.Ordinal));
+    }
+
+    private static void AssertUnsafeAccessor(TestEmitter emitter, IMethodSymbol accessor)
+    {
+        var accessorIri = new IriMinter().Member(accessor);
+        Assert.Contains(emitter.Triples, triple => triple.Subject == accessorIri
+            && triple.Predicate.EndsWith("/containsUnsafeCode", StringComparison.Ordinal) && triple.Object == "true");
+        Assert.Contains(emitter.Triples, triple => triple.Subject == accessorIri
+            && triple.Predicate.EndsWith("/requiresUnsafeCompilation", StringComparison.Ordinal) && triple.Object == "true");
+        var facts = emitter.Triples.Where(triple => triple.Subject == accessorIri
+            && triple.Predicate.EndsWith("/hasUnsafeFact", StringComparison.Ordinal)).Select(triple => triple.Object).ToHashSet();
+        Assert.NotEmpty(facts);
+        var reasons = emitter.Triples.Where(triple => facts.Contains(triple.Subject)
+            && triple.Predicate.EndsWith("/unsafeReason", StringComparison.Ordinal)).Select(triple => triple.Object).ToHashSet();
+        Assert.Contains("UnsafeBlock", reasons);
+        Assert.Contains("PointerType", reasons);
+        Assert.Contains(emitter.Triples, triple => facts.Contains(triple.Subject)
+            && triple.Predicate.EndsWith("/unsafeLocation", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Extraction_ReportsUnsafeReasonsAndOmitsSafeStackalloc()
     {
         var source = """
