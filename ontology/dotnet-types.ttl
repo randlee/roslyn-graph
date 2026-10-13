@@ -27,6 +27,7 @@ dt:Event a rdfs:Class ; rdfs:subClassOf dt:Member ; rdfs:label "Event" .
 dt:Parameter a rdfs:Class ; rdfs:label "Parameter" .
 dt:TypeParameter a rdfs:Class ; rdfs:label "TypeParameter" .
 dt:Attribute a rdfs:Class ; rdfs:label "Attribute" .
+dt:UnsafeFact a rdfs:Class ; rdfs:label "Unsafe source fact" ; rdfs:comment "One detected unsafe source context or construct, with its deterministic reason and location." .
 
 # Type Properties
 dt:name a rdf:Property ; rdfs:label "name" ; rdfs:range xsd:string .
@@ -66,6 +67,10 @@ dt:hasSetter a rdf:Property ; rdfs:label "hasSetter" ; rdfs:domain dt:Property ;
 dt:constValue a rdf:Property ; rdfs:label "constValue" ; rdfs:domain dt:Field ; rdfs:range xsd:string .
 dt:isExtensionMethod a rdf:Property ; rdfs:label "isExtensionMethod" ; rdfs:domain dt:Method ; rdfs:range xsd:boolean .
 dt:methodKind a rdf:Property ; rdfs:label "methodKind" ; rdfs:domain dt:Method ; rdfs:range xsd:string .
+dt:requiresUnsafeCompilation a rdf:Property ; rdfs:label "requiresUnsafeCompilation" ; rdfs:domain dt:Method ; rdfs:range xsd:boolean ; rdfs:comment "True on a source method whose unsafe context or construct requires C# AllowUnsafeBlocks." .
+dt:unsafeReason a rdf:Property ; rdfs:label "unsafeReason" ; rdfs:domain dt:UnsafeFact ; rdfs:range xsd:string ; rdfs:comment "Deterministic unsafe syntax or context reason name." .
+dt:unsafeLocation a rdf:Property ; rdfs:label "unsafeLocation" ; rdfs:domain dt:UnsafeFact ; rdfs:range xsd:string ; rdfs:comment "Project-relative source path, one-based line, and one-based column for this unsafe reason." .
+dt:hasUnsafeFact a rdf:Property ; rdfs:label "hasUnsafeFact" ; rdfs:domain dt:Method ; rdfs:range dt:UnsafeFact .
 
 # Member Relationships
 dt:memberOf a rdf:Property ; rdfs:label "memberOf" ; rdfs:domain dt:Member ; rdfs:range dt:Type .
@@ -146,6 +151,7 @@ dt:attributeClass a rdf:Property ; rdfs:label "attributeClass" ; rdfs:domain dt:
 
 # Assembly properties
 dt:isInteractive a rdf:Property ; rdfs:label "isInteractive" ; rdfs:domain dt:Assembly ; rdfs:range xsd:boolean .
+dt:containsUnsafeCode a rdf:Property ; rdfs:label "containsUnsafeCode" ; rdfs:range xsd:boolean ; rdfs:comment "True when an analyzed source method is declared in an unsafe context or uses an unsafe construct; type and assembly aggregates are emitted only when a method is unsafe." .
 
 # Namespace relationships
 dt:containsType a rdf:Property ; rdfs:label "containsType" ; rdfs:domain dt:Namespace ; rdfs:range dt:Type .

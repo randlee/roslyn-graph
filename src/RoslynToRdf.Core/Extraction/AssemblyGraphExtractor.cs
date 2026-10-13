@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using RoslynToRdf.Core.Emitters;
 using RoslynToRdf.Core.Model;
 
@@ -21,7 +22,10 @@ public sealed partial class AssemblyGraphExtractor
     private readonly HashSet<string> _emittedTypes = new();
     private readonly HashSet<string> _extractedTypes = new();
     private readonly HashSet<string> _emittedNamespaces = new();
+    private readonly HashSet<string> _unsafeTypes = new();
+    private bool _unsafeCompilationEnabled;
     private XmlDocParser? _xmlDocParser;
+    private Compilation? _compilation;
     private readonly Action<string>? _log;
 
     public AssemblyGraphExtractor(
@@ -50,6 +54,9 @@ public sealed partial class AssemblyGraphExtractor
     public void Extract(Compilation compilation, IAssemblySymbol targetAssembly)
     {
         _xmlDocParser = new XmlDocParser(compilation);
+        _compilation = compilation;
+        _unsafeCompilationEnabled = compilation.Options is CSharpCompilationOptions { AllowUnsafe: true }
+            && compilation.SyntaxTrees.Any();
 
         Log($"Extracting assembly: {targetAssembly.Name} v{targetAssembly.Identity.Version}");
 
@@ -82,6 +89,9 @@ public sealed partial class AssemblyGraphExtractor
                 typeCount++;
             }
         }
+
+        if (_unsafeTypes.Count > 0)
+            _emitter.EmitBool(asmIri, Prop(DotNetOntology.AsmProps.ContainsUnsafeCode), true);
 
         Log($"Extracted {typeCount} types, {_emitter.TripleCount} triples");
     }
@@ -297,6 +307,9 @@ public sealed partial class AssemblyGraphExtractor
                     break;
             }
         }
+
+        if (_unsafeTypes.Contains(typeIri))
+            _emitter.EmitBool(typeIri, Prop(DotNetOntology.TypeProps.ContainsUnsafeCode), true);
     }
 
     private string GetTypeClass(INamedTypeSymbol type)

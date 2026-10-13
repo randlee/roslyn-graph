@@ -28,6 +28,9 @@ roslyn2rdf MyAssembly.dll -v
 
 # Add reference paths for dependencies
 roslyn2rdf MyAssembly.dll -r /path/to/dependency.dll -s /path/to/deps/
+
+# Analyze an evaluated C# source project
+roslyn2rdf MyProject.csproj -o source-graph.nt
 ```
 
 ## Options
@@ -47,6 +50,13 @@ roslyn2rdf MyAssembly.dll -r /path/to/dependency.dll -s /path/to/deps/
 | `-s, --search-dir` | Additional directories to search for dependencies |
 | `-v, --verbose` | Verbose output |
 | `-q, --quiet` | Quiet output |
+
+Passing a `.csproj` opens the evaluated C# project with MSBuild and analyzes its Roslyn compilation,
+including source syntax and the evaluated `AllowUnsafeBlocks` setting. Projects where that setting is
+false still receive the ordinary type graph, while unsafe-method facts are omitted. Source generators
+are represented when their generated trees are present in the compilation supplied by the workspace.
+Unsafe reason nodes carry project-relative source paths with one-based line and column numbers. The
+`.dll` mode remains metadata-only and does not report method-body unsafe facts.
 
 ## RDF Schema
 
