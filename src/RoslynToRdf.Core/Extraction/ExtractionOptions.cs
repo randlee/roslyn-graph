@@ -11,6 +11,11 @@ public sealed class ExtractionOptions
     public string BaseUri { get; set; } = "http://dotnet.example/";
 
     /// <summary>
+    /// Optional source root used to make source-location facts repository-relative.
+    /// </summary>
+    public string? SourceRoot { get; set; }
+
+    /// <summary>
     /// Include private members in the output.
     /// </summary>
     public bool IncludePrivate { get; set; } = false;

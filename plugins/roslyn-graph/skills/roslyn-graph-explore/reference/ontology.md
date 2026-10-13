@@ -37,6 +37,7 @@
 | `dt:Struct` | `dt:Type` |  |
 | `dt:Type` |  |  |
 | `dt:TypeParameter` |  |  |
+| `dt:UnsafeFact` |  | One detected unsafe source context or construct, with its deterministic reason and location. |
 
 ### Properties
 
@@ -62,9 +63,11 @@
 | `dt:memberOf` | `dt:Member` | `dt:Type` |  |
 | `dt:overridesMethod` | `dt:Member` | `dt:Member` |  |
 | `dt:hasParameter` | `dt:Method` | `dt:Parameter` |  |
+| `dt:hasUnsafeFact` | `dt:Method` | `dt:UnsafeFact` |  |
 | `dt:isExtensionMethod` | `dt:Method` | `xsd:boolean` |  |
 | `dt:isPartialDefinition` | `dt:Method` | `xsd:boolean` |  |
 | `dt:methodKind` | `dt:Method` | `xsd:string` |  |
+| `dt:requiresUnsafeCompilation` | `dt:Method` | `xsd:boolean` | True on a source method whose unsafe context or construct requires C# AllowUnsafeBlocks. |
 | `dt:returnType` | `dt:Method` | `dt:Type` |  |
 | `dt:containsType` | `dt:Namespace` | `dt:Type` |  |
 | `dt:parentNamespace` | `dt:Namespace` | `dt:Namespace` |  |
@@ -106,7 +109,10 @@
 | `dt:hasValueTypeConstraint` | `dt:TypeParameter` | `xsd:boolean` |  |
 | `dt:typeParameterOf` | `dt:TypeParameter` |  |  |
 | `dt:variance` | `dt:TypeParameter` | `xsd:string` |  |
+| `dt:unsafeLocation` | `dt:UnsafeFact` | `xsd:string` | Project-relative source path, one-based line, and one-based column for this unsafe reason. |
+| `dt:unsafeReason` | `dt:UnsafeFact` | `xsd:string` | Deterministic unsafe syntax or context reason name. |
 | `dt:accessibility` |  | `xsd:string` |  |
+| `dt:containsUnsafeCode` |  | `xsd:boolean` | True when an analyzed source method is declared in an unsafe context or uses an unsafe construct; type and assembly aggregates are emitted only when a method is unsafe. |
 | `dt:fullName` |  | `xsd:string` |  |
 | `dt:hasAttribute` |  | `dt:Attribute` |  |
 | `dt:hasTypeParameter` |  | `dt:TypeParameter` |  |

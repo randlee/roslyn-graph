@@ -1,4 +1,8 @@
 using System.CommandLine;
+using Microsoft.Build.Locator;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.MSBuild;
 using RoslynToRdf.Core.Emitters;
 using RoslynToRdf.Core.Extraction;
 
@@ -10,7 +14,7 @@ public class Program
     {
         var rootCommand = new RootCommand("Extract .NET assembly type graphs to RDF format") { Name = "roslyn2rdf" };
 
-        var assemblyArg = new Argument<FileInfo>("assembly", "Path to the primary .NET assembly (.dll) to analyze");
+        var assemblyArg = new Argument<FileInfo>("assembly", "Path to a .NET assembly (.dll) or C# source project (.csproj) to analyze");
         var additionalAssembliesOption = new Option<FileInfo[]>(["--assembly", "-a"], () => [], "Additional target assemblies to include in the same graph");
         var outputOption = new Option<FileInfo?>(["--output", "-o"], "Output file path");
         var formatOption = new Option<OutputFormat>(["--format", "-f"], () => OutputFormat.NTriples, "Output format");
@@ -67,7 +71,7 @@ public class Program
         return await rootCommand.InvokeAsync(args);
     }
 
-    private static Task<int> RunExtraction(IEnumerable<FileInfo> requestedAssemblies, FileInfo? output, OutputFormat format, string baseUri,
+    private static async Task<int> RunExtraction(IEnumerable<FileInfo> requestedAssemblies, FileInfo? output, OutputFormat format, string baseUri,
         bool includePrivate, bool includeInternal, bool excludeAttributes, bool excludeExternalTypes,
         bool extractExceptions, bool extractSeeAlso, bool verbose, bool quiet, string[] refs, string[] searchDirs)
     {
@@ -76,24 +80,32 @@ public class Program
             .Select(group => group.First())
             .ToArray();
 
+        var sourceProjects = assemblies.Where(file => file.Extension.Equals(".csproj", StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (sourceProjects.Length > 0 && (sourceProjects.Length != 1 || assemblies.Length != 1))
+        {
+            Console.Error.WriteLine("A source project must be extracted alone; it cannot be combined with --assembly.");
+            return 1;
+        }
+
         var missingAssemblies = assemblies.Where(assembly => !assembly.Exists).ToArray();
         if (missingAssemblies.Length > 0)
         {
             foreach (var assembly in missingAssemblies)
                 Console.Error.WriteLine($"Assembly not found: {assembly.FullName}");
-            return Task.FromResult(1);
+            return 1;
         }
 
         if (assemblies.Length > 1 && output is null)
         {
             Console.Error.WriteLine("--output is required when extracting more than one assembly.");
-            return Task.FromResult(1);
+            return 1;
         }
 
         var outputPath = output?.FullName ?? Path.ChangeExtension(assemblies[0].FullName, format == OutputFormat.Turtle ? ".ttl" : ".nt");
         var options = new ExtractionOptions
         {
             BaseUri = baseUri,
+            SourceRoot = sourceProjects.Length == 1 ? Path.GetDirectoryName(sourceProjects[0].FullName) : null,
             IncludePrivate = includePrivate,
             IncludeInternal = includeInternal,
             IncludeAttributes = !excludeAttributes,
@@ -113,28 +125,50 @@ public class Program
                 ? new TurtleEmitter(outputPath)
                 : new NTriplesEmitter(outputPath);
 
-            foreach (var assembly in assemblies)
+            if (sourceProjects.Length == 1)
             {
-                log?.Invoke($"Loading assembly: {assembly.FullName}");
+                var projectPath = sourceProjects[0].FullName;
+                log?.Invoke($"Loading source project: {projectPath}");
+                if (!MSBuildLocator.IsRegistered)
+                    MSBuildLocator.RegisterDefaults();
 
-                var loader = new AssemblyLoader();
-                foreach (var refPath in refs) loader.AddReferencePath(refPath);
-                foreach (var searchDir in searchDirs) loader.AddSearchDirectory(searchDir);
-
-                var (compilation, assemblySymbol) = loader.LoadAssembly(assembly.FullName);
+                using var workspace = MSBuildWorkspace.Create();
+                workspace.WorkspaceFailed += (_, args) => log?.Invoke($"MSBuild workspace: {args.Diagnostic.Message}");
+                var project = await workspace.OpenProjectAsync(projectPath);
+                if (project.Language != LanguageNames.CSharp)
+                    throw new InvalidOperationException("Only C# source projects are supported.");
+                var compilation = await project.GetCompilationAsync()
+                    ?? throw new InvalidOperationException("MSBuild did not provide a C# compilation for the project.");
+                if (compilation.Options is CSharpCompilationOptions { AllowUnsafe: false })
+                    log?.Invoke("AllowUnsafeBlocks is false; unsafe-method analysis is skipped for this project.");
                 var extractor = new AssemblyGraphExtractor(emitter, options, log);
-                extractor.Extract(compilation, assemblySymbol);
+                extractor.Extract(compilation, compilation.Assembly);
+            }
+            else
+            {
+                foreach (var assembly in assemblies)
+                {
+                    log?.Invoke($"Loading assembly: {assembly.FullName}");
+
+                    var loader = new AssemblyLoader();
+                    foreach (var refPath in refs) loader.AddReferencePath(refPath);
+                    foreach (var searchDir in searchDirs) loader.AddSearchDirectory(searchDir);
+
+                    var (compilation, assemblySymbol) = loader.LoadAssembly(assembly.FullName);
+                    var extractor = new AssemblyGraphExtractor(emitter, options, log);
+                    extractor.Extract(compilation, assemblySymbol);
+                }
             }
             emitter.Flush();
 
             log?.Invoke($"Done. {emitter.TripleCount} triples written to {outputPath}");
-            return Task.FromResult(0);
+            return 0;
         }
         catch (Exception ex)
         {
             Console.Error.WriteLine($"Error: {ex.Message}");
             if (verbose) Console.Error.WriteLine(ex.StackTrace);
-            return Task.FromResult(1);
+            return 1;
         }
     }
 }

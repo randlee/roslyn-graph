@@ -1,0 +1,15 @@
+# Title: Unsafe source methods
+# Description: methods from source projects with evaluated AllowUnsafeBlocks=true, including deterministic reason and location facts.
+PREFIX dt: <http://dotnet.example/ontology/>
+
+SELECT ?assembly ?typeName ?methodName ?reason ?location WHERE {
+  GRAPH ?g {
+    ?assembly a dt:Assembly ; dt:name ?assemblyName .
+    ?type dt:definedInAssembly ?assembly ; dt:fullName ?typeName ; dt:hasMember ?method .
+    ?method dt:name ?methodName ; dt:containsUnsafeCode true ; dt:requiresUnsafeCompilation true ;
+            dt:hasUnsafeFact ?fact .
+    ?fact dt:unsafeReason ?reason ; dt:unsafeLocation ?location .
+  }
+}
+ORDER BY ?assemblyName ?typeName ?methodName ?reason
+LIMIT 2000

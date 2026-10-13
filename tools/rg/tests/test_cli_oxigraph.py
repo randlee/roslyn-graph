@@ -166,15 +166,17 @@ def test_snapshot_publishes_validated_type_to_project_provenance(tmp_path, monke
 
     dll = tmp_path / "Lib.dll"
     dll.write_bytes(b"test assembly bytes")
+    project_path = tmp_path / "Lib.csproj"
+    project_path.write_text("<Project />")
     assembly = "http://dotnet.example/assembly/Lib/1.0.0.0"
     type_iri = "http://dotnet.example/type/Lib/1.0.0.0/Lib.Widget"
     source_manifest = {
         "origin": {"kind": "source", "id": "Repo", "repository": str(tmp_path / "Repo"), "commit": "c1", "dirtyHash": ""},
         "build": {"fingerprint": "debug-net10.0-test", "targetFramework": "net10.0", "project": "src/Lib.csproj"},
         "assembly": {"sha256": sha256_file(dll), "expectedName": "Lib", "inputPath": str(dll)},
-        "extraction": {"extractorId": "e1"},
+        "extraction": {"extractorId": "e1", "inputKind": "source-project"},
     }
-    component = Component("p", "base", dll, "Lib", [], source_manifest)
+    component = Component("p", "base", dll, "Lib", [], source_manifest, project_path)
     component.artifact_id = artifacts.artifact_id(artifacts.assembly_identity(source_manifest))
     base = artifacts.base_dir(tmp_path / ".roslyn-graph", "assembly-source", origin="Repo")
     component.destination, component.exists = artifacts.resolve_destination(base, component.artifact_id)
@@ -193,11 +195,15 @@ def test_snapshot_publishes_validated_type_to_project_provenance(tmp_path, monke
         collection=SimpleNamespace(name="test-collection"),
     )
 
-    def fake_extract(_extractor, _assembly_path, output, _search_dirs):
+    extracted_from = []
+
+    def fake_extract(_extractor, extraction_path, output, _search_dirs):
+        extracted_from.append(extraction_path)
         output.write_text(f"""@prefix dt: <http://dotnet.example/ontology/> .
 <{assembly}> a dt:Assembly ; dt:name "Lib" ; dt:version "1.0.0.0" .
 <{type_iri}> a dt:Type, dt:Class ; dt:name "Widget" ; dt:fullName "Lib.Widget" ;
   dt:typeKind "Class" ; dt:accessibility "Public" ; dt:definedInAssembly <{assembly}> .
+<{type_iri}/M> dt:unsafeReason "PointerType" .
 """)
         return []
 
@@ -205,6 +211,10 @@ def test_snapshot_publishes_validated_type_to_project_provenance(tmp_path, monke
     result = build.snapshot(fake_plan, component)
     manifest = artifacts.read_manifest(component.destination / "manifest.json")
     assert result["status"] == "created"
+    assert extracted_from == [project_path]
+    assert manifest["assembly"]["sha256"] == sha256_file(dll)
+    assert manifest["assembly"]["inputPath"] == str(dll)
+    assert manifest["extraction"]["inputKind"] == "source-project"
     assert {c["id"]: c["status"] for c in manifest["validation"]["staging"]}["S9"] == "pass"
     rows = oxigraph.select(component.destination / "store.oxigraph", f"""PREFIX dt: <http://dotnet.example/ontology/> PREFIX rg: <{RG}>
       SELECT ?repository ?path WHERE {{
@@ -213,3 +223,6 @@ def test_snapshot_publishes_validated_type_to_project_provenance(tmp_path, monke
         ?project rg:projectRepository ?repository ; rg:projectRelativePath ?path .
       }}""")
     assert rows == [{"repository": "Repo", "path": "src/Lib.csproj"}]
+    assert oxigraph.select(component.destination / "store.oxigraph", f"SELECT ?reason WHERE {{ <{type_iri}/M> <http://dotnet.example/ontology/unsafeReason> ?reason }}") == [
+        {"reason": "PointerType"}
+    ]

@@ -30,6 +30,7 @@ class Component:
     expected_name: str
     search_dirs: list[Path]
     manifest: dict[str, Any]  # partial manifest: origin/build or package, assembly.sha256, extraction.extractorId
+    extraction_path: Path | None = None
     artifact_id: str = ""
     destination: Path | None = None
     exists: bool = False
@@ -39,6 +40,7 @@ class Component:
             "profile": self.profile,
             "role": self.role,
             "assemblyPath": str(self.assembly_path),
+            "extractionPath": str(self.extraction_path or self.assembly_path),
             "expectedName": self.expected_name,
             "artifactId": self.artifact_id,
             "destination": artifacts.relative(root, self.destination) if self.destination else None,
@@ -266,9 +268,13 @@ def _solution_components(profile: SolutionProfile, role: str, tool: extractor.Ex
                 "project": rel_posix(project.path, repo.root), "solution": rel_posix(profile.solution, profile.root),
             },
             "assembly": {"inputPath": str(assembly_path), "sha256": sha256_file(assembly_path), "expectedName": name},
-            "extraction": {"extractorId": tool.id},
+            "extraction": {
+                "extractorId": tool.id,
+                "inputKind": "source-project" if project.path.suffix.lower() == ".csproj" else "assembly",
+            },
         }
-        components.append(Component(profile.name, role, assembly_path, name, _unique(search), manifest))
+        extraction_path = project.path if project.path.suffix.lower() == ".csproj" else assembly_path
+        components.append(Component(profile.name, role, assembly_path, name, _unique(search), manifest, extraction_path))
     return components
 
 
@@ -318,7 +324,7 @@ def _package_components(pkg: nuget.ResolvedPackage, role: str, tool: extractor.E
                 "dependencies": pkg.dependencies, "dependenciesHash": pkg.dependencies_hash, "signed": pkg.signed,
             },
             "assembly": {"inputPath": str(dll), "sha256": sha256_file(dll), "expectedName": Path(asset).stem},
-            "extraction": {"extractorId": tool.id},
+            "extraction": {"extractorId": tool.id, "inputKind": "assembly"},
         }
         components.append(Component(pkg.profile, role, dll, Path(asset).stem, _unique([dll.parent, *pkg.search_dirs]), manifest))
     return components
