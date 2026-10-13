@@ -26,6 +26,12 @@ forward to, and the fixed extraction flags (`--format Turtle --include-private`)
 therefore gives every assembly a new artifact ID on the next generate (see
 [artifact-layout.md](artifact-layout.md)); that is intended, because its output can differ.
 
+`rg.py records` uses the extractor's `declarations` command to find the source files of exported types (the
+explore skill's reference/records.md). An extractor installed before that command existed fails with
+`DECLARATIONS_UNSUPPORTED`; update it as above. Resolving source files also runs `dotnet msbuild -getItem`,
+which needs .NET SDK 8+ (or Visual Studio MSBuild 17.8+ for non-SDK projects; set `ROSLYN_GRAPH_MSBUILD` to
+that `MSBuild.exe`).
+
 ## Data root
 
 Artifacts live in `<data-root>/.roslyn-graph`. Set the parent once:
