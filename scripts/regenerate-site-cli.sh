@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Render roslyn2rdf CLI reference to site/cli/index.html via sibling docli checkout.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DOCLI_ROOT="${DOCLI_ROOT:-$ROOT/../../../docli}"
+DOCLI_BIN="${DOCLI_BIN:-$DOCLI_ROOT/target/release/docli}"
+EXPORT="$ROOT/tools/RoslynToRdf.DocliExport/RoslynToRdf.DocliExport.csproj"
+
+if [[ ! -x "$DOCLI_BIN" && "$DOCLI_BIN" == "$DOCLI_ROOT/target/release/docli" ]]; then
+  (cd "$DOCLI_ROOT" && cargo build --release -q --bin docli)
+fi
+
+if [[ ! -f "$DOCLI_ROOT/dotnet/src/Docli.Tool/bin/Release/net10.0/Docli.Tool.dll" ]]; then
+  (cd "$DOCLI_ROOT" && PATH="${HOME}/.dotnet:${PATH}" dotnet build dotnet/Docli.sln -c Release --nologo)
+fi
+
+mkdir -p "$ROOT/site/cli"
+cd "$ROOT"
+PATH="${HOME}/.dotnet:${PATH}" "$DOCLI_BIN" generate \
+  --dotnet-project "$EXPORT" \
+  --html site/cli \
+  --json
+test -f site/cli/index.html
+echo "Wrote site/cli/index.html"
