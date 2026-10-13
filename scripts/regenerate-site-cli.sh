@@ -4,7 +4,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DOCLI_ROOT="${DOCLI_ROOT:-$ROOT/../../../docli}"
+# shellcheck source=resolve-docli-root.sh
+source "$(dirname "${BASH_SOURCE[0]}")/resolve-docli-root.sh"
+DOCLI_ROOT="$(resolve_docli_root "$ROOT")"
 DOCLI_BIN="${DOCLI_BIN:-$DOCLI_ROOT/target/release/docli}"
 EXPORT="$ROOT/tools/RoslynToRdf.DocliExport/RoslynToRdf.DocliExport.csproj"
 

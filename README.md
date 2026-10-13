@@ -133,7 +133,11 @@ SELECT ?class ?className WHERE {
 
 GitHub Pages content lives under `site/`. The landing page and announcements are
 hand-edited; the `roslyn2rdf` CLI reference is generated with [docli](https://github.com/randlee/docli)
-from a sibling checkout (`../docli` by default):
+from a checkout at `./docli` (CI) or a sibling `github/docli` tree (local worktrees):
+
+```bash
+git clone https://github.com/randlee/docli.git docli   # once, if not already a sibling
+```
 
 ```bash
 ./scripts/regenerate-site.sh

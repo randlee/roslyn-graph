@@ -27,10 +27,30 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Checkout docli
+        uses: actions/checkout@v4
+        with:
+          repository: randlee/docli
+          ref: develop
+          path: docli
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install docli CLI (from GitHub)
+        working-directory: docli
+        run: cargo build --release -q --bin docli
+
+      - name: Build docli-dotnet tool
+        working-directory: docli
+        run: dotnet build dotnet/Docli.sln -c Release --nologo
 
       - name: Restore dependencies
         run: dotnet restore
