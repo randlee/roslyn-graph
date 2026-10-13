@@ -17,8 +17,9 @@ which the release process has frozen its assets.
 
 Set repository variable `HOMEBREW_TAP_REPOSITORY` to the owner/repository for
 the tap. Optionally set `HOMEBREW_FORMULA_PATH` (default
-`Formula/roslyn-to-rdf.rb`) and secret `HOMEBREW_TAP_TOKEN` with write access to
-that repository. The formula uses the x64
+`Formula/roslyn-graph.rb`) and secret `HOMEBREW_TAP_TOKEN` with write access to
+that repository. Install it as `brew install <tap>/roslyn-graph`. The formula
+exposes the `roslyn2rdf` command and uses the x64
 and arm64 macOS release archives; there is no Linux release target today.
 
 The workflow validates formula syntax, commits only that formula, and retries
@@ -28,7 +29,9 @@ release, it exits successfully without a new commit.
 ## Scoop
 
 Set `SCOOP_BUCKET_REPOSITORY`; optionally set `SCOOP_MANIFEST_PATH` (default
-`bucket/roslyn-to-rdf.json`) and `SCOOP_BUCKET_TOKEN`. The manifest references
+`bucket/roslyn-graph.json`) and `SCOOP_BUCKET_TOKEN`. Install with
+`scoop install <bucket>/roslyn-graph`. The manifest maps the executable to the
+`roslyn2rdf` command. It references
 the Windows x64 ZIP and its verified SHA-256. The workflow validates JSON,
 commits only the configured manifest, and safely retries a rejected push. An
 already matching remote manifest is a successful no-op.
@@ -40,11 +43,14 @@ Every run prepares and validates the three WinGet manifests and uploads them as
 credential. To also upsert a pull request, set `WINGET_FORK_REPOSITORY` to an
 existing fork of `microsoft/winget-pkgs` and secret `WINGET_GITHUB_TOKEN` with
 write access to that fork and permission to open PRs in `microsoft/winget-pkgs`.
-The workflow uses a deterministic version branch. It treats an existing open
-PR as success, an already merged PR as complete, and a closed unmerged PR or
-indeterminate API response as an error for maintainer inspection. It never
-pushes directly to Microsoft's repository. The PR is a pending submission,
-not proof that WinGet has published the package.
+The package is named `roslyn-graph` with identifier `Randlee.Roslyn-Graph`; use
+`winget install Randlee.Roslyn-Graph`. The workflow writes its version manifests
+under `manifests/r/Randlee/Roslyn-Graph/<version>`. The installed command alias
+is `roslyn2rdf.exe`. The workflow uses a deterministic version branch. It
+treats an existing open PR as success, an already merged PR as complete, and a
+closed unmerged PR or indeterminate API response as an error for maintainer
+inspection. It never pushes directly to Microsoft's repository. The PR is a
+pending submission, not proof that WinGet has published the package.
 
 ## Retry and failure behavior
 

@@ -13,7 +13,8 @@ import urllib.request
 
 
 ARCHIVE_PREFIX = "roslyn-graph"
-IDENTIFIER = "Randlee.RoslynToRdf"
+PRODUCT_NAME = "roslyn-graph"
+IDENTIFIER = "Randlee.Roslyn-Graph"
 HOMEPAGE = "https://github.com/randlee/roslyn-graph"
 DESCRIPTION = "Extract .NET assembly type graphs to RDF"
 LICENSE = "MIT"
@@ -114,7 +115,7 @@ def formula(data: dict, output: Path) -> None:
     base = f"https://github.com/{data['repo']}/releases/download/{data['tag']}/"
     x64 = f"{ARCHIVE_PREFIX}_{data['version']}_osx-x64.tar.gz"
     arm = f"{ARCHIVE_PREFIX}_{data['version']}_osx-arm64.tar.gz"
-    text = f'''class RoslynToRdf < Formula
+    text = f'''class RoslynGraph < Formula
   desc "{DESCRIPTION}"
   homepage "{HOMEPAGE}"
   depends_on :macos
@@ -180,7 +181,7 @@ def winget(data: dict, output: Path) -> None:
             "PackageVersion: " + version + "\n"
             "PackageLocale: en-US\n"
             "Publisher: Rand Lee\n"
-            "PackageName: RoslynToRdf\n"
+            f"PackageName: {PRODUCT_NAME}\n"
             "License: MIT\n"
             "ShortDescription: " + DESCRIPTION + "\n"
             "ManifestType: defaultLocale\n"

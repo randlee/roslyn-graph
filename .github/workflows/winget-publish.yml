@@ -96,14 +96,14 @@ jobs:
           GH_TOKEN: ${{ secrets.WINGET_GITHUB_TOKEN }}
           FORK_REPOSITORY: ${{ vars.WINGET_FORK_REPOSITORY }}
           RELEASE_TAG: ${{ inputs.tag }}
-          PACKAGE_ID: Randlee.RoslynToRdf
+          PACKAGE_ID: Randlee.Roslyn-Graph
         shell: bash
         run: |
           set -euo pipefail
           version="${RELEASE_TAG#v}"
           owner="${FORK_REPOSITORY%%/*}"
-          branch="roslyn-to-rdf-${version}"
-          manifest_dir="manifests/r/randlee/roslyntordf/${version}"
+          branch="roslyn-graph-${version}"
+          manifest_dir="manifests/r/Randlee/Roslyn-Graph/${version}"
           mkdir -p "winget-fork/${manifest_dir}"
           cp winget-manifests/*.yaml "winget-fork/${manifest_dir}/"
           cd winget-fork
