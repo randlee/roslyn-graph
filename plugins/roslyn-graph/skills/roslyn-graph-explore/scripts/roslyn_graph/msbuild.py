@@ -39,8 +39,8 @@ def read_solution(solution: Path) -> list[SolutionProject]:
         raise RgError.of("SOLUTION_UNSUPPORTED", f"Unsupported solution file type: {solution.suffix}", "Use a .sln or .slnx file.")
     projects = []
     for name, raw in entries:
-        if not raw.lower().endswith(".csproj"):
-            continue  # solution folders and non-C# projects
+        if Path(raw).suffix.lower() not in {".csproj", ".vbproj"}:
+            continue  # solution folders and unsupported project types
         rel = raw.replace("\\", "/")
         projects.append(SolutionProject(name, rel, full_path(rel, solution.parent)))
     return projects
