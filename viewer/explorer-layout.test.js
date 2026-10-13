@@ -57,8 +57,12 @@ test('namespace palette picker is an accessible, arrowless color swatch', () => 
 test('panel toggles are compact directional controls with accessible names', () => {
     const explorer = fs.readFileSync(path.join(__dirname, 'explorer.html'), 'utf8');
 
-    assert.match(explorer, /class="icon-btn panel-toggle" id="sidebar-toggle"[\s\S]*?aria-label="Hide sidebar"[\s\S]*?>◀<\/button>/);
-    assert.match(explorer, /class="icon-btn panel-toggle" id="details-toggle"[\s\S]*?aria-label="Hide details"[\s\S]*?>▶<\/button>/);
+    assert.match(explorer, /<\/header>\s*<button class="icon-btn panel-toggle" id="sidebar-toggle"[\s\S]*?aria-label="Hide sidebar"[\s\S]*?>◀<\/button>\s*<button class="icon-btn panel-toggle" id="details-toggle"[\s\S]*?aria-label="Hide details"[\s\S]*?>▶<\/button>/);
+    assert.match(explorer, /\.panel-toggle \{[\s\S]*?z-index: 1;[\s\S]*?align-self: center;[\s\S]*?justify-self: center;/);
+    assert.match(explorer, /#sidebar-toggle \{[\s\S]*?grid-column: 2;[\s\S]*?grid-row: 1;/);
+    assert.match(explorer, /#details-toggle \{[\s\S]*?grid-column: 4;[\s\S]*?grid-row: 1;/);
+    const header = explorer.match(/<header>[\s\S]*?<\/header>/)?.[0] ?? '';
+    assert.doesNotMatch(header, /id="(?:sidebar|details)-toggle"/, 'boundary toggles must not consume header action space');
     assert.match(explorer, /sidebarToggle\.setAttribute\('aria-label', sidebarLabel\)/);
     assert.match(explorer, /detailsToggle\.setAttribute\('aria-label', detailsLabel\)/);
 });
