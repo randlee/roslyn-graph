@@ -163,7 +163,11 @@ directory-prefixed pattern (`Radiant.Simulation.Image/**/*.cs`) works and return
 is not a leak, but it hides scope files from one discovery tool. Workaround in the design: the brief lists every
 file path and tells the agent to use `ls`, `grep` or root-anchored `glob` patterns. It is worth reporting upstream.
 
-### Model level (blocked; ready to run)
+### Model level (blocked here; run on Radiant.Data)
+
+The model-level run was done on a smaller target with the `openai-chatgpt` provider:
+[openwiki-run-radiant-data-2026-10-13.md](openwiki-run-radiant-data-2026-10-13.md). The P3 runs below remain
+ready to run with `--provider openai-chatgpt --model gpt-6-luna`.
 
 `run_openwiki.py` runs `openwiki code --init -p` on a fresh clone at the manifest commit, with:
 - `fs_trace.mjs`, which logs every path the process opens under the repository;

@@ -8,6 +8,7 @@ scope, tool calls, tokens, time, and how many briefed types the generated wiki m
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import re
@@ -27,6 +28,16 @@ def free_port() -> int:
         return s.getsockname()[1]
 
 
+def codex_env() -> dict[str, str]:
+    """OpenWiki's openai-chatgpt credentials from the Codex CLI login. The expiry comes from the access token, so
+    OpenWiki refreshes (and rotates the Codex CLI's refresh token) only when the token is about to lapse."""
+    tokens = json.loads((Path.home() / ".codex" / "auth.json").read_text(encoding="utf-8"))["tokens"]
+    payload = tokens["access_token"].split(".")[1]
+    claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+    return {"OPENAI_CHATGPT_ACCESS_TOKEN": tokens["access_token"], "OPENAI_CHATGPT_REFRESH_TOKEN": tokens["refresh_token"],
+            "OPENAI_CHATGPT_ACCOUNT_ID": tokens["account_id"], "OPENAI_CHATGPT_EXPIRES_AT": str(claims["exp"] * 1000)}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--name", required=True)
@@ -40,6 +51,9 @@ def main() -> int:
     ap.add_argument("--mode", choices=["files", "dirs", "brief-only"], required=True)
     ap.add_argument("--jsonl", action="store_true")
     ap.add_argument("--timeout", type=int, default=3600)
+    ap.add_argument("--provider", choices=["anthropic", "openai-chatgpt"], default="anthropic",
+                    help="openai-chatgpt uses the Codex CLI's ChatGPT login (~/.codex/auth.json)")
+    ap.add_argument("--model", help="OPENWIKI_MODEL_ID, e.g. gpt-6-luna")
     a = ap.parse_args()
 
     work = Path(a.work)
@@ -56,11 +70,20 @@ def main() -> int:
     trace, usage = work / f"{a.name}.trace.jsonl", work / f"{a.name}.usage.jsonl"
     for p in (trace, usage):
         p.unlink(missing_ok=True)
-    port = free_port()
-    proxy = subprocess.Popen([sys.executable, str(HERE / "usage_proxy.py"), "--port", str(port), "--log", str(usage)])
-    time.sleep(1.5)
     env = dict(os.environ, OPENWIKI_TRACE_ROOT=str(repo), OPENWIKI_TRACE_FILE=str(trace), OPENWIKI_TELEMETRY_DISABLED="1",
-               ANTHROPIC_BASE_URL=f"http://127.0.0.1:{port}", NODE_OPTIONS=f"--import {(HERE / 'fs_trace.mjs').as_uri()}")
+               OPENWIKI_PROVIDER=a.provider, NODE_OPTIONS=f"--import {(HERE / 'fs_trace.mjs').as_uri()}")
+    if a.model:
+        env["OPENWIKI_MODEL_ID"] = a.model
+    proxy = None
+    if a.provider == "anthropic":
+        port = free_port()
+        proxy = subprocess.Popen([sys.executable, str(HERE / "usage_proxy.py"), "--port", str(port), "--log", str(usage)])
+        time.sleep(1.5)
+        env["ANTHROPIC_BASE_URL"] = f"http://127.0.0.1:{port}"
+    else:
+        # The Codex backend URL is fixed, so usage is logged by a fetch hook instead of the proxy.
+        env.update(codex_env(), OPENWIKI_USAGE_FILE=str(usage))
+        env["NODE_OPTIONS"] += f" --import {(HERE / 'codex_usage.mjs').as_uri()}"
     openwiki = shutil.which("openwiki") or "openwiki"
     started = time.monotonic()
     try:
@@ -70,7 +93,8 @@ def main() -> int:
     except subprocess.TimeoutExpired as exc:
         exit_code, stdout, stderr = "timeout", str(exc.stdout or ""), str(exc.stderr or "")
     seconds = round(time.monotonic() - started)
-    proxy.terminate()
+    if proxy:
+        proxy.terminate()
     (work / f"{a.name}.out.txt").write_text(stdout, encoding="utf-8")
     (work / f"{a.name}.err.txt").write_text(stderr, encoding="utf-8")
 
@@ -110,7 +134,7 @@ def main() -> int:
     covered = [t for t in scope["types"] if re.search(rf"\b{re.escape(t.rsplit('.', 1)[-1].split('<')[0])}\b", text)]
     cited = sorted(set(re.findall(r"[\w./-]+\.(?:cs|vb|jsonl)\b", text)))
     result = {
-        "type": "openwiki-run", "name": a.name, "mode": a.mode, "jsonl": a.jsonl, "types": len(scope["types"]), "files": len(in_scope),
+        "type": "openwiki-run", "name": a.name, "provider": a.provider, "model": a.model, "mode": a.mode, "jsonl": a.jsonl, "types": len(scope["types"]), "files": len(in_scope),
         "exit": exit_code, "seconds": seconds, "apiCalls": calls, "usage": totals, "tools": tools,
         "readsOutside": sorted(reads_outside), "listedOutside": len(listed_outside), "listedOutsideExamples": sorted(listed_outside)[:15],
         "pages": len(pages), "wikiChars": len(text), "typesCovered": len(covered), "typesMissing": sorted(set(scope["types"]) - set(covered)),

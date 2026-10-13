@@ -313,16 +313,21 @@ Taken:
   `model_json_schema()`.
 - The type list goes in `INSTRUCTIONS.md`, not in `-p`, so `--update` runs keep the same scope.
 
-Settled by B0:
+Settled by B0 and B7:
 
 1. Scanner accuracy. No source-declared type was missed once the preprocessor symbols were right; B2 uses Roslyn.
 2. Enforcement. OpenWiki's backend gives the agent no way to read outside a file-level scope: reads, `ls`, `grep`
    and `glob` are filtered, and shell access is limited to `pwd` and `git rev-parse HEAD`.
 
+3. Model-level adherence and cost ([openwiki-run-radiant-data-2026-10-13.md](openwiki-run-radiant-data-2026-10-13.md),
+   Radiant.Data with `gpt-6-luna`): the agent read no file outside the scope, the wiki covers the scope by topic
+   (59 of 272 type names), and a 186-file scope cost about 1.25 M input tokens in 398 s.
+
 Still open:
 
-- How closely the model's prose follows the brief, how much of the scope the wiki covers, and the cost per run
-  (experiments 4 to 6 at model level). The harness is ready, but the run was blocked: the configured Anthropic key
-  was rejected. These become an acceptance check.
+- The P3 XCore runs (experiment 4 b and c, experiments 5 and 6 at 50 and 200 types). They were not run, to keep
+  model runs small; `run_openwiki.py --provider openai-chatgpt --model gpt-6-luna` runs them.
+- OpenWiki's process (not the agent) reads nearly every repository file during its scan. Worth reporting upstream
+  alongside the `glob` defect.
 
 See [implementation-plan.md](implementation-plan.md) for the sprints and acceptance checks.
