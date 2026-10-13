@@ -131,6 +131,19 @@ commands that crash natively (for example Windows exit code 0xC0000005) are retr
 | `SCHEMA_FIELD_MISSING`, `SCHEMA_FIELD_UNKNOWN` | every property needs exactly one of `x-rg-field` (a registry field name) or `const` |
 | `SCHEMA_FIELD_CARDINALITY` | a list field is bound to a non-array property, or a scalar field to an array property |
 
+## Source locations
+
+`files` and `locationStatus` are resolved on export from the checkouts the store was built from.
+
+| Code | Meaning and fix |
+|---|---|
+| `SOURCE_CHECKOUT_MISSING` | the recorded repository path does not exist; pass `--repo-root <id>=<path>` if the checkout moved |
+| `SOURCE_CHECKOUT_DRIFT` | a checkout is at another commit or has other uncommitted changes than the build (`context.drift`); check out the recorded commit, or pass `--allow-drift` (then a warning, and nothing is cached) |
+| `SOURCE_PROJECT_MISSING` | the project file is not in the checkout; the checkout does not match the build |
+| `MSBUILD_FAILED` | MSBuild could not evaluate a project (`context.output`); the project must restore in this checkout; `ROSLYN_GRAPH_MSBUILD` selects MSBuild (Visual Studio MSBuild 17.8+ for non-SDK projects) |
+| `DECLARATIONS_UNSUPPORTED` | the installed extractor predates the `declarations` command; update the extractor (setup.md) |
+| `DECLARATIONS_FAILED` | the extractor's `declarations` command failed; read `context.stderr` |
+
 ## Always
 
 | Code | Meaning and fix |

@@ -129,7 +129,8 @@ def cmd_render(a) -> dict:
 
 def cmd_records(a) -> dict:
     filters = {option: getattr(a, option) for option, _, _ in records.FILTERS}
-    return records.run(a.graph, a.selection, a.manifest, a.schema, Path(a.output), a.format, filters, timeout=a.timeout)
+    return records.run(a.graph, a.selection, a.manifest, a.schema, Path(a.output), a.format, filters, timeout=a.timeout,
+                       allow_drift=a.allow_drift, repo_roots=a.repo_root)
 
 
 def cmd_graph(a) -> dict:
@@ -245,6 +246,8 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--output", required=True, help="Records file (.jsonl); <name>.context.json is written beside it.")
     p.add_argument("--format", choices=["jsonl", "json"], default="jsonl")
     p.add_argument("--timeout", type=int, default=explore.QUERY_TIMEOUT, help="Seconds per store query (default %(default)s).")
+    p.add_argument("--allow-drift", action="store_true", help="Resolve files from checkouts that moved past the build's commit (warns).")
+    p.add_argument("--repo-root", action="append", default=[], help="ID=PATH for a repository checkout that has moved; repeatable.")
     for option, help_ in [("include", "Full-name glob to keep"), ("exclude", "Full-name glob to drop (applied last)"),
                           ("kind", "dt:typeKind to keep (Class, Interface, Struct, Enum, Delegate)"),
                           ("namespace", "Namespace glob to keep"), ("assembly", "Defining assembly glob to keep"),

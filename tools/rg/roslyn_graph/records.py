@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-from . import artifacts, explore, oxigraph
+from . import artifacts, explore, oxigraph, sources
 from .result import ProblemList, RgError
 from .traverse import BATCH, glob_regex
 from .util import DT, RDF_TYPE, RG, nt_literal, resource, sha256_file
@@ -444,6 +444,24 @@ class Fields:
         self.store, self.graph_of, self.source = store, graph_of, source
         self._physical: dict[str, dict[str, list[Any]]] = {}
         self.varies: Counter[str] = Counter()
+        self.locations: dict[str, tuple[str, list[str]]] = {}
+        self.projects: dict[str, sources.Project] = {}
+
+    def resolve_sources(self, units: list[Unit], allow_drift: bool, repo_roots: dict[str, Path]) -> list[dict[str, Any]]:
+        """Declaring files and locationStatus for every physical type of the units; returns drift warnings."""
+        physicals = sorted({p for u in units for p in u.physicals})
+        names = self._per_physical("fullName", physicals)
+        for p in physicals:
+            graph = self.graph_of[p]
+            origin = (self.store.components().get(graph) or {}).get("origin") or {}
+            if origin.get("kind") == "source" and graph not in self.projects:
+                component = self.store.component_manifest(graph)
+                repository = repo_roots.get(origin["id"])
+                moved = component if repository is None else {**component, "origin": {**component["origin"], "repository": str(repository)}}
+                self.projects[graph] = sources.project_for(graph, moved, project_path(moved), repo_roots)
+        warnings = sources.index_all(list(self.projects.values()), self.store.root() / "cache" / "source-index", allow_drift)
+        self.locations = {p: sources.locate(self.projects.get(self.graph_of[p]), names[p][0]) for p in physicals}
+        return warnings
 
     def _per_physical(self, name: str, physicals: list[str]) -> dict[str, list[Any]]:
         if name not in self._physical:
@@ -513,7 +531,10 @@ class Fields:
                    for s, o in self.source.edges if (s if name == "referencesInGraph" else o) == unit.key}
             return sorted(out)
         if spec.needs == "source":
-            raise AssertionError(name)
+            found = [self.locations[p] for p in unit.physicals]
+            if name == "files":
+                return sorted({f for _, files in found for f in files})
+            return min((status for status, _ in found), key=sources.STATUSES.index)
         values = self.values(unit, name, units)
         if name == "origin":
             kinds = set(values)
@@ -609,8 +630,19 @@ def resolve_units(store: Store, source: GraphInput) -> tuple[list[Unit], dict[st
     return sorted((u for u in units if u.physicals), key=lambda u: (u.full_name, u.key)), graph_of
 
 
+def parse_repo_roots(values: list[str]) -> dict[str, Path]:
+    roots: dict[str, Path] = {}
+    for item in values or []:
+        name, sep, path = item.partition("=")
+        if not sep or not name or not path:
+            raise RgError.of("USAGE", f"--repo-root {item!r} is not ID=PATH.", "Use the repository ID of the workspace profile, e.g. --repo-root p3=D:/work/p3.")
+        roots[name] = Path(path)
+    return roots
+
+
 def run(graph: str | None, selection: str | None, manifest: str | None, schema_arg: str, output: Path, fmt: str,
-        filters: dict[str, list[str]], timeout: int | None = explore.QUERY_TIMEOUT) -> dict[str, Any]:
+        filters: dict[str, list[str]], timeout: int | None = explore.QUERY_TIMEOUT, allow_drift: bool = False,
+        repo_roots: list[str] | None = None) -> dict[str, Any]:
     if bool(graph) == bool(selection):
         raise RgError.of("RECORDS_INPUT", "Pass exactly one of --graph or --selection.")
     source = read_graph(Path(graph)) if graph else read_selection(Path(selection))  # type: ignore[arg-type]
@@ -622,13 +654,11 @@ def run(graph: str | None, selection: str | None, manifest: str | None, schema_a
         if value not in ORIGINS:
             raise RgError.of("USAGE", f"--origin {value!r} must be one of {sorted(ORIGINS)}.")
     schema = load_schema(schema_arg)
-    unavailable = sorted(f for f in schema.fields() if REGISTRY[f].needs == "source")
-    if source.kind == "selection":
-        unavailable += sorted(f for f in schema.fields() if f in ("referencesInGraph", "referencedByInGraph"))
+    roots = parse_repo_roots(repo_roots or [])
+    unavailable = sorted(f for f in schema.fields() if f in ("referencesInGraph", "referencedByInGraph")) if source.kind == "selection" else []
     if unavailable:
-        raise RgError.of("RECORDS_FIELD_UNAVAILABLE", f"The schema binds {unavailable}, which this input or version cannot fill.",
-                         "Source fields (files, locationStatus) need the source locator; graph edge fields need --graph input. "
-                         "Remove them from the schema.", fields=unavailable)
+        raise RgError.of("RECORDS_FIELD_UNAVAILABLE", f"The schema binds {unavailable}, which a selection cannot fill.",
+                         "Graph edge fields need --graph input; remove them from the schema.", fields=unavailable)
     manifest_path = Path(store_manifest)
     store = Store(manifest_path, timeout)
     units, graph_of = resolve_units(store, source)
@@ -638,6 +668,14 @@ def run(graph: str | None, selection: str | None, manifest: str | None, schema_a
         worst = max(removed, key=removed.get) if removed else None
         raise RgError.of("RECORDS_EMPTY", f"No types are left of the input's {len(units)}.",
                          f"--{worst} removed the most ({removed[worst]})." if worst else "The input lists no types.", removed=removed)
+    locations = None
+    source_warnings: list[dict[str, Any]] = []
+    if any(REGISTRY[f].needs == "source" for f in schema.fields()):
+        source_warnings = fields.resolve_sources(kept, allow_drift, roots)
+        statuses = Counter(min((fields.locations[p][0] for p in u.physicals), key=sources.STATUSES.index) for u in kept)
+        locations = {"types": {s: statuses.get(s, 0) for s in sources.STATUSES}, "projects": len(fields.projects),
+                     "cacheHits": sum(p.cached for p in fields.projects.values()),
+                     "detail": [p.to_json() for p in sorted(fields.projects.values(), key=lambda p: (p.repository_id, p.relative))]}
     records: list[dict[str, Any]] = []
     for unit in kept:
         record: dict[str, Any] = {}
@@ -660,13 +698,17 @@ def run(graph: str | None, selection: str | None, manifest: str | None, schema_a
         output.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in records), encoding="utf-8", newline="\n")
     warnings = [{"code": "RECORD_FIELD_VARIES", "field": f, "types": n,
                  "message": f"{f} differs between versions of {n} type(s); the first value in sorted order was written."}
-                for f, n in sorted(fields.varies.items())]
+                for f, n in sorted(fields.varies.items())] + source_warnings
     repositories = {}
     for graph in sorted({graph_of[p] for u in kept for p in u.physicals}):
         origin = (store.components().get(graph) or {}).get("origin") or {}
         if origin.get("kind") == "source":
-            repositories[origin["id"]] = {"repository": origin.get("repository"), "commit": origin.get("commit"),
-                                          "dirtyHash": origin.get("dirtyHash", "")}
+            project = fields.projects.get(graph)
+            entry = repositories.setdefault(origin["id"], {"repository": origin.get("repository"), "commit": origin.get("commit"),
+                                                           "dirtyHash": origin.get("dirtyHash", "")})
+            if project:
+                entry["checkout"] = str(project.repository)
+                entry["drift"] = project.drift
     filter_summary = {"typesIn": len(units), "typesOut": len(kept), "removed": removed,
                       "options": {k: v for k, v in filters.items() if v}}
     explore.write_context(output, {
@@ -681,4 +723,4 @@ def run(graph: str | None, selection: str | None, manifest: str | None, schema_a
     })
     return {"type": "records", "output": str(output), "context": str(explore.context_path(output)), "count": len(records),
             "format": fmt, "schema": {"name": schema.name, "path": str(schema.path), "sha256": schema.sha256},
-            "filters": filter_summary, "locations": None, "warnings": warnings}
+            "filters": filter_summary, "locations": locations, "warnings": warnings}

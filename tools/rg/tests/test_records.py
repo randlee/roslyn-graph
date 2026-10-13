@@ -375,11 +375,11 @@ def test_inputs_context_manifest_override_and_selection(tmp_path, view):
 
 
 @requires_oxigraph
-def test_source_fields_are_unavailable_and_violations_fail(tmp_path, view):
+def test_source_fields_need_checkouts_and_violations_fail(tmp_path, view):
     graph = write_graph(tmp_path, view)
     with pytest.raises(RgError) as info:
         records.run(str(graph), None, None, str(write_schema(tmp_path, {"files": "array", "locationStatus": "string"})), tmp_path / "r.jsonl", "jsonl", {})
-    assert codes(info) == ["RECORDS_FIELD_UNAVAILABLE"] and info.value.problems[0].context["fields"] == ["files", "locationStatus"]
+    assert codes(info) == ["SOURCE_CHECKOUT_MISSING"] and "--repo-root App=" in info.value.problems[0].hint
     with pytest.raises(RgError) as info:
         records.run(str(graph), None, None, str(write_schema(tmp_path, {"namespace": "string", "baseType": "string"})), tmp_path / "r.jsonl", "jsonl", {})
     assert codes(info) == ["RECORD_SCHEMA_VIOLATION"]
@@ -427,3 +427,60 @@ def test_nt_literals_are_unescaped():
     assert records._literal('"A\\"B\\u0043\\\\"') == 'A"BC\\'
     assert records._literal('"x"^^<http://www.w3.org/2001/XMLSchema#string>') == "x"
     assert records._literal("<http://e/x>") is None
+
+
+@requires_oxigraph
+def test_source_locations_from_moved_drifted_checkouts(tmp_path, view, monkeypatch):
+    from roslyn_graph import gitinfo, sources
+    from roslyn_graph.extractor import Extractor
+
+    moved = tmp_path / "moved"
+    app, lib = moved / "App", tmp_path / "work" / "Lib"
+    for repo, files in ((app, ["src/Billing/Billing.csproj", "src/Billing/Order.cs", "src/Billing/Base.cs", "src/Billing/Money.cs"]),
+                        (lib, ["src/Money.cs"])):
+        for f in files:
+            (repo / f).parent.mkdir(parents=True, exist_ok=True)
+            (repo / f).write_text("x\n")
+        for args in (["init", "-q"], ["add", "."], ["-c", "user.email=t@e.invalid", "-c", "user.name=T", "commit", "-q", "-m", "x"]):
+            subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
+    gitinfo.repo_state.cache_clear()
+
+    declared = {app: [("Billing.Orders.Order", "src/Billing/Order.cs"), ("Billing.Orders.EntityBase<T>", "src/Billing/Base.cs"),
+                      ("Contoso.Shared.Money", "src/Billing/Money.cs"), ("Billing.Gen", "src/Billing/obj/Gen.cs")],
+                lib: [("Contoso.Shared.Money", "src/Money.cs")]}
+
+    def evaluate(p):
+        return [p.repository / f for _, f in declared[p.repository]], {"Language": "C#", "DefineConstants": "TRACE;X"}
+
+    requests = []
+
+    def declarations(request):
+        requests.append(request)
+        repo = app if str(app) in request["files"][0] else lib
+        return {"languageVersion": "CSharp12", "types": [{"name": n, "file": str(repo / f)} for n, f in declared[repo]]}
+
+    monkeypatch.setattr(sources, "evaluate", evaluate)
+    monkeypatch.setattr(sources, "declarations", declarations)
+    monkeypatch.setattr(sources.extractor, "resolve", lambda: Extractor(Path("x.dll"), "ext", "rt", "h", "test"))
+
+    graph = write_graph(tmp_path, view)
+    schema_path = str(write_schema(tmp_path, {"fullName": "string", "files": "array", "locationStatus": "string"}, name="loc"))
+    out = tmp_path / "loc.jsonl"
+    with pytest.raises(RgError) as info:
+        records.run(str(graph), None, None, schema_path, out, "jsonl", {}, repo_roots=[f"App={app}"])
+    assert codes(info) == ["SOURCE_CHECKOUT_DRIFT"] and len(info.value.problems[0].context["drift"]) == 2  # commits c1/c2 are not the checkouts'
+
+    result = records.run(str(graph), None, None, schema_path, out, "jsonl", {}, allow_drift=True, repo_roots=[f"App={app}"])
+    assert read_jsonl(out) == [
+        {"fullName": "Billing.Orders.EntityBase<T>", "files": ["src/Billing/Base.cs"], "locationStatus": "found"},
+        {"fullName": "Billing.Orders.Order", "files": ["src/Billing/Order.cs"], "locationStatus": "found"},
+        {"fullName": "Contoso.IEntity", "files": [], "locationStatus": "nuget"},
+        {"fullName": "Contoso.Shared.Money", "files": ["src/Billing/Money.cs", "src/Money.cs"], "locationStatus": "found"},  # union of versions
+        {"fullName": "Lib.Util", "files": [], "locationStatus": "generated"},  # generated in Lib beats nuget in Contoso.Lib
+    ]
+    assert result["locations"]["types"] == {"found": 3, "compiler-generated": 0, "generated": 1, "nuget": 1} and result["locations"]["cacheHits"] == 0
+    assert sorted(w["repository"] for w in result["warnings"] if w["code"] == "SOURCE_CHECKOUT_DRIFT") == ["App", "Lib"]
+    assert requests[0]["preprocessorSymbols"] == ["TRACE", "X"]
+    context = json.loads((tmp_path / "loc.context.json").read_text(encoding="utf-8"))
+    assert context["repositories"]["App"]["checkout"] == str(app) and context["repositories"]["App"]["drift"].startswith("checkout is at")
+    assert not (view.parents[2] / "cache" / "source-index").exists()  # drifted indexes are never cached
