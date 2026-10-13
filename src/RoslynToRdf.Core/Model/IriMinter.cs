@@ -163,9 +163,10 @@ public partial class IriMinter
         }
 
         // Namespace
-        if (!namedType.ContainingNamespace.IsGlobalNamespace)
+        var containingNamespace = namedType.ContainingNamespace;
+        if (containingNamespace is { IsGlobalNamespace: false })
         {
-            sb.Append(namedType.ContainingNamespace.ToDisplayString());
+            sb.Append(containingNamespace.ToDisplayString());
             sb.Append('.');
         }
 

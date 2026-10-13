@@ -49,9 +49,9 @@ public sealed partial class AssemblyGraphExtractor
             _emitter.EmitIri(typeIri, Prop(DotNetOntology.TypeRels.DefinedInAssembly), asmIri);
         }
 
-        if (!namedType.ContainingNamespace.IsGlobalNamespace)
+        if (namedType.ContainingNamespace is { IsGlobalNamespace: false } containingNamespace)
         {
-            var nsIri = EnsureNamespaceEmitted(namedType.ContainingNamespace);
+            var nsIri = EnsureNamespaceEmitted(containingNamespace);
             _emitter.EmitIri(typeIri, Prop(DotNetOntology.TypeRels.InNamespace), nsIri);
         }
 
