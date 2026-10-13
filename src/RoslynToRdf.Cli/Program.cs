@@ -45,6 +45,7 @@ public class Program
         rootCommand.AddOption(quietOption);
         rootCommand.AddOption(refsOption);
         rootCommand.AddOption(searchDirOption);
+        rootCommand.AddCommand(DeclarationsCommand.Create());
 
         rootCommand.SetHandler(async (context) =>
         {

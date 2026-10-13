@@ -35,6 +35,7 @@ Read the manifest first: `components` / `overlayComponents` say which assemblies
 | "Show", "draw", "visualize", "graph" anything, including graphs grown from seeds ("these interfaces, their implementations and everything they reference") | [visualize](workflows/visualize.md) |
 | List, run, save, update or check the user's saved queries and graphs | [saved-queries](workflows/saved-queries.md) |
 | The user pastes explorer JSON (`"format": "roslyn-graph-selection/2"`) or a `*.selection.json`, and wants a deep dive | [deep-dive](workflows/deep-dive.md) |
+| Export a graph's or selection's types as JSON records (fields chosen by a JSON Schema, optionally with their source files), or scope OpenWiki to them | [export-records](workflows/export-records.md) |
 
 References, loaded when a workflow step needs them:
 - [reference/ontology.md](reference/ontology.md): every class and predicate (generated from the plugin ontology);
@@ -42,6 +43,9 @@ References, loaded when a workflow step needs them:
 - [reference/graph-definitions.md](reference/graph-definitions.md): saved `.rq` queries and `.graph.toml` traversal graphs in the workspace;
 - [reference/visualizers.md](reference/visualizers.md): available visualizers and what each needs;
 - [reference/selection-format.md](reference/selection-format.md): the JSON the explorer's copy buttons produce;
+- [reference/records.md](reference/records.md): `records` inputs, filters, schema subset, field registry, source locations;
+- [reference/openwiki-scope.md](reference/openwiki-scope.md): the OpenWiki ignore chain and brief;
+- [schemas/](schemas/): built-in record schemas (`openwiki-type`);
 - [queries/](queries/): tested queries to copy or adapt (parameters are `{{NAME}}`, passed with `--param NAME=VALUE`).
 
 Users keep their own queries and graph definitions in the workspace: `<workspace>/.roslyn-graph/queries/*.rq`

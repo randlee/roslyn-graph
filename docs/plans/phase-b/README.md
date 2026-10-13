@@ -1,6 +1,7 @@
 # Phase B: Schema-driven record export from query graphs
 
-Status: plan, 2026-10-13. Not started.
+Status: plan, 2026-10-13. B0 experiments done: [reference-run-2026-10-13.md](reference-run-2026-10-13.md). The design
+below includes their results.
 
 ## Objective
 
@@ -48,23 +49,35 @@ Stores are built from assembly metadata, so they hold no source paths. Putting e
 scan would grow every artifact for a field that few exports need. Instead, `records` resolves files only for the
 types it exports, and only when the schema asks for them:
 
-1. **Locate the project.** For each exported type: `dt:definedInAssembly / rg:builtFromProject` gives the
-   repository ID and the repo-relative project path (merged in `5adfb5c`). The source assembly's manifest gives
-   the checkout (`origin.repository`), the commit (`origin.commit`, `dirtyHash`) and the build
-   (`build.project`). The solution manifest gives the configuration, platform and target framework.
+1. **Locate the project.** A type's named graph (`GRAPH ?g`) is one component's `graphIri`. That component's
+   manifest (solution `components`, view `overlayComponents`) gives the checkout (`origin.repository`), the commit
+   (`origin.commit`, `dirtyHash`) and the build (`build.project`, `build.solution`, configuration, platform, target
+   framework). Every current artifact is `assembly/v2`, which has no `rg:builtFromProject` triples (B0 finding 0), and
+   its `build.project` is relative to the profile root: the project is `repository.parent / project` when that file
+   exists, else `repository / project`. For v3 artifacts `rg:projectRepository` / `rg:projectRelativePath`
+   (`5adfb5c`) give the same answer and are checked against the manifest.
 2. **Check the checkout.** `gitinfo.repo_state` must report the manifest's commit, and no uncommitted changes when
    the manifest had none. Otherwise the paths may not match the store. That is an error (`SOURCE_CHECKOUT_DRIFT`)
    unless `--allow-drift`, which records the drift as a warning. `--repo-root ID=PATH` points at a checkout that
    has moved.
-3. **List the compiled files.** Run `dotnet msbuild <project> -getItem:Compile` with the build's configuration,
-   platform and target framework. It returns the exact Compile items after MSBuild evaluation, which covers files
-   linked from outside the project directory, `Condition`s, and `Compile Remove`. A directory walk would miss these.
-   `-getItem` needs SDK 8+ (10.0.401 is installed here) or Visual Studio MSBuild 17.8+ for non-SDK projects;
-   `ROSLYN_GRAPH_MSBUILD` selects the executable, as `ROSLYN_GRAPH_OXIGRAPH` does for Oxigraph.
-4. **Scan for declarations.** A small lexer per language skips comments, strings, verbatim/raw strings and
-   preprocessor lines. It tracks namespaces (block and file-scoped for C#; `Namespace ... End Namespace` for VB) and
-   type nesting, and records each declaration's full name, generic arity and line. A type declared in several files
-   (`partial` / `Partial`) gets all of them.
+3. **List the compiled files and symbols.** Run
+   `dotnet msbuild <project> -getItem:Compile -getProperty:DefineConstants -getProperty:LangVersion -t:AddImplicitDefineConstants`
+   with the build's `Configuration`, `TargetFramework` and `Platform`, plus the solution context a solution build
+   sets (`SolutionDir`, `SolutionPath`, `SolutionName`, `SolutionFileName`, `SolutionExt` for `build.solution`). It
+   returns the exact Compile items, including files linked from outside the project directory, `Condition`s,
+   `Compile Remove` and items added by targets, and the complete preprocessor symbols. Without the solution context
+   P3 projects skip `$(SolutionDir)Common.targets` and lose every TT3 symbol; without the target the `NET*` symbols
+   are missing. Both errors are silent, which is why B0 measured them. `-getItem` needs SDK 8+ (10.0.401 is installed
+   here) or Visual Studio MSBuild 17.8+ for non-SDK projects. `ROSLYN_GRAPH_MSBUILD` selects the executable, as
+   `ROSLYN_GRAPH_OXIGRAPH` does for Oxigraph. 59 P3 projects take 6.8 s with 4 jobs.
+4. **Find the declarations with Roslyn.** The extractor gains a `declarations` command. It takes the language, the
+   language version, the preprocessor symbols and the Compile items, parses each file with
+   `CSharpParseOptions`/`VisualBasicParseOptions` (no MSBuild, no references, so it is fast), and returns every
+   declared named type with file and line. Names use the extractor's own `TypeNameFormat`, so they match
+   `dt:fullName` by construction. Inactive `#if` branches are disabled text to Roslyn, and a type declared in several
+   files (`partial` / `Partial`) gets all of them. B0's lexer prototype found every source-declared type once the
+   symbols were right. It stays an experiment script, because Roslyn covers VB and every C# rule without a second
+   implementation.
 5. **Cache.** Results are stored under `<data-root>/.roslyn-graph/cache/source-index/`, keyed by the SHA-256 of
    repository ID, commit, dirty hash, project path and effective build properties. A clean commit's index never
    changes, so later exports skip MSBuild and the scan. Drifted checkouts are never cached.
@@ -73,10 +86,15 @@ Each type gets `files` (repo-relative, forward slashes) and a `locationStatus`:
 
 | `locationStatus` | Meaning | OpenWiki adapter |
 |---|---|---|
-| `found` | declared in one or more Compile items | opens those files |
-| `generated` | not in any Compile item on disk (source generators, designer output under `obj/`) | opens the project directory and warns |
-| `not-found` | the scan found no declaration in a project that does compile it, which is probably a scanner gap | opens the project directory and warns |
+| `found` | declared in one or more Compile items inside the repository | opens those files |
+| `compiler-generated` | a name segment starts with `<` (closures, state machines, `<PrivateImplementationDetails>`); `files` are the enclosing named type's | opens those files; not listed in the brief |
+| `generated` | declared in no Compile item inside the repository: source generators, weavers (Fody), `<Module>`, test-SDK entry points | opens nothing; counted in the brief and the result |
 | `nuget` | no source project | opens nothing; listed as an external dependency |
+
+In the `measurement-database` graph (929 physical types), 685 are `found`, 202 `compiler-generated`, 3 `generated`
+and 39 `nuget`. Of the 803 store types that no Compile item declares, B0 checked all of them: 801 are generator or
+compiler output, and the other 2 are the cases in the table above. So `generated` does not open the project
+directory: that would expose a whole project for output that is not in it.
 
 If this proves its worth, the same index could later be written into a derived store as triples (for example
 `rg:declaredIn`), so SPARQL can use it. That is out of scope here; B0 measures cost and accuracy first.
@@ -137,7 +155,7 @@ The built-in `openwiki-type`:
     "repository":     {"type": ["string", "null"], "x-rg-field": "repository"},
     "projectDirs":    {"type": "array", "items": {"type": "string"}, "x-rg-field": "projectDirs"},
     "files":          {"type": "array", "items": {"type": "string"}, "x-rg-field": "files"},
-    "locationStatus": {"type": "string", "enum": ["found", "generated", "not-found", "nuget"], "x-rg-field": "locationStatus"},
+    "locationStatus": {"type": "string", "enum": ["found", "compiler-generated", "generated", "nuget"], "x-rg-field": "locationStatus"},
     "origin":         {"type": "string", "enum": ["source", "nuget", "mixed"], "x-rg-field": "origin"}
   },
   "required": ["name", "kind", "repository", "projectDirs", "files", "locationStatus", "origin"],
@@ -210,8 +228,8 @@ python rg.py openwiki-scope --records billing.jsonl --records payments.jsonl \
 - OpenWiki runs on one repository at a time, but a graph can span repositories (P3 and Radiant are separate
   repositories). Records for `--repository` are written. The others are counted in the result
   (`excluded.otherRepositories`), so the same records can be run again with the other repository's root.
-- Opens `files` for `found` types and the project directory for `generated` and `not-found` types, and reports each
-  fallback. NuGet types open nothing.
+- Opens `files` for `found` and `compiler-generated` types. `generated` and `nuget` types open nothing, and the
+  result counts them. Only `found` types are listed in the brief.
 - Writes nothing with `--dry-run`. The result then holds the exact text it would write.
 - It never runs OpenWiki. The user runs `openwiki code --init` (or `--update`) in the repository afterwards.
 
@@ -255,6 +273,9 @@ The adapter writes the same kind of managed block into `<repo-root>/openwiki/INS
 needed and keeping any text the user wrote outside the block:
 
 - a scope statement: document these types and how they relate, and do not describe other code;
+- how to reach the files: use `ls`, `grep`, or a `glob` from the root with a directory-prefixed pattern. In
+  openwiki 0.7.2 a `glob` with a search directory returns directory-relative paths, which the ignore filter then
+  rejects, so under a deny-all chain it finds nothing (B0 experiment 4);
 - the types grouped by project, then namespace, with kind and declaring files;
 - external (NuGet) dependencies as a separate list;
 - provenance: store artifact ID, graph title, commit, export time.
@@ -268,7 +289,9 @@ the scoped files anyway, so the shorter list mainly reduces the advice, not the 
 | Where | Change |
 |---|---|
 | `tools/rg/roslyn_graph/records.py` | inputs, filters, registry, schema loader/validator, writer |
-| `tools/rg/roslyn_graph/sources.py` | checkout check, MSBuild Compile items, C#/VB declaration scanners, cache |
+| `tools/rg/roslyn_graph/sources.py` | project resolution from manifests, checkout check, MSBuild Compile items and symbols, `declarations` call, cache |
+| `src/RoslynToRdf.Core/Extraction/DeclarationIndexer.cs` | Roslyn syntax-only declaration index for C# and VB |
+| `src/RoslynToRdf.Cli/DeclarationsCommand.cs` | `roslyn2rdf declarations --request <file.json>`: JSON in, JSON out |
 | `tools/rg/roslyn_graph/openwiki.py` | ignore-chain generator, managed-block merge, brief writer |
 | `tools/rg/rg.py` | `records` and `openwiki-scope` subcommands |
 | `tools/rg/tests/` | `test_records.py`, `test_sources.py`, `test_openwiki.py` |
@@ -281,17 +304,30 @@ the scoped files anyway, so the shorter list mainly reduces the advice, not the 
 
 Taken:
 
-- Source files are resolved **on export** from MSBuild Compile items and a declaration scan. The initial scan does
-  not change.
+- Source files are resolved **on export** from MSBuild Compile items and a Roslyn declaration pass in the extractor.
+  The initial scan does not change.
+- Command names `records` and `openwiki-scope`.
+- File-level ignore chains by default: exact for 10, 50 and 200 types (B0 experiment 3). Directory-level chains
+  exposed 1.6 to 2.9 times as many files.
 - JSONL by default. JSON Schema with `x-rg-field` is the one schema format, and Pydantic works through
   `model_json_schema()`.
 - The type list goes in `INSTRUCTIONS.md`, not in `-p`, so `--update` runs keep the same scope.
 
-Open until B0 reports:
+Settled by B0 and B7:
 
-1. Scanner accuracy is good enough that `not-found` is rare. If not, compare against Roslyn syntax parsing in the
-   C# extractor before B2.
-2. How strictly the agent follows the brief inside opened files.
-3. Command names `records` and `openwiki-scope`.
+1. Scanner accuracy. No source-declared type was missed once the preprocessor symbols were right; B2 uses Roslyn.
+2. Enforcement. OpenWiki's backend gives the agent no way to read outside a file-level scope: reads, `ls`, `grep`
+   and `glob` are filtered, and shell access is limited to `pwd` and `git rev-parse HEAD`.
+
+3. Model-level adherence and cost ([openwiki-run-radiant-data-2026-10-13.md](openwiki-run-radiant-data-2026-10-13.md),
+   Radiant.Data with `gpt-6-luna`): the agent read no file outside the scope, the wiki covers the scope by topic
+   (63 of 270 type names), and 7 pages over a 186-file scope cost about 1.25 M input tokens in 398 s.
+
+Still open:
+
+- The P3 XCore runs (experiment 4 b and c, experiments 5 and 6 at 50 and 200 types). They were not run, to keep
+  model runs small; `run_openwiki.py --provider openai-chatgpt --model gpt-6-luna` runs them.
+- OpenWiki's `grep` tool reads ignored files and filters its results afterwards, so the process reads far more than
+  the scope. Worth reporting upstream alongside the `glob` defect.
 
 See [implementation-plan.md](implementation-plan.md) for the sprints and acceptance checks.
