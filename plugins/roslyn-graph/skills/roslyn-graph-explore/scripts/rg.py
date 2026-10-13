@@ -23,7 +23,7 @@ if sys.version_info < (3, 11):
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from roslyn_graph import artifacts, build, config, discover, explore, maintain, ontology, plan, records, saved, traverse, validate  # noqa: E402
+from roslyn_graph import artifacts, build, config, discover, explore, maintain, ontology, openwiki, plan, records, saved, traverse, validate  # noqa: E402
 from roslyn_graph.result import Problem, RgError, emit, error_payload  # noqa: E402
 from roslyn_graph.util import skill_root  # noqa: E402
 
@@ -131,6 +131,10 @@ def cmd_records(a) -> dict:
     filters = {option: getattr(a, option) for option, _, _ in records.FILTERS}
     return records.run(a.graph, a.selection, a.manifest, a.schema, Path(a.output), a.format, filters, timeout=a.timeout,
                        allow_drift=a.allow_drift, repo_roots=a.repo_root)
+
+
+def cmd_openwiki_scope(a) -> dict:
+    return openwiki.run(a.records, a.repository, a.repo_root, a.max_listed_types, a.dry_run)
 
 
 def cmd_graph(a) -> dict:
@@ -254,6 +258,15 @@ def parser() -> argparse.ArgumentParser:
                           ("project", "Repository-relative project path glob to keep"),
                           ("accessibility", "dt:accessibility to keep"), ("origin", "source or nuget")]:
         p.add_argument(f"--{option}", action="append", default=[], help=help_ + "; repeatable (values OR, options AND).")
+
+    p = add("openwiki-scope", cmd_openwiki_scope,
+            "Write .openwikiignore and openwiki/INSTRUCTIONS.md for one repository from openwiki-type records (never runs OpenWiki).")
+    p.add_argument("--records", action="append", default=[], help="openwiki-type records (.jsonl or .json); repeatable, duplicates merged.")
+    p.add_argument("--repository", help="Repository ID to scope; required when the records span several.")
+    p.add_argument("--repo-root", help="The repository's checkout (default: the checkout recorded beside the records).")
+    p.add_argument("--max-listed-types", type=int, default=openwiki.MAX_LISTED_TYPES,
+                   help="List namespaces instead of types above this many (default %(default)s).")
+    p.add_argument("--dry-run", action="store_true", help="Write nothing; the result holds both files' text.")
 
     p = add("graph", cmd_graph, "Build and render a saved graph definition (*.graph.toml): seeds, implementations, recursive references.")
     p.add_argument("--definition", required=True)

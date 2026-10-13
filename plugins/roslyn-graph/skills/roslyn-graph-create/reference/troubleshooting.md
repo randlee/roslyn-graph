@@ -144,6 +144,21 @@ commands that crash natively (for example Windows exit code 0xC0000005) are retr
 | `DECLARATIONS_UNSUPPORTED` | the installed extractor predates the `declarations` command; update the extractor (setup.md) |
 | `DECLARATIONS_FAILED` | the extractor's `declarations` command failed; read `context.stderr` |
 
+## OpenWiki scope
+
+| Code | Meaning and fix |
+|---|---|
+| `OPENWIKI_RECORDS_NOT_FOUND` | a `--records` file cannot be read |
+| `OPENWIKI_RECORDS_INVALID` | a records file is not JSONL or a JSON array, or its records do not match `openwiki-type` (`context.invalid`); export with `rg.py records --schema openwiki-type` |
+| `OPENWIKI_REPOSITORY_REQUIRED` | the records span several repositories; pass `--repository` with one of `context.repositories` |
+| `OPENWIKI_REPOSITORY_EMPTY` | no record belongs to `--repository` |
+| `OPENWIKI_REPO_ROOT_REQUIRED`, `OPENWIKI_REPO_ROOT_MISSING` | no checkout is recorded beside the records, or the path is not a directory; pass `--repo-root` |
+| `OPENWIKI_PATH_UNSUPPORTED` | a file path contains `*`, `?`, `!`, `..` or is not repository-relative, so no ignore rule opens exactly it |
+| `OPENWIKI_BLOCK_BROKEN` | `.openwikiignore` or `INSTRUCTIONS.md` has unpaired roslyn-graph BEGIN/END lines; delete the block by hand and rerun |
+| `OPENWIKI_BRIEF_SUMMARIZED` | (warning) more found types than `--max-listed-types`; the brief lists namespaces, the ignore file still opens every file |
+| `OPENWIKI_DIRECTORY_FALLBACK` | (warning) types without declaring files; their project directories were opened |
+| `OPENWIKI_FILE_MISSING` | (warning) opened paths are not in the checkout; check `--repo-root` |
+
 ## Always
 
 | Code | Meaning and fix |
