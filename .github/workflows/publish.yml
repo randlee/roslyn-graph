@@ -1,43 +1,285 @@
-name: Publish NuGet
+name: Release
 
 on:
-  push:
-    tags:
-      - 'v*'  # Triggers on tags like v1.0.0, v0.5.1, etc.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version (must match Directory.Build.props)
+        required: true
+        type: string
+      action:
+        description: Validate/build a candidate or publish a GitHub Release
+        required: true
+        type: choice
+        default: preflight
+        options:
+          - preflight
+          - release
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.version }}
+  cancel-in-progress: false
 
 jobs:
-  publish:
+  preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.contract.outputs.version }}
+      archive_matrix: ${{ steps.contract.outputs.archive_matrix }}
+      publish: ${{ steps.mode.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Checkout docli
+        uses: actions/checkout@v4
+        with:
+          repository: randlee/docli
+          ref: develop
+          path: docli
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install docli CLI (from GitHub)
+        working-directory: docli
+        run: cargo build --release -q --bin docli
+
+      - name: Build docli-dotnet tool
+        working-directory: docli
+        run: dotnet build dotnet/Docli.sln -c Release --nologo
+
+      - name: Build and test selected commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet restore
+          dotnet build --configuration Release --no-restore
+          dotnet test --configuration Release --no-build
+
+      - id: contract
+        name: Validate release manifest and requested version
+        shell: bash
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          python .github/scripts/release_contract.py --version "$REQUESTED_VERSION" --github-output "$GITHUB_OUTPUT"
+
+      - id: mode
+        shell: bash
+        run: |
+          if [[ '${{ inputs.action }}' == release ]]; then
+            echo 'publish=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'publish=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Reject an existing version tag pointing outside this history
+        if: ${{ inputs.action == 'release' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != refs/heads/develop ]]; then
+            echo "Publishing must be dispatched from develop" >&2
+            exit 1
+          fi
+          git fetch origin --tags --prune
+          git fetch origin develop
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/develop; then
+            echo "Workflow commit is not contained in origin/develop" >&2
+            exit 1
+          fi
+          tag="v${{ steps.contract.outputs.version }}"
+          if git show-ref --verify --quiet "refs/tags/$tag"; then
+            target="$(git rev-parse "refs/tags/$tag^{commit}")"
+            if [[ "$target" != "$GITHUB_SHA" ]]; then
+              echo "Existing tag $tag points to $target, not the selected workflow commit $GITHUB_SHA" >&2
+              exit 1
+            fi
+          fi
+
+  build-archive:
+    needs: preflight
+    if: ${{ needs.preflight.outputs.publish == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.preflight.outputs.archive_matrix) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Publish self-contained CLI
+        shell: pwsh
+        run: >-
+          dotnet publish src/RoslynToRdf.Cli/RoslynToRdf.Cli.csproj
+          --configuration Release --runtime ${{ matrix.rid }} --self-contained true
+          -p:Version=${{ needs.preflight.outputs.version }}
+          -p:AssemblyVersion=${{ needs.preflight.outputs.version }}.0
+          -p:FileVersion=${{ needs.preflight.outputs.version }}.0
+          --output "dist/publish"
+
+      - name: Assemble archive
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = '${{ needs.preflight.outputs.version }}'
+          $rid = '${{ matrix.rid }}'
+          $stage = "dist/roslyn-graph_${version}_${rid}"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item -Path 'dist/publish/*' -Destination $stage -Recurse
+          Copy-Item README.md, LICENSE -Destination $stage
+          if ('${{ matrix.extension }}' -eq 'zip') {
+            Compress-Archive -Path "$stage/*" -DestinationPath "dist/roslyn-graph_${version}_${rid}.zip" -CompressionLevel Optimal
+          } else {
+            tar -czf "dist/roslyn-graph_${version}_${rid}.tar.gz" -C dist "roslyn-graph_${version}_${rid}"
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: archive-${{ matrix.rid }}
+          path: dist/roslyn-graph_${{ needs.preflight.outputs.version }}_${{ matrix.rid }}.${{ matrix.extension }}
+          if-no-files-found: error
+
+  build-package:
+    needs: preflight
+    if: ${{ needs.preflight.outputs.publish == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build release NuGet package
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet restore
+          dotnet build --configuration Release --no-restore -p:Version='${{ needs.preflight.outputs.version }}' -p:AssemblyVersion='${{ needs.preflight.outputs.version }}.0' -p:FileVersion='${{ needs.preflight.outputs.version }}.0'
+          mkdir -p dist
+          dotnet pack src/RoslynToRdf.Cli/RoslynToRdf.Cli.csproj --configuration Release --no-build -p:Version='${{ needs.preflight.outputs.version }}' --output dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nuget-package
+          path: dist/*.nupkg
+          if-no-files-found: error
+
+  publish-github-package:
+    needs: [preflight, build-package]
+    if: ${{ needs.preflight.outputs.publish == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+    steps:
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: nuget-package
+          path: dist
+
+      - name: Publish package to GitHub Packages
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          dotnet nuget push dist/*.nupkg \
+            --source https://nuget.pkg.github.com/randlee/index.json \
+            --api-key "$GITHUB_TOKEN" --skip-duplicate
+
+  github-release:
+    needs: [preflight, build-archive, build-package]
+    if: ${{ needs.preflight.outputs.publish == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          ref: ${{ github.sha }}
 
-      - name: Extract version from tag
-        id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: archive-*
+          merge-multiple: true
+          path: dist
 
-      - name: Restore dependencies
-        run: dotnet restore
+      - uses: actions/download-artifact@v4
+        with:
+          name: nuget-package
+          path: dist
 
-      - name: Build
-        run: dotnet build -c Release --no-restore -p:Version=${{ steps.version.outputs.VERSION }}
+      - name: Create checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum *.zip *.tar.gz *.nupkg > checksums.txt
 
-      - name: Run tests
-        run: dotnet test -c Release --no-build
-
-      - name: Pack
-        run: dotnet pack src/RoslynToRdf.Cli/RoslynToRdf.Cli.csproj -c Release --no-build -p:Version=${{ steps.version.outputs.VERSION }} -o ./packages
-
-      - name: Publish to GitHub Packages
-        run: dotnet nuget push ./packages/*.nupkg --source "https://nuget.pkg.github.com/randlee/index.json" --api-key ${{ secrets.GITHUB_TOKEN }} --skip-duplicate
-
-      - name: Publish to NuGet.org
-        run: dotnet nuget push ./packages/*.nupkg --source "https://api.nuget.org/v3/index.json" --api-key ${{ secrets.NUGET_API_KEY }} --skip-duplicate
+      - name: Create or verify immutable GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="v${{ needs.preflight.outputs.version }}"
+          mapfile -t expected < <(find dist -maxdepth 1 -type f \( -name '*.zip' -o -name '*.tar.gz' -o -name '*.nupkg' \) -printf '%f\n' | sort)
+          expected+=(checksums.txt)
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" > release.json 2>release-error.txt; then
+            if [[ "$(jq -r '.draft' release.json)" != false ]]; then
+              echo "Release $tag exists but is not published" >&2
+              exit 1
+            fi
+            mapfile -t actual < <(jq -r '.assets[].name' release.json | sort)
+            mapfile -t expected_sorted < <(printf '%s\n' "${expected[@]}" | sort)
+            if [[ "${actual[*]}" != "${expected_sorted[*]}" ]]; then
+              echo "Release $tag exists with a different asset set; refusing to replace published assets" >&2
+              exit 1
+            fi
+            echo "Release $tag already has the expected assets; leaving them unchanged"
+          else
+            if ! grep -q 'HTTP 404' release-error.txt; then
+              cat release-error.txt >&2
+              echo "Could not determine whether release $tag exists; failing closed" >&2
+              exit 1
+            fi
+            if git show-ref --verify --quiet "refs/tags/$tag"; then
+              echo "Using existing verified tag $tag"
+            else
+              git tag "$tag" "$GITHUB_SHA"
+              git push origin "$tag"
+            fi
+            gh release create "$tag" dist/*.zip dist/*.tar.gz dist/*.nupkg dist/checksums.txt \
+              --title "Roslyn Graph $tag" --generate-notes
+          fi

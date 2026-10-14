@@ -45,12 +45,19 @@ def assembly_identity(m: dict[str, Any]) -> str:
     extractor = m["extraction"]["extractorId"]
     if m["origin"]["kind"] == "source":
         o, b = m["origin"], m["build"]
-        # Keep already-published v2 manifests valid. v3 adds project provenance to the graph,
-        # so the project path must participate in identity and cannot reuse a v2 snapshot.
-        version = "v2" if m.get("identity", "").startswith("assembly/v2|") else "v3"
+        # Keep already-published v2/v3 manifests valid. v3 adds project provenance; v4 records
+        # C# project extraction, which includes source-only method facts unavailable from a DLL.
+        input_kind = m.get("extraction", {}).get("inputKind", "assembly")
+        previous_identity = m.get("identity", "")
+        version = "v2" if previous_identity.startswith("assembly/v2|") else (
+            "v3" if input_kind != "source-project" and previous_identity.startswith("assembly/v3|") else
+            "v4" if input_kind == "source-project" else "v3"
+        )
         parts = [f"assembly/{version}", "source", o["id"], o["commit"], o.get("dirtyHash", ""), b["fingerprint"], b["targetFramework"]]
-        if version == "v3":
+        if version in {"v3", "v4"}:
             parts.append(b["project"])
+        if version == "v4":
+            parts.append("source-project")
     else:
         p = m["package"]
         parts = ["assembly/v2", "nuget", p["id"].lower(), p["version"], p["nupkgSha256"], p["asset"], p["dependenciesHash"], p["targetFramework"]]

@@ -37,6 +37,7 @@
 | `dt:Struct` | `dt:Type` |  |
 | `dt:Type` |  |  |
 | `dt:TypeParameter` |  |  |
+| `dt:UnsafeFact` |  | One detected unsafe method modifier or source construct, with its deterministic reason and location. |
 
 ### Properties
 
@@ -57,10 +58,13 @@
 | `dt:fieldType` | `dt:Field` | `dt:Type` |  |
 | `dt:isVolatile` | `dt:Field` | `xsd:boolean` |  |
 | `dt:explicitInterfaceImplementation` | `dt:Member` | `dt:Member` |  |
+| `dt:hasAccessor` | `dt:Member` |  | Links a property or event member to an accessor symbol that has unsafe source facts. |
+| `dt:hasUnsafeFact` | `dt:Member` | `dt:UnsafeFact` | Links an emitted method or an accessor symbol to a detected unsafe source fact. |
 | `dt:isExtern` | `dt:Member` | `xsd:boolean` |  |
 | `dt:isRequired` | `dt:Member` | `xsd:boolean` |  |
 | `dt:memberOf` | `dt:Member` | `dt:Type` |  |
 | `dt:overridesMethod` | `dt:Member` | `dt:Member` |  |
+| `dt:requiresUnsafeCompilation` | `dt:Member` | `xsd:boolean` | True on an emitted method or accessor with its own unsafe modifier or unsafe construct requiring C# AllowUnsafeBlocks; an enclosing unsafe type alone does not mark it. |
 | `dt:hasParameter` | `dt:Method` | `dt:Parameter` |  |
 | `dt:isExtensionMethod` | `dt:Method` | `xsd:boolean` |  |
 | `dt:isPartialDefinition` | `dt:Method` | `xsd:boolean` |  |
@@ -106,7 +110,10 @@
 | `dt:hasValueTypeConstraint` | `dt:TypeParameter` | `xsd:boolean` |  |
 | `dt:typeParameterOf` | `dt:TypeParameter` |  |  |
 | `dt:variance` | `dt:TypeParameter` | `xsd:string` |  |
+| `dt:unsafeLocation` | `dt:UnsafeFact` | `xsd:string` | Project-relative source path, one-based line, and one-based column for this unsafe reason. |
+| `dt:unsafeReason` | `dt:UnsafeFact` | `xsd:string` | Deterministic unsafe syntax or context reason name. |
 | `dt:accessibility` |  | `xsd:string` |  |
+| `dt:containsUnsafeCode` |  | `xsd:boolean` | On a method or accessor symbol, true when it has its own unsafe modifier or contains an unsafe construct; an enclosing unsafe type alone does not mark the method or accessor. On a type, true when it or an enclosing type is declared unsafe, or it contains an unsafe method or accessor. On an assembly, true when an analyzed source type, method, or accessor is unsafe. |
 | `dt:fullName` |  | `xsd:string` |  |
 | `dt:hasAttribute` |  | `dt:Attribute` |  |
 | `dt:hasTypeParameter` |  | `dt:TypeParameter` |  |

@@ -1,0 +1,21 @@
+# Title: Unsafe method and accessor counts by type
+# Description: count methods and property/event accessors with their own unsafe modifier or unsafe syntax per type and assembly.
+PREFIX dt: <http://dotnet.example/ontology/>
+
+SELECT ?assemblyName ?typeName (COUNT(DISTINCT ?method) AS ?unsafeMethodCount) WHERE {
+  GRAPH ?g {
+    ?assembly a dt:Assembly ; dt:name ?assemblyName .
+    ?type dt:definedInAssembly ?assembly ; dt:fullName ?typeName ; dt:containsUnsafeCode true ;
+          dt:hasMember ?member .
+    {
+      ?member dt:containsUnsafeCode true .
+      BIND(?member AS ?method)
+    } UNION {
+      ?member dt:hasAccessor ?method .
+      ?method dt:containsUnsafeCode true .
+    }
+  }
+}
+GROUP BY ?assemblyName ?typeName
+ORDER BY ?assemblyName ?typeName
+LIMIT 2000

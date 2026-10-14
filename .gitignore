@@ -1,6 +1,8 @@
 # Build results
 [Dd]ebug/
 [Rr]elease/
+!release/
+!release/release-manifest.json
 x64/
 x86/
 [Bb]in/
@@ -46,6 +48,9 @@ coverage/
 coverage-*/
 *.trx
 *.coverage
+
+# Local docli checkout for DocliExport / regenerate-site (CI clones to docli/)
+/docli/
 
 # Python
 __pycache__/

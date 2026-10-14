@@ -26,7 +26,14 @@ def test_assembly_identity_changes_with_commit_dll_and_extractor():
     assert artifacts.assembly_identity(source_manifest(extraction={"extractorId": "e2"})) != base
     assert artifacts.assembly_identity(source_manifest(origin={"dirtyHash": "x"})) != base
     assert artifacts.assembly_identity(source_manifest(build={"project": "src/Other/Lib.csproj"})) != base
-    assert base.startswith("assembly/v3|source|")
+
+
+def test_csharp_source_project_extraction_has_distinct_artifact_identity():
+    binary = artifacts.assembly_identity(source_manifest())
+    project = source_manifest(extraction={"extractorId": "e1", "inputKind": "source-project"})
+    assert artifacts.assembly_identity(project) != binary
+    assert artifacts.assembly_identity(project).startswith("assembly/v4|")
+    assert binary.startswith("assembly/v3|source|")
 
 
 def test_legacy_source_identity_remains_valid():

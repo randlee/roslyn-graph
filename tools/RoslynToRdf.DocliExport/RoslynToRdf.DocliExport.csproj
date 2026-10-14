@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Override in CI or locally: -p:DocliRoot=/path/to/docli -->
+    <DocliRoot Condition="'$(DocliRoot)' == '' and Exists('$(MSBuildThisFileDirectory)../../docli/dotnet/src/Docli/Docli.csproj')">$(MSBuildThisFileDirectory)../../docli</DocliRoot>
+    <DocliRoot Condition="'$(DocliRoot)' == '' and Exists('$(MSBuildThisFileDirectory)../../../../../docli/dotnet/src/Docli/Docli.csproj')">$(MSBuildThisFileDirectory)../../../../../docli</DocliRoot>
+    <DocliProject Condition="'$(DocliRoot)' != ''">$(DocliRoot)/dotnet/src/Docli/Docli.csproj</DocliProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(DocliProject)" Condition="'$(DocliProject)' != ''" />
+    <PackageReference Include="System.CommandLine" Version="2.0.12" />
+  </ItemGroup>
+
+  <Target Name="EnsureDocliRoot" BeforeTargets="CollectPackageReferences">
+    <Error Condition="'$(DocliProject)' == '' or !Exists('$(DocliProject)')"
+           Text="Docli library not found. Clone https://github.com/randlee/docli to ./docli (CI) or as a sibling of this repo, or pass -p:DocliRoot=/path/to/docli. When docli is on crates.io, this project can switch to a package reference." />
+  </Target>
+
+</Project>

@@ -22,6 +22,15 @@ Unsure what a store contains? Inspect one real node before writing a larger quer
 python <skill>/scripts/rg.py query --manifest <manifest.json> --query-file <skill>/queries/find-type.rq --param NAME=Repository
 ```
 
+For source graphs extracted from a C# project with evaluated `AllowUnsafeBlocks=true`, list methods and
+property/event accessors with unsafe syntax and their deterministic reason/location facts with
+[unsafe-methods.rq](../queries/unsafe-methods.rq), or count those methods and accessors grouped by type with
+[unsafe-aggregates.rq](../queries/unsafe-aggregates.rq). A type's `dt:containsUnsafeCode` aggregate can
+also be true because the type or an enclosing type is declared unsafe, even when it has no unsafe methods.
+Merely being inside an unsafe type does not mark an ordinary method or accessor unsafe. Safe `Span<T>` and
+`ReadOnlySpan<T>` stack allocations do not produce unsafe-method facts. Metadata-only DLL extraction
+has no method bodies and therefore does not produce these facts.
+
 ## 3. Write the query
 
 Start from the closest file in [../queries/](../queries/) and follow the rules in

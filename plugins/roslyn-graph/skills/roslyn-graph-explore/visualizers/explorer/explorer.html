@@ -75,6 +75,19 @@
             align-items: center;
             gap: 8px;
         }
+        .panel-toggle {
+            z-index: 1;
+            align-self: center;
+            justify-self: center;
+        }
+        #sidebar-toggle {
+            grid-column: 2;
+            grid-row: 1;
+        }
+        #details-toggle {
+            grid-column: 4;
+            grid-row: 1;
+        }
         .graph-actions {
             display: flex;
             align-items: center;
@@ -529,10 +542,6 @@
         <header>
             <h1>🔍 RDF Explorer - Assembly Type Graph</h1>
             <div class="header-actions">
-            <button class="icon-btn panel-toggle" id="sidebar-toggle" aria-controls="sidebar" aria-expanded="true"
-                    aria-label="Hide sidebar" title="Hide sidebar">◀</button>
-            <button class="icon-btn panel-toggle" id="details-toggle" aria-controls="details-panel" aria-expanded="true"
-                    aria-label="Hide details" title="Hide details">▶</button>
             <div class="menu-button">
                 <button class="upload-btn" id="load-menu-btn">▼ Load RDF File</button>
                 <div class="menu-dropdown" id="load-menu" style="display:none">
@@ -556,6 +565,10 @@
             </div>
             </div>
         </header>
+        <button class="icon-btn panel-toggle" id="sidebar-toggle" aria-controls="sidebar" aria-expanded="true"
+                aria-label="Hide sidebar" title="Hide sidebar">◀</button>
+        <button class="icon-btn panel-toggle" id="details-toggle" aria-controls="details-panel" aria-expanded="true"
+                aria-label="Hide details" title="Hide details">▶</button>
 
         <aside class="sidebar" id="sidebar">
             <input type="text" class="search-box" id="search-box" placeholder="Search types...">

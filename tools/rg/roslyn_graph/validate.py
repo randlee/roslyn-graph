@@ -98,7 +98,7 @@ def assembly(directory: Path, m: dict[str, Any], published: bool = True) -> Chec
                OPTIONAL {{ ?t dt:fullName ?f }} OPTIONAL {{ ?t dt:typeKind ?k }} OPTIONAL {{ ?t dt:accessibility ?a }}
              }} GROUP BY ?t }}
           FILTER(?fc != 1 || ?kc != 1 || ?ac != 1) }}"""), 0))
-    if m.get("origin", {}).get("kind") == "source" and m.get("identity", "").startswith("assembly/v3|"):
+    if m.get("origin", {}).get("kind") == "source" and m.get("identity", "").startswith(("assembly/v3|", "assembly/v4|")):
         checks.run("S9", "source assembly links to its repository-relative project", lambda: _source_project(store, iri, m))
     return checks
 

@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en" id="docli-default-pack">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>roslyn2rdf CLI Reference</title>
+<style>
+:root{color-scheme:light dark;--bg:#fff;--fg:#1a1a2e;--border:#ddd;--hover:#f0f0f0;--accent:#007acc;--muted:#666}
+@media (prefers-color-scheme:dark){:root{--bg:#16181d;--fg:#e6e6e6;--border:#333;--hover:#23262e;--accent:#4da3ff;--muted:#999}}
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;background:var(--bg);color:var(--fg)}
+header{display:flex;flex-wrap:wrap;align-items:baseline;gap:.75rem;padding:.75rem 1.25rem;border-bottom:1px solid var(--border)}
+header h1{font-size:1.2rem;margin:0}
+.meta{color:var(--muted);font-size:.85rem}
+.crumb{color:var(--accent);text-decoration:none;font-size:.9rem}
+.search{margin-left:auto}
+.search input{padding:.35rem .6rem;border:1px solid var(--border);border-radius:6px;font:inherit;background:var(--bg);color:var(--fg);min-width:16rem}
+main{display:grid;grid-template-columns:minmax(16rem,28%) 1fr;min-height:calc(100vh - 3.2rem)}
+.pane{min-width:0}
+aside.pane{padding:1rem;border-right:1px solid var(--border);overflow:auto}
+aside.pane h2{font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 .5rem}
+article.pane{padding:1.25rem 1.5rem;max-width:72rem}
+#tree ul{list-style:none;margin:0;padding:0}
+#tree .docli-caret,#tree .docli-cmd{border:0;background:none;color:inherit;font:inherit;cursor:pointer}
+#tree .docli-caret{width:1.1rem;height:1.4rem;padding:0;color:var(--muted);vertical-align:middle}
+#tree .docli-caret::before{content:"\25B6";display:inline-block;font-size:.65rem;transition:transform .15s}
+#tree .node.open>.docli-caret::before{transform:rotate(90deg)}
+#tree .node.leaf>.docli-caret{visibility:hidden}
+#tree .docli-cmd{display:inline-flex;align-items:center;padding:.28rem .5rem;border-radius:6px;text-align:left}
+#tree .docli-cmd:hover{background:var(--hover)}
+#tree .docli-cmd[aria-current=true]{background:var(--accent);color:#fff;font-weight:600}
+#tree .children{margin-left:.9em;border-left:1px solid var(--border);padding-left:.35em}
+#tree .children[hidden]{display:none}
+#tree .hidden{display:none}
+.card{border:1px solid var(--border);border-radius:8px;padding:1rem;margin-bottom:1rem}
+.card h2{margin-top:0}
+.card h3{font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:.25rem 0 .5rem}
+pre.usage{background:#164e63;color:#fff;padding:1rem;border-radius:8px;overflow-x:auto;margin:0}
+table{border-collapse:collapse;width:100%}
+th,td{border:1px solid var(--border);padding:.4rem .55rem;text-align:left;vertical-align:top}
+th{background:var(--hover);font-size:.85rem}
+code{overflow-wrap:anywhere}
+@media (max-width:760px){main{display:block}aside.pane{border-right:0;border-bottom:1px solid var(--border)}.search input{min-width:0;width:100%}}
+</style>
+</head>
+<body>
+<header><a class="crumb" href="../">Documentation</a><h1>roslyn2rdf CLI Reference</h1><label class="search">Search <input id="search" type="search" autocomplete="off" placeholder="commands and options"></label></header>
+<main>
+<aside class="pane"><h2>Commands</h2><nav id="tree"><ul><li class="node open" data-anchor="roslyn2rdf"><button type="button" class="docli-caret" aria-expanded="true"></button><button type="button" class="docli-cmd" data-anchor="roslyn2rdf">roslyn2rdf</button><ul class="children"><li class="node leaf" data-anchor="roslyn2rdf-declarations"><button type="button" class="docli-caret" aria-expanded="false"></button><button type="button" class="docli-cmd" data-anchor="roslyn2rdf-declarations">declarations</button></li><li class="node leaf" data-anchor="roslyn2rdf-skill"><button type="button" class="docli-caret" aria-expanded="false"></button><button type="button" class="docli-cmd" data-anchor="roslyn2rdf-skill">skill</button></li></ul></li></ul></nav></aside>
+<article class="pane" id="detail" aria-live="polite"></article>
+</main>
+<script id="docli-data" type="application/json">{"name":"roslyn2rdf","version":null,"description":"Extract .NET assembly type graphs to RDF format","long_description":"","epilogue":"","usage":"Usage: roslyn2rdf [OPTIONS] <assembly> <COMMAND>","options":[{"name":"assembly","long":"--assembly","short":"-a","help":"Additional target assemblies to include in the same graph","long_help":"","value_name":null,"required":false,"default_value":null,"choices":[],"min_values":0,"max_values":100000},{"name":"base-uri","long":"--base-uri","short":"-b","help":"Base URI for IRIs","long_help":"","value_name":null,"required":false,"default_value":"http://dotnet.example/","choices":[],"min_values":1,"max_values":1},{"name":"configuration","long":"--configuration","short":null,"help":"MSBuild configuration used to evaluate a source project","long_help":"","value_name":null,"required":false,"default_value":null,"choices":[],"min_values":1,"max_values":1},{"name":"exclude-attributes","long":"--exclude-attributes","short":null,"help":"Exclude attributes","long_help":"","value_name":null,"required":false,"default_value":"false","choices":[],"min_values":0,"max_values":1},{"name":"exclude-external-types","long":"--exclude-external-types","short":null,"help":"Exclude external types","long_help":"","value_name":null,"required":false,"default_value":"false","choices":[],"min_values":0,"max_values":1},{"name":"extract-exceptions","long":"--extract-exceptions","short":null,"help":"Extract exceptions from XML docs","long_help":"","value_name":null,"required":false,"default_value":"true","choices":[],"min_values":0,"max_values":1},{"name":"extract-seealso","long":"--extract-seealso","short":null,"help":"Extract seealso from XML docs","long_help":"","value_name":null,"required":false,"default_value":"true","choices":[],"min_values":0,"max_values":1},{"name":"format","long":"--format","short":"-f","help":"Output format","long_help":"","value_name":null,"required":false,"default_value":"ntriples","choices":[],"min_values":1,"max_values":1},{"name":"include-internal","long":"--include-internal","short":null,"help":"Include internal members","long_help":"","value_name":null,"required":false,"default_value":"true","choices":[],"min_values":0,"max_values":1},{"name":"include-private","long":"--include-private","short":null,"help":"Include private members","long_help":"","value_name":null,"required":false,"default_value":"false","choices":[],"min_values":0,"max_values":1},{"name":"output","long":"--output","short":"-o","help":"Output file path","long_help":"","value_name":null,"required":false,"default_value":null,"choices":[],"min_values":1,"max_values":1},{"name":"platform","long":"--platform","short":null,"help":"MSBuild platform used to evaluate a source project","long_help":"","value_name":null,"required":false,"default_value":null,"choices":[],"min_values":1,"max_values":1},{"name":"quiet","long":"--quiet","short":"-q","help":"Quiet output","long_help":"","value_name":null,"required":false,"default_value":"false","choices":[],"min_values":0,"max_values":1},{"name":"reference","long":"--reference","short":"-r","help":"Additional assembly references","long_help":"","value_name":null,"required":false,"default_value":null,"choices":[],"min_values":0,"max_values":100000},{"name":"search-dir","long":"--search-dir","short":"-s","help":"Search directories","long_help":"","value_name":null,"required":false,"default_value":null,"choices":[],"min_values":0,"max_values":100000},{"name":"solution-dir","long":"--solution-dir","short":null,"help":"Solution directory used to evaluate a source project (defaults to the project directory)","long_help":"","value_name":null,"required":false,"default_value":null,"choices":[],"min_values":1,"max_values":1},{"name":"target-framework","long":"--target-framework","short":null,"help":"Target framework used to evaluate a source project","long_help":"","value_name":null,"required":false,"default_value":null,"choices":[],"min_values":1,"max_values":1},{"name":"verbose","long":"--verbose","short":"-v","help":"Verbose output","long_help":"","value_name":null,"required":false,"default_value":"false","choices":[],"min_values":0,"max_values":1}],"arguments":[{"name":"assembly","help":"Path to a .NET assembly (.dll) or C# source project (.csproj) to analyze","required":true,"default_value":null,"choices":[]}],"subcommands":[{"name":"declarations","version":null,"description":"List the named types declared in source files (syntax only, no MSBuild)","long_description":"","epilogue":"","usage":"Usage: roslyn2rdf declarations [OPTIONS]","options":[{"name":"output","long":"--output","short":null,"help":"Response JSON file","long_help":"","value_name":null,"required":true,"default_value":null,"choices":[],"min_values":1,"max_values":1},{"name":"request","long":"--request","short":null,"help":"Request JSON file","long_help":"","value_name":null,"required":true,"default_value":null,"choices":[],"min_values":1,"max_values":1}],"arguments":[],"subcommands":[]},{"name":"skill","version":null,"description":"Install the bundled roslyn-graph plugin skills into a repository.","long_description":"","epilogue":"","usage":"Usage: roslyn2rdf skill [OPTIONS]","options":[{"name":"claude","long":"--claude","short":null,"help":"Install only the Claude Code plugin location.","long_help":"","value_name":null,"required":false,"default_value":"false","choices":[],"min_values":0,"max_values":1},{"name":"codex","long":"--codex","short":null,"help":"Install only the Codex plugin location.","long_help":"","value_name":null,"required":false,"default_value":"false","choices":[],"min_values":0,"max_values":1},{"name":"dry-run","long":"--dry-run","short":null,"help":"Show the install paths without writing files.","long_help":"","value_name":null,"required":false,"default_value":"false","choices":[],"min_values":0,"max_values":1},{"name":"install","long":"--install","short":null,"help":"Target repository directory","long_help":"","value_name":null,"required":true,"default_value":null,"choices":[],"min_values":1,"max_values":1}],"arguments":[],"subcommands":[]}]}</script>
+<script id="docli-search" type="application/json">[{"anchor":"roslyn2rdf","ancestors":[],"terms":["roslyn2rdf","assembly","--assembly","-a","base-uri","--base-uri","-b","configuration","--configuration","exclude-attributes","--exclude-attributes","exclude-external-types","--exclude-external-types","extract-exceptions","--extract-exceptions","extract-seealso","--extract-seealso","format","--format","-f","include-internal","--include-internal","include-private","--include-private","output","--output","-o","platform","--platform","quiet","--quiet","-q","reference","--reference","-r","search-dir","--search-dir","-s","solution-dir","--solution-dir","target-framework","--target-framework","verbose","--verbose","-v","assembly"]},{"anchor":"roslyn2rdf-declarations","ancestors":["roslyn2rdf"],"terms":["declarations","output","--output","request","--request"]},{"anchor":"roslyn2rdf-skill","ancestors":["roslyn2rdf"],"terms":["skill","claude","--claude","codex","--codex","dry-run","--dry-run","install","--install"]}]</script>
+<script>
+
+(() => {
+  "use strict";
+  const treeEl = document.getElementById("tree");
+  const detailEl = document.getElementById("detail");
+  const searchEl = document.getElementById("search");
+
+  function report(message) {
+    if (!detailEl) return;
+    detailEl.replaceChildren();
+    const note = document.createElement("p");
+    note.id = "docli-status";
+    note.textContent = message;
+    detailEl.append(note);
+  }
+
+  let data;
+  let searchIndex;
+  try {
+    const dataNode = document.getElementById("docli-data");
+    const searchNode = document.getElementById("docli-search");
+    if (!dataNode || !searchNode) {
+      throw new Error("embedded JSON is missing");
+    }
+    data = JSON.parse(dataNode.textContent);
+    searchIndex = JSON.parse(searchNode.textContent);
+    if (data === null || typeof data !== "object" || Array.isArray(data) || !Array.isArray(searchIndex)) {
+      throw new Error("embedded JSON is invalid");
+    }
+  } catch (err) {
+    const why = err && err.message ? err.message : "invalid JSON";
+    report("Could not read this page's command data. " + why);
+    return;
+  }
+
+  const all = [];
+  const usedAnchors = new Set();
+
+  // Mirror `search::slug`: only ASCII alnum are kept; other code points are separators.
+  function slug(value) {
+    let out = "";
+    let pendingDash = false;
+    for (const ch of value) {
+      const code = ch.charCodeAt(0);
+      const isAsciiAlnum =
+        (code >= 48 && code <= 57) ||
+        (code >= 65 && code <= 90) ||
+        (code >= 97 && code <= 122);
+      if (isAsciiAlnum) {
+        if (pendingDash) {
+          out += "-";
+          pendingDash = false;
+        }
+        out += ch.toLowerCase();
+      } else if (out.length) {
+        pendingDash = true;
+      }
+    }
+    return out;
+  }
+
+  // Same preorder rule as `search::unique_anchor`: the first slug wins, and
+  // each later collision takes the next free -2, -3, ... anchor.
+  function uniqueAnchor(base) {
+    if (!usedAnchors.has(base)) {
+      usedAnchors.add(base);
+      return base;
+    }
+    let suffix = 2;
+    let candidate = base + "-" + suffix;
+    while (usedAnchors.has(candidate)) {
+      suffix += 1;
+      candidate = base + "-" + suffix;
+    }
+    usedAnchors.add(candidate);
+    return candidate;
+  }
+
+  function flatten(node, path) {
+    const full = path.concat(node.name);
+    node.anchor = uniqueAnchor(slug(full.join(" ")));
+    all.push(node);
+    (node.subcommands || []).forEach((child) => flatten(child, full));
+  }
+  flatten(data, []);
+
+  function el(tag, text) {
+    const node = document.createElement(tag);
+    if (text != null) node.textContent = text;
+    return node;
+  }
+
+  function show(node, notice) {
+    if (!notice && location.hash.slice(1) !== node.anchor) {
+      location.hash = node.anchor;
+    }
+    detailEl.replaceChildren();
+    if (notice) {
+      const note = el("p", notice);
+      note.id = "docli-status";
+      note.className = "meta";
+      detailEl.append(note);
+    }
+    const head = el("section");
+    head.className = "card";
+    head.append(el("h2", node.name));
+    const desc = node.long_description || node.description;
+    if (desc) head.append(el("p", desc));
+    if (node.usage) {
+      const usage = el("pre", node.usage);
+      usage.className = "usage";
+      head.append(el("h3", "Usage"), usage);
+    }
+    detailEl.append(head);
+    const opts = node.options || [];
+    const args = node.arguments || [];
+    if (opts.length || args.length) {
+      const sec = el("section");
+      sec.className = "card";
+      sec.append(el("h3", "Arguments & options"));
+      const table = el("table");
+      const header = el("tr");
+      ["Name", "Short", "Value", "Required", "Default", "Choices", "Description"].forEach((label) => {
+        header.append(el("th", label));
+      });
+      const thead = el("thead");
+      thead.append(header);
+      table.append(thead);
+      const body = el("tbody");
+      args.forEach((arg) => {
+        const row = el("tr");
+        row.id = arg.name;
+        row.append(
+          el("td", arg.name),
+          el("td", ""),
+          el("td", ""),
+          el("td", arg.required ? "yes" : "no"),
+          el("td", arg.default_value || ""),
+          el("td", (arg.choices || []).join(", ")),
+          el("td", arg.help || "")
+        );
+        body.append(row);
+      });
+      opts.forEach((option) => {
+        const row = el("tr");
+        row.id = option.name;
+        row.append(
+          el("td", option.long || option.name || ""),
+          el("td", option.short || ""),
+          el("td", option.value_name || ""),
+          el("td", option.required ? "yes" : "no"),
+          el("td", option.default_value || ""),
+          el("td", (option.choices || []).join(", ")),
+          el("td", option.long_help || option.help || "")
+        );
+        body.append(row);
+      });
+      table.append(body);
+      sec.append(table);
+      detailEl.append(sec);
+    }
+    if (node.epilogue) {
+      const notes = el("section");
+      notes.className = "card";
+      notes.append(el("h3", "Notes"), el("p", node.epilogue));
+      detailEl.append(notes);
+    }
+  }
+
+  function buildTree(node) {
+    const hasKids = Array.isArray(node.subcommands) && node.subcommands.length > 0;
+    const li = el("li");
+    li.className = hasKids ? "node open" : "node leaf";
+    li.dataset.anchor = node.anchor;
+    const caret = el("button");
+    caret.type = "button";
+    caret.className = "docli-caret";
+    caret.setAttribute("aria-expanded", hasKids ? "true" : "false");
+    caret.addEventListener("click", () => {
+      const kids = li.querySelector(":scope > .children");
+      if (!kids) return;
+      const open = li.classList.toggle("open");
+      caret.setAttribute("aria-expanded", open ? "true" : "false");
+      kids.hidden = !open;
+    });
+    const cmd = el("button", node.name);
+    cmd.type = "button";
+    cmd.className = "docli-cmd";
+    cmd.dataset.anchor = node.anchor;
+    cmd.addEventListener("click", () => select(node));
+    li.append(caret, cmd);
+    if (hasKids) {
+      const ul = el("ul");
+      ul.className = "children";
+      node.subcommands.forEach((child) => ul.append(buildTree(child)));
+      li.append(ul);
+    }
+    return li;
+  }
+
+  function select(node, notice) {
+    document.querySelectorAll("#tree .docli-cmd").forEach((button) => {
+      button.setAttribute("aria-current", String(button.dataset.anchor === node.anchor));
+    });
+    show(node, notice);
+  }
+
+  function routeFromHash() {
+    const anchor = location.hash.slice(1);
+    if (anchor === "") {
+      select(data);
+      return;
+    }
+    const node = all.find((item) => item.anchor === anchor);
+    if (!node) {
+      select(data, "No command matches this link.");
+      return;
+    }
+    select(node);
+  }
+
+  function matchingAnchors(query) {
+    const q = query.toLowerCase();
+    if (q === "") return null;
+    const hits = new Set();
+    for (const entry of searchIndex) {
+      const matched = (entry.terms || []).some((term) => {
+        const value = String(term).toLowerCase();
+        if (value === "") return false;
+        return value.includes(q) || q.includes(value);
+      });
+      if (matched) {
+        hits.add(entry.anchor);
+        (entry.ancestors || []).forEach((ancestor) => hits.add(ancestor));
+      }
+    }
+    return hits;
+  }
+
+  function applySearch() {
+    const hits = matchingAnchors(searchEl.value);
+    document.querySelectorAll("#tree li.node").forEach((li) => {
+      const visible = hits === null || hits.has(li.dataset.anchor);
+      li.classList.toggle("hidden", !visible);
+      if (hits === null || !visible) return;
+      const kids = li.querySelector(":scope > .children");
+      if (!kids) return;
+      li.classList.add("open");
+      const caret = li.querySelector(":scope > .docli-caret");
+      if (caret) caret.setAttribute("aria-expanded", "true");
+      kids.hidden = false;
+    });
+    let status = document.getElementById("docli-search-status");
+    if (hits !== null && hits.size === 0) {
+      if (!status) {
+        status = el("p", "No matching commands.");
+        status.id = "docli-search-status";
+        status.className = "meta";
+        treeEl.before(status);
+      } else {
+        status.textContent = "No matching commands.";
+      }
+    } else if (status) {
+      status.remove();
+    }
+  }
+
+  treeEl.replaceChildren();
+  const root = el("ul");
+  root.append(buildTree(data));
+  treeEl.append(root);
+  searchEl.addEventListener("input", applySearch);
+  window.addEventListener("hashchange", routeFromHash);
+  routeFromHash();
+})();
+
+</script>
+</body>
+</html>

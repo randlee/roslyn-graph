@@ -33,6 +33,7 @@ public static class DotNetOntology
         public const string Parameter = "Parameter";
         public const string TypeParameter = "TypeParameter";
         public const string Attribute = "Attribute";
+        public const string UnsafeFact = "UnsafeFact";
     }
 
     // Type properties
@@ -51,6 +52,7 @@ public static class DotNetOntology
         public const string IsRefLikeType = "isRefLikeType";
         public const string IsReadOnly = "isReadOnly";
         public const string IsUnmanagedType = "isUnmanagedType";
+        public const string ContainsUnsafeCode = "containsUnsafeCode";
         public const string SpecialType = "specialType";
         public const string EnumUnderlyingType = "enumUnderlyingType";
     }
@@ -99,6 +101,10 @@ public static class DotNetOntology
         public const string IsExtensionMethod = "isExtensionMethod";
         public const string IsPartialDefinition = "isPartialDefinition";
         public const string MethodKind = "methodKind";
+        public const string ContainsUnsafeCode = "containsUnsafeCode";
+        public const string RequiresUnsafeCompilation = "requiresUnsafeCompilation";
+        public const string UnsafeReason = "unsafeReason";
+        public const string UnsafeLocation = "unsafeLocation";
     }
 
     // Member relationships
@@ -113,6 +119,8 @@ public static class DotNetOntology
         public const string HasTypeParameter = "hasTypeParameter";
         public const string OverridesMethod = "overridesMethod";
         public const string ExplicitInterfaceImpl = "explicitInterfaceImplementation";
+        public const string HasUnsafeFact = "hasUnsafeFact";
+        public const string HasAccessor = "hasAccessor";
     }
 
     // Parameter properties
@@ -178,6 +186,7 @@ public static class DotNetOntology
         public const string Culture = "culture";
         public const string PublicKeyToken = "publicKeyToken";
         public const string IsInteractive = "isInteractive";
+        public const string ContainsUnsafeCode = "containsUnsafeCode";
     }
 
     // Namespace properties

@@ -1,4 +1,8 @@
 using System.CommandLine;
+using Microsoft.Build.Locator;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.MSBuild;
 using RoslynToRdf.Core.Emitters;
 using RoslynToRdf.Core.Extraction;
 
@@ -6,11 +10,23 @@ namespace RoslynToRdf.Cli;
 
 public class Program
 {
+    // Source-project extraction can be invoked concurrently by hosts or tests.
+    // MSBuildLocator permits registration only once, so the check and registration
+    // must be one atomic operation rather than two racing reads/writes.
+    private static readonly object MsBuildLocatorGate = new();
+
     public static async Task<int> Main(string[] args)
     {
-        var rootCommand = new RootCommand("Extract .NET assembly type graphs to RDF format") { Name = "roslyn2rdf" };
+        if (args.Length > 0 && string.Equals(args[0], "skill", StringComparison.OrdinalIgnoreCase))
+        {
+            var skillCommand = CreateSkillCommand();
+            return await skillCommand.InvokeAsync(args[1..]);
+        }
 
-        var assemblyArg = new Argument<FileInfo>("assembly", "Path to the primary .NET assembly (.dll) to analyze");
+        var rootCommand = new RootCommand("Extract .NET assembly type graphs to RDF format") { Name = "roslyn2rdf" };
+        rootCommand.AddCommand(CreateSkillCommand());
+
+        var assemblyArg = new Argument<FileInfo>("assembly", "Path to a .NET assembly (.dll) or C# source project (.csproj) to analyze");
         var additionalAssembliesOption = new Option<FileInfo[]>(["--assembly", "-a"], () => [], "Additional target assemblies to include in the same graph");
         var outputOption = new Option<FileInfo?>(["--output", "-o"], "Output file path");
         var formatOption = new Option<OutputFormat>(["--format", "-f"], () => OutputFormat.NTriples, "Output format");
@@ -25,6 +41,10 @@ public class Program
         var quietOption = new Option<bool>(["--quiet", "-q"], () => false, "Quiet output");
         var refsOption = new Option<string[]>(["--reference", "-r"], () => [], "Additional assembly references");
         var searchDirOption = new Option<string[]>(["--search-dir", "-s"], () => [], "Search directories");
+        var solutionDirOption = new Option<DirectoryInfo?>("--solution-dir", "Solution directory used to evaluate a source project (defaults to the project directory)");
+        var configurationOption = new Option<string?>("--configuration", "MSBuild configuration used to evaluate a source project");
+        var platformOption = new Option<string?>("--platform", "MSBuild platform used to evaluate a source project");
+        var targetFrameworkOption = new Option<string?>("--target-framework", "Target framework used to evaluate a source project");
 
         rootCommand.AddArgument(assemblyArg);
         rootCommand.AddOption(additionalAssembliesOption);
@@ -41,6 +61,11 @@ public class Program
         rootCommand.AddOption(quietOption);
         rootCommand.AddOption(refsOption);
         rootCommand.AddOption(searchDirOption);
+        rootCommand.AddOption(solutionDirOption);
+        rootCommand.AddOption(configurationOption);
+        rootCommand.AddOption(platformOption);
+        rootCommand.AddOption(targetFrameworkOption);
+        rootCommand.AddCommand(DeclarationsCommand.Create());
 
         rootCommand.SetHandler(async (context) =>
         {
@@ -59,41 +84,79 @@ public class Program
             var quiet = context.ParseResult.GetValueForOption(quietOption);
             var refs = context.ParseResult.GetValueForOption(refsOption)!;
             var searchDirs = context.ParseResult.GetValueForOption(searchDirOption)!;
+            var solutionDir = context.ParseResult.GetValueForOption(solutionDirOption);
+            var configuration = context.ParseResult.GetValueForOption(configurationOption);
+            var platform = context.ParseResult.GetValueForOption(platformOption);
+            var targetFramework = context.ParseResult.GetValueForOption(targetFrameworkOption);
 
             context.ExitCode = await RunExtraction([assembly, ..additionalAssemblies], output, format, baseUri, includePrivate, includeInternal,
-                excludeAttributes, excludeExternalTypes, extractExceptions, extractSeeAlso, verbose, quiet, refs, searchDirs);
+                excludeAttributes, excludeExternalTypes, extractExceptions, extractSeeAlso, verbose, quiet, refs, searchDirs,
+                solutionDir?.FullName, configuration, platform, targetFramework);
         });
 
         return await rootCommand.InvokeAsync(args);
     }
 
-    private static Task<int> RunExtraction(IEnumerable<FileInfo> requestedAssemblies, FileInfo? output, OutputFormat format, string baseUri,
+    private static Command CreateSkillCommand()
+    {
+        var skillCommand = new Command("skill", "Install the bundled roslyn-graph plugin skills into a repository.");
+        var installOption = new Option<DirectoryInfo>("--install", "Target repository directory") { IsRequired = true };
+        var claudeOption = new Option<bool>("--claude", "Install only the Claude Code plugin location.");
+        var codexOption = new Option<bool>("--codex", "Install only the Codex plugin location.");
+        var dryRunOption = new Option<bool>("--dry-run", "Show the install paths without writing files.");
+        skillCommand.AddOption(installOption);
+        skillCommand.AddOption(claudeOption);
+        skillCommand.AddOption(codexOption);
+        skillCommand.AddOption(dryRunOption);
+        skillCommand.SetHandler(context =>
+        {
+            context.ExitCode = PluginInstaller.Install(
+                context.ParseResult.GetValueForOption(installOption)!,
+                context.ParseResult.GetValueForOption(claudeOption),
+                context.ParseResult.GetValueForOption(codexOption),
+                context.ParseResult.GetValueForOption(dryRunOption),
+                Console.Out,
+                Console.Error);
+        });
+        return skillCommand;
+    }
+
+    private static async Task<int> RunExtraction(IEnumerable<FileInfo> requestedAssemblies, FileInfo? output, OutputFormat format, string baseUri,
         bool includePrivate, bool includeInternal, bool excludeAttributes, bool excludeExternalTypes,
-        bool extractExceptions, bool extractSeeAlso, bool verbose, bool quiet, string[] refs, string[] searchDirs)
+        bool extractExceptions, bool extractSeeAlso, bool verbose, bool quiet, string[] refs, string[] searchDirs,
+        string? solutionDir, string? configuration, string? platform, string? targetFramework)
     {
         var assemblies = requestedAssemblies
             .GroupBy(assembly => assembly.FullName, StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First())
             .ToArray();
 
+        var sourceProjects = assemblies.Where(file => file.Extension.Equals(".csproj", StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (sourceProjects.Length > 0 && (sourceProjects.Length != 1 || assemblies.Length != 1))
+        {
+            Console.Error.WriteLine("A source project must be extracted alone; it cannot be combined with --assembly.");
+            return 1;
+        }
+
         var missingAssemblies = assemblies.Where(assembly => !assembly.Exists).ToArray();
         if (missingAssemblies.Length > 0)
         {
             foreach (var assembly in missingAssemblies)
                 Console.Error.WriteLine($"Assembly not found: {assembly.FullName}");
-            return Task.FromResult(1);
+            return 1;
         }
 
         if (assemblies.Length > 1 && output is null)
         {
             Console.Error.WriteLine("--output is required when extracting more than one assembly.");
-            return Task.FromResult(1);
+            return 1;
         }
 
         var outputPath = output?.FullName ?? Path.ChangeExtension(assemblies[0].FullName, format == OutputFormat.Turtle ? ".ttl" : ".nt");
         var options = new ExtractionOptions
         {
             BaseUri = baseUri,
+            SourceRoot = sourceProjects.Length == 1 ? Path.GetDirectoryName(sourceProjects[0].FullName) : null,
             IncludePrivate = includePrivate,
             IncludeInternal = includeInternal,
             IncludeAttributes = !excludeAttributes,
@@ -113,28 +176,78 @@ public class Program
                 ? new TurtleEmitter(outputPath)
                 : new NTriplesEmitter(outputPath);
 
-            foreach (var assembly in assemblies)
+            if (sourceProjects.Length == 1)
             {
-                log?.Invoke($"Loading assembly: {assembly.FullName}");
+                var projectPath = sourceProjects[0].FullName;
+                log?.Invoke($"Loading source project: {projectPath}");
+                EnsureMsBuildLocatorRegistered();
 
-                var loader = new AssemblyLoader();
-                foreach (var refPath in refs) loader.AddReferencePath(refPath);
-                foreach (var searchDir in searchDirs) loader.AddSearchDirectory(searchDir);
+                var projectDirectory = Path.GetDirectoryName(projectPath)!;
+                var properties = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["SolutionDir"] = EnsureTrailingSeparator(Path.GetFullPath(solutionDir ?? projectDirectory)),
+                    ["Configuration"] = configuration ?? "Debug"
+                };
+                if (!string.IsNullOrWhiteSpace(platform)) properties["Platform"] = platform;
+                if (!string.IsNullOrWhiteSpace(targetFramework)) properties["TargetFramework"] = targetFramework;
 
-                var (compilation, assemblySymbol) = loader.LoadAssembly(assembly.FullName);
+                using var workspace = MSBuildWorkspace.Create(properties);
+                workspace.WorkspaceFailed += (_, args) => log?.Invoke($"MSBuild workspace: {args.Diagnostic.Message}");
+                var project = await workspace.OpenProjectAsync(projectPath);
+                if (project.Language != LanguageNames.CSharp)
+                    throw new InvalidOperationException("Only C# source projects are supported.");
+                var compilation = await project.GetCompilationAsync()
+                    ?? throw new InvalidOperationException("MSBuild did not provide a C# compilation for the project.");
+                if (compilation.Options is CSharpCompilationOptions { AllowUnsafe: false })
+                    log?.Invoke("AllowUnsafeBlocks is false; unsafe-method analysis is skipped for this project.");
                 var extractor = new AssemblyGraphExtractor(emitter, options, log);
-                extractor.Extract(compilation, assemblySymbol);
+                extractor.Extract(compilation, compilation.Assembly);
+            }
+            else
+            {
+                foreach (var assembly in assemblies)
+                {
+                    log?.Invoke($"Loading assembly: {assembly.FullName}");
+
+                    var loader = new AssemblyLoader();
+                    foreach (var refPath in refs) loader.AddReferencePath(refPath);
+                    foreach (var searchDir in searchDirs) loader.AddSearchDirectory(searchDir);
+
+                    var (compilation, assemblySymbol) = loader.LoadAssembly(assembly.FullName);
+                    var extractor = new AssemblyGraphExtractor(emitter, options, log);
+                    extractor.Extract(compilation, assemblySymbol);
+                }
             }
             emitter.Flush();
 
             log?.Invoke($"Done. {emitter.TripleCount} triples written to {outputPath}");
-            return Task.FromResult(0);
+            return 0;
         }
         catch (Exception ex)
         {
             Console.Error.WriteLine($"Error: {ex.Message}");
             if (verbose) Console.Error.WriteLine(ex.StackTrace);
-            return Task.FromResult(1);
+            return 1;
+        }
+    }
+
+    private static string EnsureTrailingSeparator(string path)
+    {
+        var separator = Path.DirectorySeparatorChar;
+        return path.EndsWith(separator) || path.EndsWith(Path.AltDirectorySeparatorChar)
+            ? path
+            : path + separator;
+    }
+
+    private static void EnsureMsBuildLocatorRegistered()
+    {
+        if (MSBuildLocator.IsRegistered)
+            return;
+
+        lock (MsBuildLocatorGate)
+        {
+            if (!MSBuildLocator.IsRegistered)
+                MSBuildLocator.RegisterDefaults();
         }
     }
 }

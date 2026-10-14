@@ -9,6 +9,7 @@
   },
   "skills": [
     "./skills/roslyn-graph-create",
-    "./skills/roslyn-graph-explore"
+    "./skills/roslyn-graph-explore",
+    "./skills/roslyn-graph-publish"
   ]
 }
