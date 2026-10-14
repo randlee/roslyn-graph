@@ -117,18 +117,18 @@ jobs:
           git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1
           branch_state=$?
           set -e
-          if [[ "$branch_state" -gt 1 ]]; then
-            echo 'Could not determine whether the version branch exists in the configured fork.' >&2
-            exit 1
-          elif [[ "$branch_state" -eq 0 ]]; then
+          if [[ "$branch_state" -eq 0 ]]; then
             git fetch origin "$branch"
             git checkout -B "$branch" FETCH_HEAD
             git add "$manifest_dir"
             if ! git diff --cached --quiet; then
               git commit -m "Update ${PACKAGE_ID} ${version}"
             fi
-          else
+          elif [[ "$branch_state" -eq 2 ]]; then
             git checkout -b "$branch"
+          else
+            echo 'Could not determine whether the version branch exists in the configured fork.' >&2
+            exit 1
           fi
           git push origin "HEAD:${branch}"
           gh auth setup-git
