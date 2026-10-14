@@ -180,8 +180,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          dotnet restore
-          dotnet build --configuration Release --no-restore -p:Version='${{ needs.preflight.outputs.version }}' -p:AssemblyVersion='${{ needs.preflight.outputs.version }}.0' -p:FileVersion='${{ needs.preflight.outputs.version }}.0'
+          dotnet restore src/RoslynToRdf.Cli/RoslynToRdf.Cli.csproj
+          dotnet build src/RoslynToRdf.Cli/RoslynToRdf.Cli.csproj --configuration Release --no-restore -p:Version='${{ needs.preflight.outputs.version }}' -p:AssemblyVersion='${{ needs.preflight.outputs.version }}.0' -p:FileVersion='${{ needs.preflight.outputs.version }}.0'
           mkdir -p dist
           dotnet pack src/RoslynToRdf.Cli/RoslynToRdf.Cli.csproj --configuration Release --no-build -p:Version='${{ needs.preflight.outputs.version }}' --output dist
 
