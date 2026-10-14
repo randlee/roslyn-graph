@@ -10,6 +10,11 @@ namespace RoslynToRdf.Cli;
 
 public class Program
 {
+    // Source-project extraction can be invoked concurrently by hosts or tests.
+    // MSBuildLocator permits registration only once, so the check and registration
+    // must be one atomic operation rather than two racing reads/writes.
+    private static readonly object MsBuildLocatorGate = new();
+
     public static async Task<int> Main(string[] args)
     {
         if (args.Length > 0 && string.Equals(args[0], "skill", StringComparison.OrdinalIgnoreCase))
@@ -175,8 +180,7 @@ public class Program
             {
                 var projectPath = sourceProjects[0].FullName;
                 log?.Invoke($"Loading source project: {projectPath}");
-                if (!MSBuildLocator.IsRegistered)
-                    MSBuildLocator.RegisterDefaults();
+                EnsureMsBuildLocatorRegistered();
 
                 var projectDirectory = Path.GetDirectoryName(projectPath)!;
                 var properties = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -233,6 +237,18 @@ public class Program
         return path.EndsWith(separator) || path.EndsWith(Path.AltDirectorySeparatorChar)
             ? path
             : path + separator;
+    }
+
+    private static void EnsureMsBuildLocatorRegistered()
+    {
+        if (MSBuildLocator.IsRegistered)
+            return;
+
+        lock (MsBuildLocatorGate)
+        {
+            if (!MSBuildLocator.IsRegistered)
+                MSBuildLocator.RegisterDefaults();
+        }
     }
 }
 

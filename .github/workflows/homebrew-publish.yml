@@ -56,7 +56,7 @@ jobs:
 
       - name: Render formula from verified assets
         env:
-          FORMULA_PATH: ${{ vars.HOMEBREW_FORMULA_PATH || 'Formula/roslyn-to-rdf.rb' }}
+          FORMULA_PATH: ${{ vars.HOMEBREW_FORMULA_PATH || 'Formula/roslyn-graph.rb' }}
         run: >-
           python .github/scripts/distribution_channels.py homebrew
           --verified release-assets/verified-release.json
@@ -64,7 +64,7 @@ jobs:
 
       - name: Validate formula and update tap idempotently
         env:
-          FORMULA_PATH: ${{ vars.HOMEBREW_FORMULA_PATH || 'Formula/roslyn-to-rdf.rb' }}
+          FORMULA_PATH: ${{ vars.HOMEBREW_FORMULA_PATH || 'Formula/roslyn-graph.rb' }}
           RELEASE_VERSION: ${{ inputs.tag }}
         shell: bash
         run: |
@@ -78,7 +78,7 @@ jobs:
           fi
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git commit -m "chore: update RoslynToRdf ${RELEASE_VERSION}"
+          git commit -m "chore: update roslyn-graph ${RELEASE_VERSION}"
           branch="$(git branch --show-current)"
           for attempt in 1 2 3 4 5; do
             if git push origin "HEAD:${branch}"; then exit 0; fi
