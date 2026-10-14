@@ -49,6 +49,9 @@ coverage-*/
 *.trx
 *.coverage
 
+# Local docli checkout for DocliExport / regenerate-site (CI clones to docli/)
+/docli/
+
 # Python
 __pycache__/
 *.pyc
