@@ -91,6 +91,13 @@ Member:     http://dotnet.example/type/{...}/member/{name}({signature})
 Parameter:  http://dotnet.example/type/{...}/member/{...}/param/{ordinal}
 ```
 
+Method signatures include generic arity (`M%60%601%28%29` for `M<T>()`) and conversion
+operators include their target type (for example, `op_Implicit(C)~System.Int32`).
+These signature components are percent-escaped in the IRI. Generic method and
+conversion operator IRIs, including their parameter and type parameter IRIs,
+have changed to prevent overload collisions. Rebuild existing graphs to use the
+new identities. Other method IRIs retain their existing format.
+
 ### Key Relationships
 
 - `dt:throws` - Exception type that may be thrown (from XML docs `<exception>`)

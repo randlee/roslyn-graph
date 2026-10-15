@@ -227,6 +227,11 @@ public partial class IriMinter
         if (member is IMethodSymbol method)
         {
             var sb = new StringBuilder();
+            if (method.Arity > 0)
+            {
+                sb.Append("``");
+                sb.Append(method.Arity);
+            }
             sb.Append('(');
             for (int i = 0; i < method.Parameters.Length; i++)
             {
@@ -244,6 +249,11 @@ public partial class IriMinter
                 sb.Append(GetFullMetadataName(param.Type));
             }
             sb.Append(')');
+            if (method.MethodKind == MethodKind.Conversion)
+            {
+                sb.Append('~');
+                sb.Append(GetFullMetadataName(method.ReturnType));
+            }
             return sb.ToString();
         }
 

@@ -6,6 +6,51 @@ namespace RoslynToRdf.Tests;
 
 public class AssemblyGraphExtractorTests
 {
+    [Theory]
+    [InlineData("public void M() { } public void M<T>() { } public void M<T, U>() { }", "M", 3)]
+    [InlineData("public static implicit operator int(C value) => 0; public static implicit operator long(C value) => 0;", "op_Implicit", 2)]
+    [InlineData("public static explicit operator int(C value) => 0; public static explicit operator long(C value) => 0;", "op_Explicit", 2)]
+    public void Extract_MethodOverloads_PreservesDistinctNodesAndOwnedFacts(string members, string name, int expectedCount)
+    {
+        var compilation = TestUtilities.CreateCompilation("public class C { " + members + " }");
+        Assert.DoesNotContain(compilation.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        var emitter = new TestEmitter();
+        var options = new ExtractionOptions { IncludeAttributes = false };
+        new AssemblyGraphExtractor(emitter, options).Extract(compilation, compilation.Assembly);
+
+        var minter = new IriMinter(options.BaseUri);
+        var type = compilation.GetTypeByMetadataName("C")!;
+        var methods = type.GetMembers(name).OfType<IMethodSymbol>().ToArray();
+        var subjects = emitter.Triples.Where(triple => triple.Predicate == minter.OntologyPrefix + DotNetOntology.MemberProps.Name
+            && triple.Object == name).Select(triple => triple.Subject).Distinct().ToArray();
+        Assert.Equal(expectedCount, subjects.Length);
+
+        foreach (var method in methods)
+        {
+            var methodIri = minter.Member(method);
+            Assert.Contains(methodIri, subjects);
+            Assert.Contains(emitter.Triples, triple => triple.Subject == minter.Type(type)
+                && triple.Predicate == minter.OntologyPrefix + DotNetOntology.TypeRels.HasMember && triple.Object == methodIri);
+            var typeParameters = emitter.Triples.Where(triple => triple.Subject == methodIri
+                && triple.Predicate == minter.OntologyPrefix + DotNetOntology.MemberRels.HasTypeParameter).ToArray();
+            Assert.Equal(method.Arity, typeParameters.Length);
+            foreach (var parameter in method.Parameters)
+            {
+                var parameterTriple = Assert.Single(emitter.Triples.Where(triple => triple.Subject == methodIri
+                    && triple.Predicate == minter.OntologyPrefix + DotNetOntology.MemberRels.HasParameter));
+                Assert.Equal(minter.Parameter(method, parameter), parameterTriple.Object);
+                Assert.Single(emitter.Triples.Where(triple => triple.Predicate == parameterTriple.Predicate
+                    && triple.Object == parameterTriple.Object));
+            }
+            if (!method.ReturnsVoid)
+            {
+                var returnType = Assert.Single(emitter.Triples.Where(triple => triple.Subject == methodIri
+                    && triple.Predicate == minter.OntologyPrefix + DotNetOntology.MemberRels.ReturnType));
+                Assert.Equal(minter.Type(method.ReturnType), returnType.Object);
+            }
+        }
+    }
+
     [Fact]
     public void Extract_UnresolvedPropertyType_DoesNotFail()
     {
