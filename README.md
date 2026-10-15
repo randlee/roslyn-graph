@@ -29,6 +29,9 @@ roslyn2rdf MyAssembly.dll -v
 # Add reference paths for dependencies
 roslyn2rdf MyAssembly.dll -r /path/to/dependency.dll -s /path/to/deps/
 
+# Require all assembly references to resolve
+roslyn2rdf MyAssembly.dll --fail-on-missing-references
+
 # Analyze an evaluated C# source project
 roslyn2rdf MyProject.csproj -o source-graph.nt
 
@@ -59,6 +62,7 @@ roslyn2rdf MyProject.csproj -o source-graph.nt --solution-dir ./ --configuration
 | `--extract-exceptions` | Extract exception types from XML docs (default: true) |
 | `--extract-seealso` | Extract seealso references from XML docs (default: true) |
 | `-r, --reference` | Additional assembly reference paths |
+| `--fail-on-missing-references` | Fail on unresolved or unreadable references (DLL inputs only; default: false) |
 | `-s, --search-dir` | Additional directories to search for dependencies |
 | `--solution-dir` | Solution directory for source-project evaluation (defaults to the project directory) |
 | `--configuration` | MSBuild configuration for source-project evaluation (defaults to `Debug`) |
@@ -66,6 +70,14 @@ roslyn2rdf MyProject.csproj -o source-graph.nt --solution-dir ./ --configuration
 | `--target-framework` | Target framework for source-project evaluation |
 | `-v, --verbose` | Verbose output |
 | `-q, --quiet` | Quiet output |
+
+For DLL inputs, explicit `-r` files are matched by assembly name rather than filename, and their dependencies are
+loaded recursively, including from directories beside those files. Unresolved dependencies and missing
+or unreadable `-r` files produce warnings on stderr, including with `--quiet`. Extraction continues and
+returns exit code 0 by default, although the graph may be incomplete. Use `--fail-on-missing-references`
+to return exit code 1 before extracting an assembly with reference failures. An output file may already
+exist, and a combined output may contain earlier assemblies. A missing or invalid target assembly is
+always fatal. The strict option is rejected for `.csproj` inputs; source projects use MSBuild resolution.
 
 Passing a `.csproj` opens the evaluated C# project with MSBuild and analyzes its Roslyn compilation,
 including source syntax and the evaluated `AllowUnsafeBlocks` setting. Projects where that setting is

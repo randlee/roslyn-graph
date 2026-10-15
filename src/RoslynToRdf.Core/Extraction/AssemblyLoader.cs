@@ -7,6 +7,12 @@ using System.Reflection.PortableExecutable;
 namespace RoslynToRdf.Core.Extraction;
 
 /// <summary>
+/// Describes an assembly reference that could not be loaded during the latest load.
+/// </summary>
+public sealed record AssemblyReferenceDiagnostic(
+    string AssemblyName, string? ReferencePath, string? ReferencedBy, string Reason);
+
+/// <summary>
 /// Loads assemblies and creates Roslyn Compilations for analysis.
 /// </summary>
 public sealed class AssemblyLoader
@@ -15,13 +21,15 @@ public sealed class AssemblyLoader
     private readonly List<string> _searchDirectories = new();
 
     /// <summary>
-    /// Add additional assembly reference paths.
+    /// Unresolved or unreadable references from the latest load. Target assembly failures throw instead.
     /// </summary>
-    public void AddReferencePath(string path)
-    {
-        if (File.Exists(path))
-            _additionalReferencePaths.Add(path);
-    }
+    public IReadOnlyList<AssemblyReferenceDiagnostic> ReferenceDiagnostics { get; private set; } =
+        Array.Empty<AssemblyReferenceDiagnostic>();
+
+    /// <summary>
+    /// Add an assembly reference path. Missing or unreadable files are reported when loading.
+    /// </summary>
+    public void AddReferencePath(string path) => _additionalReferencePaths.Add(path);
 
     /// <summary>
     /// Add directories to search for referenced assemblies.
@@ -33,156 +41,196 @@ public sealed class AssemblyLoader
     }
 
     /// <summary>
-    /// Load an assembly and create a Compilation for it.
+    /// Load an assembly and create a Compilation for it, retaining reference failures as diagnostics.
     /// </summary>
     public (Compilation compilation, IAssemblySymbol assembly) LoadAssembly(string assemblyPath)
     {
+        ReferenceDiagnostics = Array.Empty<AssemblyReferenceDiagnostic>();
         if (!File.Exists(assemblyPath))
             throw new FileNotFoundException($"Assembly not found: {assemblyPath}");
 
-        var assemblyDirectory = Path.GetDirectoryName(assemblyPath)!;
-        _searchDirectories.Add(assemblyDirectory);
-
-        // Add common runtime directories
-        var runtimeDir = Path.GetDirectoryName(typeof(object).Assembly.Location);
-        if (runtimeDir != null)
-            _searchDirectories.Add(runtimeDir);
-
-        // Load the target assembly
-        var targetRef = MetadataReference.CreateFromFile(assemblyPath);
-
-        // Collect all references
-        var references = new List<MetadataReference> { targetRef };
-        var processedAssemblies = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        var target = ReadAssembly(assemblyPath);
+        var loaded = new Dictionary<string, LoadedAssembly>(StringComparer.OrdinalIgnoreCase)
         {
-            Path.GetFileName(assemblyPath)
+            [target.Identity.Name!] = target
         };
+        var searchDirectories = new List<string>(_searchDirectories);
+        searchDirectories.Add(Path.GetDirectoryName(target.Path)!);
+        var diagnostics = new List<AssemblyReferenceDiagnostic>();
 
-        // Load direct references from the assembly
-        LoadReferences(assemblyPath, references, processedAssemblies);
-
-        // Add additional reference paths
-        foreach (var refPath in _additionalReferencePaths)
+        foreach (var referencePath in _additionalReferencePaths.Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            if (!processedAssemblies.Contains(Path.GetFileName(refPath)))
+            try
             {
-                references.Add(MetadataReference.CreateFromFile(refPath));
-                processedAssemblies.Add(Path.GetFileName(refPath));
+                var reference = ReadAssembly(referencePath);
+                loaded.TryAdd(reference.Identity.Name!, reference);
+                searchDirectories.Add(Path.GetDirectoryName(reference.Path)!);
+            }
+            catch (Exception exception) when (IsReferenceFailure(exception))
+            {
+                diagnostics.Add(new AssemblyReferenceDiagnostic(
+                    Path.GetFileNameWithoutExtension(referencePath), referencePath, null, exception.Message));
             }
         }
 
-        // Create compilation
+        var runtimeDirectory = Path.GetDirectoryName(typeof(object).Assembly.Location);
+        if (runtimeDirectory != null)
+            searchDirectories.Add(runtimeDirectory);
+
+        var pending = new Queue<LoadedAssembly>(loaded.Values);
+        var unresolved = new Dictionary<string, (AssemblyName Identity, string ReferencedBy, AssemblyReferenceDiagnostic Diagnostic)>(
+            StringComparer.OrdinalIgnoreCase);
+
+        while (true)
+        {
+            while (pending.TryDequeue(out var assembly))
+            {
+                foreach (var dependency in assembly.Dependencies)
+                {
+                    if (loaded.ContainsKey(dependency.Name!))
+                        continue;
+
+                    var reference = ResolveReference(dependency, assembly.Path, searchDirectories, out var diagnostic);
+                    if (reference == null)
+                    {
+                        unresolved[dependency.Name!] = (dependency, assembly.Path, diagnostic!);
+                        continue;
+                    }
+
+                    loaded.Add(reference.Identity.Name!, reference);
+                    searchDirectories.Add(Path.GetDirectoryName(reference.Path)!);
+                    pending.Enqueue(reference);
+                    unresolved.Remove(dependency.Name!);
+                }
+            }
+
+            foreach (var entry in unresolved.ToArray())
+            {
+                if (loaded.ContainsKey(entry.Key))
+                {
+                    unresolved.Remove(entry.Key);
+                    continue;
+                }
+
+                var reference = ResolveReference(entry.Value.Identity, entry.Value.ReferencedBy, searchDirectories, out var diagnostic);
+                if (reference == null)
+                {
+                    unresolved[entry.Key] = (entry.Value.Identity, entry.Value.ReferencedBy, diagnostic!);
+                    continue;
+                }
+
+                loaded.Add(reference.Identity.Name!, reference);
+                searchDirectories.Add(Path.GetDirectoryName(reference.Path)!);
+                pending.Enqueue(reference);
+                unresolved.Remove(entry.Key);
+            }
+
+            if (pending.Count == 0)
+                break;
+        }
+
+        diagnostics.AddRange(unresolved.Values.Select(entry => entry.Diagnostic));
+        ReferenceDiagnostics = diagnostics.AsReadOnly();
+
         var compilation = CSharpCompilation.Create(
             "Analysis",
-            references: references,
+            references: loaded.Values.Select(assembly => assembly.Reference),
             options: new CSharpCompilationOptions(
                 OutputKind.DynamicallyLinkedLibrary,
                 metadataImportOptions: MetadataImportOptions.All));
 
-        // Find the target assembly symbol
-        var assemblySymbol = compilation.GetAssemblyOrModuleSymbol(targetRef) as IAssemblySymbol;
+        var assemblySymbol = compilation.GetAssemblyOrModuleSymbol(target.Reference) as IAssemblySymbol;
         if (assemblySymbol == null)
             throw new InvalidOperationException("Failed to load assembly symbol");
 
         return (compilation, assemblySymbol);
     }
 
-    /// <summary>
-    /// Load referenced assemblies recursively.
-    /// </summary>
-    private void LoadReferences(
-        string assemblyPath, 
-        List<MetadataReference> references, 
-        HashSet<string> processedAssemblies)
+    private static LoadedAssembly ReadAssembly(string path)
     {
-        var referencedAssemblies = GetReferencedAssemblies(assemblyPath);
-
-        foreach (var refName in referencedAssemblies)
-        {
-            if (processedAssemblies.Contains(refName.Name + ".dll"))
-                continue;
-
-            processedAssemblies.Add(refName.Name + ".dll");
-
-            var refPath = ResolveAssemblyPath(refName);
-            if (refPath != null && File.Exists(refPath))
-            {
-                try
-                {
-                    references.Add(MetadataReference.CreateFromFile(refPath));
-                    // Recursively load references
-                    LoadReferences(refPath, references, processedAssemblies);
-                }
-                catch
-                {
-                    // Skip assemblies that can't be loaded
-                }
-            }
-        }
+        var fullPath = Path.GetFullPath(path);
+        var identity = AssemblyName.GetAssemblyName(fullPath);
+        var dependencies = GetReferencedAssemblies(fullPath).ToArray();
+        return new LoadedAssembly(fullPath, identity, MetadataReference.CreateFromFile(fullPath), dependencies);
     }
 
-    /// <summary>
-    /// Get the assembly references from an assembly file.
-    /// </summary>
+    private static LoadedAssembly? ResolveReference(
+        AssemblyName identity, string referencedBy, List<string> searchDirectories,
+        out AssemblyReferenceDiagnostic? diagnostic)
+    {
+        diagnostic = null;
+        foreach (var path in ResolveAssemblyPaths(identity, searchDirectories).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var reference = ReadAssembly(path);
+                if (string.Equals(reference.Identity.Name, identity.Name, StringComparison.OrdinalIgnoreCase))
+                    return reference;
+
+                diagnostic = new AssemblyReferenceDiagnostic(identity.FullName, path, referencedBy,
+                    $"File contains assembly '{reference.Identity.Name}' instead of '{identity.Name}'.");
+            }
+            catch (Exception exception) when (IsReferenceFailure(exception))
+            {
+                diagnostic = new AssemblyReferenceDiagnostic(identity.FullName, path, referencedBy, exception.Message);
+            }
+        }
+
+        diagnostic ??= new AssemblyReferenceDiagnostic(identity.FullName, null, referencedBy, "No matching assembly was found.");
+        return null;
+    }
+
+    private static bool IsReferenceFailure(Exception exception) =>
+        exception is IOException or UnauthorizedAccessException or BadImageFormatException or ArgumentException or NotSupportedException;
+
     private static IEnumerable<AssemblyName> GetReferencedAssemblies(string assemblyPath)
     {
         using var stream = File.OpenRead(assemblyPath);
         using var peReader = new PEReader(stream);
-
-        if (!peReader.HasMetadata)
-            yield break;
-
         var metadataReader = peReader.GetMetadataReader();
 
         foreach (var refHandle in metadataReader.AssemblyReferences)
         {
             var reference = metadataReader.GetAssemblyReference(refHandle);
             var name = metadataReader.GetString(reference.Name);
-            var version = reference.Version;
             var culture = metadataReader.GetString(reference.Culture);
             var publicKeyToken = metadataReader.GetBlobBytes(reference.PublicKeyOrToken);
-
             var assemblyName = new AssemblyName
             {
                 Name = name,
-                Version = version,
+                Version = reference.Version,
                 CultureName = string.IsNullOrEmpty(culture) ? null : culture
             };
-
             if (publicKeyToken.Length > 0)
                 assemblyName.SetPublicKeyToken(publicKeyToken);
-
             yield return assemblyName;
         }
     }
 
-    /// <summary>
-    /// Resolve an assembly path from its name.
-    /// </summary>
-    private string? ResolveAssemblyPath(AssemblyName assemblyName)
+    private static IEnumerable<string> ResolveAssemblyPaths(AssemblyName assemblyName, List<string> searchDirectories)
     {
-        var dllName = assemblyName.Name + ".dll";
-
-        // Search in configured directories
-        foreach (var dir in _searchDirectories)
+        foreach (var directory in searchDirectories.Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            var path = Path.Combine(dir, dllName);
+            var path = Path.Combine(directory, assemblyName.Name + ".dll");
             if (File.Exists(path))
-                return path;
+                yield return path;
         }
 
-        // Try to resolve from runtime
+        string? runtimePath = null;
         try
         {
             var assembly = Assembly.Load(assemblyName);
             if (!string.IsNullOrEmpty(assembly.Location))
-                return assembly.Location;
+                runtimePath = assembly.Location;
         }
-        catch
+        catch (Exception exception) when (IsReferenceFailure(exception))
         {
-            // Ignore resolution failures
         }
 
-        return null;
+        if (runtimePath != null)
+            yield return runtimePath;
     }
+
+    private sealed record LoadedAssembly(
+        string Path, AssemblyName Identity, PortableExecutableReference Reference, AssemblyName[] Dependencies);
 }

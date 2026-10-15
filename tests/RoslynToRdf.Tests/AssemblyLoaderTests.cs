@@ -6,6 +6,203 @@ namespace RoslynToRdf.Tests;
 
 public class AssemblyLoaderTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void LoadAssembly_ExplicitDependencyResolvesByIdentityAndLoadsTransitiveReferences(bool renameDependency)
+    {
+        using var fixture = new AssemblyReferenceFixture();
+        var referencePath = fixture.DependencyPath;
+        if (renameDependency)
+        {
+            referencePath = Path.Combine(fixture.DirectoryPath, "dependencies", "renamed.dll");
+            File.Move(fixture.DependencyPath, referencePath);
+        }
+
+        var loader = new AssemblyLoader();
+        loader.AddReferencePath(referencePath);
+        var (compilation, _) = loader.LoadAssembly(fixture.TargetPath);
+
+        var target = compilation.GetTypeByMetadataName("ReferenceFixture.Target")!;
+        Assert.Equal(TypeKind.Class, target.BaseType!.TypeKind);
+        Assert.Equal("Base", target.BaseType.Name);
+        Assert.Equal(TypeKind.Class, target.BaseType.BaseType!.TypeKind);
+        Assert.Equal("Root", target.BaseType.BaseType.Name);
+        Assert.Contains(compilation.References, reference => reference.Display == referencePath);
+        Assert.Contains(compilation.References, reference => reference.Display == fixture.TransitivePath);
+        Assert.Empty(loader.ReferenceDiagnostics);
+    }
+
+    [Fact]
+    public void LoadAssembly_AllExplicitReferencesAreAvailableBeforeTraversal()
+    {
+        using var fixture = new AssemblyReferenceFixture();
+        var transitivePath = Path.Combine(fixture.DirectoryPath, "renamed-transitive.dll");
+        File.Move(fixture.TransitivePath, transitivePath);
+        var loader = new AssemblyLoader();
+        loader.AddReferencePath(fixture.DependencyPath);
+        loader.AddReferencePath(transitivePath);
+        loader.AddReferencePath(fixture.DependencyPath);
+
+        var (compilation, _) = loader.LoadAssembly(fixture.TargetPath);
+
+        Assert.Equal(TypeKind.Class, compilation.GetTypeByMetadataName("ReferenceFixture.Target")!.BaseType!.BaseType!.TypeKind);
+        Assert.Single(compilation.References.Where(reference => reference.Display == fixture.DependencyPath));
+        Assert.Single(compilation.References.Where(reference => reference.Display == transitivePath));
+        Assert.Empty(loader.ReferenceDiagnostics);
+    }
+
+    [Fact]
+    public void LoadAssembly_MissingDependencyReportsIdentityAndReferrer()
+    {
+        using var fixture = new AssemblyReferenceFixture();
+        var loader = new AssemblyLoader();
+
+        var (compilation, _) = loader.LoadAssembly(fixture.TargetPath);
+
+        Assert.Equal(TypeKind.Error, compilation.GetTypeByMetadataName("ReferenceFixture.Target")!.BaseType!.TypeKind);
+        var diagnostic = Assert.Single(loader.ReferenceDiagnostics);
+        Assert.Contains(fixture.DependencyName, diagnostic.AssemblyName);
+        Assert.Equal(fixture.TargetPath, diagnostic.ReferencedBy);
+        Assert.Null(diagnostic.ReferencePath);
+        Assert.NotEmpty(diagnostic.Reason);
+    }
+
+    [Fact]
+    public void LoadAssembly_MissingTransitiveDependencyReportsIdentityAndReferrer()
+    {
+        using var fixture = new AssemblyReferenceFixture();
+        File.Delete(fixture.TransitivePath);
+        var loader = new AssemblyLoader();
+        loader.AddReferencePath(fixture.DependencyPath);
+
+        var (compilation, _) = loader.LoadAssembly(fixture.TargetPath);
+
+        Assert.Equal(TypeKind.Error, compilation.GetTypeByMetadataName("ReferenceFixture.Base")!.BaseType!.TypeKind);
+        var diagnostic = Assert.Single(loader.ReferenceDiagnostics);
+        Assert.Contains(fixture.TransitiveName, diagnostic.AssemblyName);
+        Assert.Equal(fixture.DependencyPath, diagnostic.ReferencedBy);
+    }
+
+    [Fact]
+    public void LoadAssembly_CorruptDiscoveredDependencyReportsPath()
+    {
+        using var fixture = new AssemblyReferenceFixture();
+        File.WriteAllText(fixture.TransitivePath, "invalid assembly");
+        var loader = new AssemblyLoader();
+        loader.AddReferencePath(fixture.DependencyPath);
+
+        loader.LoadAssembly(fixture.TargetPath);
+
+        var diagnostic = Assert.Single(loader.ReferenceDiagnostics);
+        Assert.Contains(fixture.TransitiveName, diagnostic.AssemblyName);
+        Assert.Equal(fixture.TransitivePath, diagnostic.ReferencePath);
+        Assert.Equal(fixture.DependencyPath, diagnostic.ReferencedBy);
+        Assert.NotEmpty(diagnostic.Reason);
+    }
+
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("corrupt")]
+    [InlineData("locked")]
+    public void LoadAssembly_InvalidUnusedExplicitReferenceIsReported(string failure)
+    {
+        using var fixture = new AssemblyReferenceFixture();
+        var invalidPath = Path.Combine(fixture.DirectoryPath, "invalid.dll");
+        if (failure != "missing")
+            File.WriteAllText(invalidPath, "invalid assembly");
+        using var lockStream = failure == "locked" ? new FileStream(invalidPath, FileMode.Open, FileAccess.Read, FileShare.None) : null;
+        var loader = new AssemblyLoader();
+        loader.AddReferencePath(fixture.DependencyPath);
+        loader.AddReferencePath(invalidPath);
+        loader.AddReferencePath(invalidPath);
+
+        var (compilation, assembly) = loader.LoadAssembly(fixture.TargetPath);
+
+        Assert.NotNull(assembly);
+        Assert.Equal(TypeKind.Class, compilation.GetTypeByMetadataName("ReferenceFixture.Target")!.BaseType!.TypeKind);
+        var diagnostic = Assert.Single(loader.ReferenceDiagnostics);
+        Assert.Equal("invalid", diagnostic.AssemblyName);
+        Assert.Equal(invalidPath, diagnostic.ReferencePath);
+        Assert.Null(diagnostic.ReferencedBy);
+        Assert.NotEmpty(diagnostic.Reason);
+    }
+
+    [Fact]
+    public void LoadAssembly_DiagnosticsResetAndRemainReadOnlyAcrossLoads()
+    {
+        using var fixture = new AssemblyReferenceFixture();
+        var loader = new AssemblyLoader();
+        loader.LoadAssembly(fixture.TargetPath);
+        var firstDiagnostics = loader.ReferenceDiagnostics;
+        Assert.Single(firstDiagnostics);
+        Assert.Throws<NotSupportedException>(() => ((IList<AssemblyReferenceDiagnostic>)firstDiagnostics).Clear());
+        loader.AddReferencePath(fixture.DependencyPath);
+
+        loader.LoadAssembly(fixture.TargetPath);
+
+        Assert.Empty(loader.ReferenceDiagnostics);
+        Assert.Single(firstDiagnostics);
+    }
+
+    [Fact]
+    public void LoadAssembly_SearchDirectoryResolvesDependencyChain()
+    {
+        using var fixture = new AssemblyReferenceFixture();
+        var loader = new AssemblyLoader();
+        loader.AddSearchDirectory(Path.GetDirectoryName(fixture.DependencyPath)!);
+
+        var (compilation, _) = loader.LoadAssembly(fixture.TargetPath);
+
+        Assert.Equal(TypeKind.Class, compilation.GetTypeByMetadataName("ReferenceFixture.Target")!.BaseType!.BaseType!.TypeKind);
+        Assert.Empty(loader.ReferenceDiagnostics);
+    }
+
+    [Fact]
+    public void LoadAssembly_SharedMissingDependencyProducesOneDiagnostic()
+    {
+        using var fixture = new AssemblyReferenceFixture(referenceTransitiveDirectly: true);
+        File.Delete(fixture.TransitivePath);
+        var loader = new AssemblyLoader();
+        loader.AddReferencePath(fixture.DependencyPath);
+
+        loader.LoadAssembly(fixture.TargetPath);
+
+        Assert.Contains(fixture.TransitiveName, Assert.Single(loader.ReferenceDiagnostics).AssemblyName);
+    }
+
+    [Fact]
+    public void LoadAssembly_MisnamedSearchResultDoesNotCountAsResolved()
+    {
+        using var fixture = new AssemblyReferenceFixture();
+        File.Copy(fixture.DependencyPath, fixture.TransitivePath, overwrite: true);
+        var loader = new AssemblyLoader();
+        loader.AddReferencePath(fixture.DependencyPath);
+
+        loader.LoadAssembly(fixture.TargetPath);
+
+        var diagnostic = Assert.Single(loader.ReferenceDiagnostics);
+        Assert.Contains(fixture.TransitiveName, diagnostic.AssemblyName);
+        Assert.Equal(fixture.TransitivePath, diagnostic.ReferencePath);
+        Assert.Contains("instead of", diagnostic.Reason);
+    }
+
+    [Fact]
+    public void LoadAssembly_UnreadableSearchResultAllowsLaterMatchingReference()
+    {
+        using var fixture = new AssemblyReferenceFixture();
+        var invalidPath = Path.Combine(Path.GetDirectoryName(fixture.TargetPath)!, Path.GetFileName(fixture.TransitivePath));
+        File.WriteAllText(invalidPath, "invalid assembly");
+        var loader = new AssemblyLoader();
+        loader.AddReferencePath(fixture.DependencyPath);
+
+        var (compilation, _) = loader.LoadAssembly(fixture.TargetPath);
+
+        Assert.Equal(TypeKind.Class, compilation.GetTypeByMetadataName("ReferenceFixture.Target")!.BaseType!.BaseType!.TypeKind);
+        Assert.Contains(compilation.References, reference => reference.Display == fixture.TransitivePath);
+        Assert.Empty(loader.ReferenceDiagnostics);
+    }
+
     [Fact]
     public void LoadAssembly_LoadsCompilationAndAssemblySymbol()
     {
@@ -207,12 +404,11 @@ public class B { }
     }
 
     [Fact]
-    public void AddReferencePath_NonExistentFile_DoesNotAddReference()
+    public void AddReferencePath_NonExistentFile_ReportsReferenceWithoutFailingLoad()
     {
         var loader = new AssemblyLoader();
         var nonExistentPath = Path.Combine(Path.GetTempPath(), "NonExistent_" + Guid.NewGuid() + ".dll");
 
-        // Should not throw, just ignore
         loader.AddReferencePath(nonExistentPath);
 
         var source = @"
@@ -226,6 +422,7 @@ public class C { }
         var (loadedCompilation, assemblySymbol) = loader.LoadAssembly(assemblyPath);
         Assert.NotNull(loadedCompilation);
         Assert.NotNull(assemblySymbol);
+        Assert.Equal(nonExistentPath, Assert.Single(loader.ReferenceDiagnostics).ReferencePath);
     }
 
     [Fact]
