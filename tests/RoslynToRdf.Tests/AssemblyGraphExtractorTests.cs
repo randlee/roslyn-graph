@@ -1399,6 +1399,72 @@ public readonly struct ReadOnlyPoint
 
     #region Array and Pointer Types
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Extract_ArrayShapes_PreservesFieldTypesRanksAndOverloads(bool metadataShapes)
+    {
+        var compilation = metadataShapes ? TestUtilities.CreateCompilationWithArrayShapes() : TestUtilities.CreateCompilation("""
+            public class ArrayShapes
+            {
+                public int[] Vector;
+                public int[,] Matrix;
+                public int[,,] Cube;
+                public int[][] Jagged;
+                public int[][,] MixedVector;
+                public int[,][] MixedMatrix;
+                public void M(int[] value) { }
+                public void M(int[,] value) { }
+                public void M(int[,,] value) { }
+                public void M(int[][] value) { }
+                public void M(int[][,] value) { }
+                public void M(int[,][] value) { }
+            }
+            """);
+        Assert.DoesNotContain(compilation.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        var type = compilation.GetTypeByMetadataName("ArrayShapes")!;
+        var emitter = new TestEmitter();
+        var options = new ExtractionOptions { IncludeAttributes = false };
+        new AssemblyGraphExtractor(emitter, options).Extract(compilation, type.ContainingAssembly);
+        var minter = new IriMinter(options.BaseUri);
+        var fields = type.GetMembers().OfType<IFieldSymbol>().ToArray();
+        var expectedCount = metadataShapes ? 2 : 6;
+        var fieldTypes = emitter.Triples.Where(triple => triple.Predicate == minter.OntologyPrefix + DotNetOntology.MemberRels.FieldType)
+            .Select(triple => triple.Object).Distinct().ToArray();
+        Assert.Equal(expectedCount, fieldTypes.Length);
+
+        foreach (var field in fields)
+        {
+            var array = Assert.IsAssignableFrom<IArrayTypeSymbol>(field.Type);
+            var arrayIri = minter.Type(array);
+            var fieldType = Assert.Single(emitter.Triples.Where(triple => triple.Subject == minter.Member(field)
+                && triple.Predicate == minter.OntologyPrefix + DotNetOntology.MemberRels.FieldType));
+            Assert.Equal(arrayIri, fieldType.Object);
+            var rank = Assert.Single(emitter.Triples.Where(triple => triple.Subject == arrayIri
+                && triple.Predicate == minter.OntologyPrefix + "arrayRank"));
+            Assert.Equal(array.Rank.ToString(), rank.Object);
+            var element = Assert.Single(emitter.Triples.Where(triple => triple.Subject == arrayIri
+                && triple.Predicate == minter.OntologyPrefix + DotNetOntology.TypeRels.ArrayElementType));
+            Assert.Equal(minter.Type(array.ElementType), element.Object);
+        }
+
+        if (!metadataShapes)
+        {
+            var methods = type.GetMembers("M").OfType<IMethodSymbol>().ToArray();
+            var methodSubjects = emitter.Triples.Where(triple => triple.Predicate == minter.OntologyPrefix + DotNetOntology.MemberProps.Name
+                && triple.Object == "M").Select(triple => triple.Subject).Distinct();
+            Assert.Equal(expectedCount, methodSubjects.Count());
+            foreach (var method in methods)
+            {
+                var parameter = Assert.Single(emitter.Triples.Where(triple => triple.Subject == minter.Member(method)
+                    && triple.Predicate == minter.OntologyPrefix + DotNetOntology.MemberRels.HasParameter));
+                var parameterType = Assert.Single(emitter.Triples.Where(triple => triple.Subject == parameter.Object
+                    && triple.Predicate == minter.OntologyPrefix + DotNetOntology.ParamRels.ParameterType));
+                Assert.Equal(minter.Type(method.Parameters[0].Type), parameterType.Object);
+            }
+        }
+    }
+
     [Fact]
     public void Extract_ArrayType_EmitsArrayElementType()
     {

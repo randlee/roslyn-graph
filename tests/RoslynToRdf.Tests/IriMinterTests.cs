@@ -278,6 +278,63 @@ public class Usage { public Outer<Outer<int>> Field; }";
 
     #region Type Tests - Arrays and Pointers
 
+    [Theory]
+    [InlineData("int[]", "System.Int32[]")]
+    [InlineData("int[,]", "System.Int32[,]")]
+    [InlineData("int[,,]", "System.Int32[,,]")]
+    [InlineData("int[][]", "System.Int32[][]")]
+    [InlineData("int[][,]", "System.Int32[,][]")]
+    [InlineData("int[,][]", "System.Int32[][,]")]
+    public void Type_ArrayShape_EncodesEveryDimension(string typeName, string metadataName)
+    {
+        var compilation = TestUtilities.CreateCompilation("public class C { public " + typeName + " Field; }");
+        Assert.DoesNotContain(compilation.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        var field = compilation.GetTypeByMetadataName("C")!.GetMembers("Field").OfType<IFieldSymbol>().Single();
+
+        Assert.EndsWith("/" + metadataName, Uri.UnescapeDataString(new IriMinter().Type(field.Type)));
+    }
+
+    [Fact]
+    public void Type_NonSzRankOneArray_DistinguishesFromVector()
+    {
+        var compilation = TestUtilities.CreateCompilationWithArrayShapes();
+        var type = compilation.GetTypeByMetadataName("ArrayShapes")!;
+        var vector = Assert.IsAssignableFrom<IArrayTypeSymbol>(type.GetMembers("Vector").OfType<IFieldSymbol>().Single().Type);
+        var variable = Assert.IsAssignableFrom<IArrayTypeSymbol>(type.GetMembers("Variable").OfType<IFieldSymbol>().Single().Type);
+        Assert.True(vector.IsSZArray);
+        Assert.False(variable.IsSZArray);
+        Assert.Equal(1, vector.Rank);
+        Assert.Equal(1, variable.Rank);
+        var minter = new IriMinter();
+
+        Assert.NotEqual(minter.Type(vector), minter.Type(variable));
+        Assert.EndsWith("/System.Int32%5B%5D", minter.Type(vector));
+        Assert.EndsWith("/System.Int32%5B%2A%5D", minter.Type(variable));
+    }
+
+    [Fact]
+    public void Member_ArrayRankOverloads_KeepMethodsAndParametersDistinct()
+    {
+        var compilation = TestUtilities.CreateCompilation("""
+            public class C
+            {
+                public void M(int[] value) { }
+                public void M(int[,] value) { }
+                public void M(int[,,] value) { }
+                public void M(int[][] value) { }
+                public void M(int[][,] value) { }
+                public void M(int[,][] value) { }
+            }
+            """);
+        Assert.DoesNotContain(compilation.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        var methods = compilation.GetTypeByMetadataName("C")!.GetMembers("M").OfType<IMethodSymbol>().ToArray();
+        var minter = new IriMinter();
+
+        Assert.Equal(6, methods.Select(minter.Member).Distinct().Count());
+        Assert.Equal(6, methods.Select(method => minter.Parameter(method, method.Parameters[0])).Distinct().Count());
+        Assert.EndsWith("/member/M%28System.Int32%5B%5D%29", minter.Member(methods[0]));
+    }
+
     [Fact]
     public void Type_SingleDimensionArray_AppendsSquareBrackets()
     {

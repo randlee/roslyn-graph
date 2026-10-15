@@ -142,7 +142,10 @@ public partial class IriMinter
     {
         if (type is IArrayTypeSymbol arrayType)
         {
-            return $"{GetFullMetadataName(arrayType.ElementType)}[]";
+            var suffix = arrayType.IsSZArray ? "[]"
+                : arrayType.Rank == 1 ? "[*]"
+                : $"[{new string(',', arrayType.Rank - 1)}]";
+            return $"{GetFullMetadataName(arrayType.ElementType)}{suffix}";
         }
 
         if (type is IPointerTypeSymbol pointerType)

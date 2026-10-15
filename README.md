@@ -95,8 +95,15 @@ Method signatures include generic arity (`M%60%601%28%29` for `M<T>()`) and conv
 operators include their target type (for example, `op_Implicit(C)~System.Int32`).
 These signature components are percent-escaped in the IRI. Generic method and
 conversion operator IRIs, including their parameter and type parameter IRIs,
-have changed to prevent overload collisions. Rebuild existing graphs to use the
-new identities. Other method IRIs retain their existing format.
+have changed to prevent overload collisions.
+
+Array type names preserve rank: `[]` for vectors, `[*]` for non-vector rank-one
+arrays, `[,]` for rank two, and `[,,]` for rank three. Nested arrays preserve each
+element's shape. Multi-dimensional and non-vector array IRIs, plus signatures
+that contain them, have changed; `int[]` and `int[][]` IRIs remain stable.
+Rebuild existing graphs to use these corrected identities. Method IRIs
+without generic arity, conversion targets, or affected array types retain their
+existing format.
 
 ### Key Relationships
 

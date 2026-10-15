@@ -1,4 +1,7 @@
 using System.Reflection;
+using System.Reflection.Metadata;
+using System.Reflection.Metadata.Ecma335;
+using System.Reflection.PortableExecutable;
 using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -38,6 +41,34 @@ internal static class TestUtilities
         }
 
         return (assemblyPath, dir);
+    }
+
+    public static CSharpCompilation CreateCompilationWithArrayShapes()
+    {
+        var metadata = new MetadataBuilder();
+        metadata.AddModule(0, metadata.GetOrAddString("ArrayShapes.dll"), metadata.GetOrAddGuid(Guid.NewGuid()), default, default);
+        metadata.AddAssembly(metadata.GetOrAddString("ArrayShapes"), new Version(1, 0, 0, 0), default, default, default, default);
+        var coreName = typeof(object).Assembly.GetName();
+        var coreReference = metadata.AddAssemblyReference(metadata.GetOrAddString(coreName.Name!), coreName.Version!,
+            default, metadata.GetOrAddBlob(coreName.GetPublicKeyToken()!), default, default);
+        var objectReference = metadata.AddTypeReference(coreReference, metadata.GetOrAddString("System"), metadata.GetOrAddString("Object"));
+        metadata.AddTypeDefinition(TypeAttributes.NotPublic, default, metadata.GetOrAddString("<Module>"), default,
+            MetadataTokens.FieldDefinitionHandle(1), MetadataTokens.MethodDefinitionHandle(1));
+        metadata.AddTypeDefinition(TypeAttributes.Public, default, metadata.GetOrAddString("ArrayShapes"), objectReference,
+            MetadataTokens.FieldDefinitionHandle(1), MetadataTokens.MethodDefinitionHandle(1));
+
+        var vectorSignature = new BlobBuilder();
+        new BlobEncoder(vectorSignature).FieldSignature().SZArray().Int32();
+        metadata.AddFieldDefinition(FieldAttributes.Public, metadata.GetOrAddString("Vector"), metadata.GetOrAddBlob(vectorSignature));
+        var variableSignature = new BlobBuilder();
+        new BlobEncoder(variableSignature).FieldSignature().Array(element => element.Int32(), shape => shape.Shape(1, [], []));
+        metadata.AddFieldDefinition(FieldAttributes.Public, metadata.GetOrAddString("Variable"), metadata.GetOrAddBlob(variableSignature));
+
+        var pe = new ManagedPEBuilder(new PEHeaderBuilder(imageCharacteristics: Characteristics.ExecutableImage | Characteristics.Dll),
+            new MetadataRootBuilder(metadata), new BlobBuilder());
+        var image = new BlobBuilder();
+        pe.Serialize(image);
+        return CreateCompilation("").AddReferences(MetadataReference.CreateFromImage(image.ToImmutableArray()));
     }
 
     private static IEnumerable<MetadataReference> GetDefaultReferences()
