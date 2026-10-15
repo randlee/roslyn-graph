@@ -130,7 +130,6 @@ public sealed class AssemblyLoader
         }
 
         diagnostics.AddRange(unresolved.Values.Select(entry => entry.Diagnostic));
-        ReferenceDiagnostics = diagnostics.AsReadOnly();
 
         var compilation = CSharpCompilation.Create(
             "Analysis",
@@ -142,6 +141,34 @@ public sealed class AssemblyLoader
         var assemblySymbol = compilation.GetAssemblyOrModuleSymbol(target.Reference) as IAssemblySymbol;
         if (assemblySymbol == null)
             throw new InvalidOperationException("Failed to load assembly symbol");
+
+        var reportedIdentities = diagnostics.Select(diagnostic => diagnostic.AssemblyName)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var assembly in loaded.Values)
+        {
+            var symbol = compilation.GetAssemblyOrModuleSymbol(assembly.Reference) as IAssemblySymbol;
+            if (symbol == null)
+                continue;
+
+            foreach (var module in symbol.Modules)
+            {
+                for (var referenceIndex = 0; referenceIndex < module.ReferencedAssemblies.Length; referenceIndex++)
+                {
+                    var identity = module.ReferencedAssemblies[referenceIndex];
+                    var boundAssembly = module.ReferencedAssemblySymbols[referenceIndex];
+                    if (compilation.GetMetadataReference(boundAssembly) != null || unresolved.ContainsKey(identity.Name)
+                        || !reportedIdentities.Add(identity.ToString()))
+                        continue;
+
+                    loaded.TryGetValue(identity.Name, out var candidate);
+                    var reason = candidate == null
+                        ? "Roslyn could not bind the assembly reference."
+                        : $"Roslyn could not bind the requested identity to supplied assembly '{candidate.Identity.FullName}'.";
+                    diagnostics.Add(new AssemblyReferenceDiagnostic(identity.ToString(), candidate?.Path, assembly.Path, reason));
+                }
+            }
+        }
+        ReferenceDiagnostics = diagnostics.AsReadOnly();
 
         return (compilation, assemblySymbol);
     }

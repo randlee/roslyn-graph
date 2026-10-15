@@ -6,6 +6,81 @@ namespace RoslynToRdf.Tests;
 public class CliIntegrationTests
 {
     [Theory]
+    [InlineData("culture", false)]
+    [InlineData("culture", true)]
+    [InlineData("public-key", false)]
+    [InlineData("public-key", true)]
+    public async Task Cli_IncompatibleReferenceIdentityWarnsAndOnlyFailsWhenRequested(string mismatch, bool strict)
+    {
+        using var fixture = new AssemblyReferenceFixture(strongNamedDependency: mismatch == "public-key");
+        fixture.ReplaceDependency("2.0.0.0", mismatch == "culture" ? "fr" : "");
+        var outputPath = Path.Combine(fixture.DirectoryPath, "out.nt");
+        var arguments = new List<string>
+        {
+            fixture.TargetPath, "--output", outputPath, "--quiet", "--reference", fixture.DependencyPath
+        };
+        if (strict)
+            arguments.Add("--fail-on-missing-references");
+
+        var result = await RunCliAsync(arguments.ToArray());
+
+        Assert.Equal(strict ? 1 : 0, result.ExitCode);
+        Assert.Empty(result.Stdout);
+        Assert.Contains(fixture.DependencyName, result.Stderr);
+        Assert.Contains(fixture.DependencyPath, result.Stderr);
+        Assert.Contains("Roslyn could not bind", result.Stderr);
+        Assert.Single(result.Stderr.Split(Environment.NewLine).Where(line => line.StartsWith("Warning:")));
+        if (!strict)
+            Assert.Contains("ReferenceFixture.Target", await File.ReadAllTextAsync(outputPath));
+    }
+
+    [Theory]
+    [InlineData("1.0.0.0", false)]
+    [InlineData("3.0.0.0", false)]
+    [InlineData("3.0.0.0", true)]
+    public async Task Cli_StrictModeAcceptsCompatibleVersionUnification(string version, bool strongNamed)
+    {
+        using var fixture = new AssemblyReferenceFixture(strongNamedDependency: strongNamed);
+        fixture.ReplaceDependency(version, publicSign: strongNamed);
+        var outputPath = Path.Combine(fixture.DirectoryPath, "out.nt");
+
+        var result = await RunCliAsync([
+            fixture.TargetPath, "--output", outputPath, "--quiet", "-r", fixture.DependencyPath,
+            "--fail-on-missing-references"
+        ]);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Empty(result.Stdout);
+        Assert.Empty(result.Stderr);
+        Assert.Contains("ReferenceFixture.Base", await File.ReadAllTextAsync(outputPath));
+    }
+
+    [Fact]
+    public async Task Cli_StrictModeAcceptsRuntimeFacadeBindings()
+    {
+        var runtimeDirectory = Path.GetDirectoryName(typeof(object).Assembly.Location)!;
+        var compilation = TestUtilities.CreateCompilation(
+                "public class RuntimeFacade { public System.Collections.Generic.IEnumerable<int> Values => System.Linq.Enumerable.Empty<int>(); }",
+                "RuntimeFacadeBindings")
+            .AddReferences(Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(Path.Combine(runtimeDirectory, "System.Runtime.dll")));
+        var (assemblyPath, directory) = TestUtilities.EmitToTempAssembly(compilation);
+        try
+        {
+            var outputPath = Path.Combine(directory, "out.nt");
+            var result = await RunCliAsync([assemblyPath, "--output", outputPath, "--quiet", "--fail-on-missing-references"]);
+
+            Assert.Equal(0, result.ExitCode);
+            Assert.Empty(result.Stdout);
+            Assert.Empty(result.Stderr);
+            Assert.Contains("RuntimeFacade", await File.ReadAllTextAsync(outputPath));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task Cli_MissingDependencyWarnsEvenWhenQuietAndOnlyFailsWhenRequested(bool strict)
@@ -25,6 +100,7 @@ public class CliIntegrationTests
         Assert.Contains(fixture.TargetPath, result.Stderr);
         Assert.Contains("--reference (-r)", result.Stderr);
         Assert.Contains("--search-dir (-s)", result.Stderr);
+        Assert.Single(result.Stderr.Split(Environment.NewLine).Where(line => line.StartsWith("Warning:")));
         if (strict)
             Assert.Contains("--fail-on-missing-references", result.Stderr);
         else
@@ -86,6 +162,7 @@ public class CliIntegrationTests
         Assert.Empty(result.Stdout);
         Assert.Contains(fixture.TransitiveName, result.Stderr);
         Assert.Contains(fixture.DependencyPath, result.Stderr);
+        Assert.Single(result.Stderr.Split(Environment.NewLine).Where(line => line.StartsWith("Warning:")));
     }
 
     [Fact]

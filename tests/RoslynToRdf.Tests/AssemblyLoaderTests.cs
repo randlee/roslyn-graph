@@ -7,6 +7,49 @@ namespace RoslynToRdf.Tests;
 public class AssemblyLoaderTests
 {
     [Theory]
+    [InlineData("culture")]
+    [InlineData("public-key")]
+    public void LoadAssembly_IncompatibleSuppliedIdentityReportsUnboundReference(string mismatch)
+    {
+        using var fixture = new AssemblyReferenceFixture(strongNamedDependency: mismatch == "public-key");
+        fixture.ReplaceDependency("2.0.0.0", mismatch == "culture" ? "fr" : "");
+        var loader = new AssemblyLoader();
+        loader.AddReferencePath(fixture.DependencyPath);
+
+        var (compilation, assembly) = loader.LoadAssembly(fixture.TargetPath);
+
+        Assert.Equal(TypeKind.Error, assembly.GetTypeByMetadataName("ReferenceFixture.Target")!.BaseType!.TypeKind);
+        Assert.Empty(compilation.GetDiagnostics());
+        var diagnostic = Assert.Single(loader.ReferenceDiagnostics);
+        Assert.Contains(fixture.DependencyName, diagnostic.AssemblyName);
+        Assert.Contains("Culture=neutral", diagnostic.AssemblyName);
+        Assert.Equal(fixture.DependencyPath, diagnostic.ReferencePath);
+        Assert.Equal(fixture.TargetPath, diagnostic.ReferencedBy);
+        Assert.Contains("Roslyn could not bind", diagnostic.Reason);
+        Assert.Contains(mismatch == "culture" ? "Culture=fr" : "PublicKeyToken=null", diagnostic.Reason);
+    }
+
+    [Theory]
+    [InlineData("1.0.0.0", false)]
+    [InlineData("3.0.0.0", false)]
+    [InlineData("3.0.0.0", true)]
+    public void LoadAssembly_CompatibleVersionUnificationDoesNotProduceDiagnostics(string version, bool strongNamed)
+    {
+        using var fixture = new AssemblyReferenceFixture(strongNamedDependency: strongNamed);
+        fixture.ReplaceDependency(version, publicSign: strongNamed);
+        var loader = new AssemblyLoader();
+        loader.AddReferencePath(fixture.DependencyPath);
+
+        var (compilation, assembly) = loader.LoadAssembly(fixture.TargetPath);
+
+        var baseType = assembly.GetTypeByMetadataName("ReferenceFixture.Target")!.BaseType!;
+        Assert.Equal(TypeKind.Class, baseType.TypeKind);
+        Assert.Equal(Version.Parse(version), baseType.ContainingAssembly.Identity.Version);
+        Assert.Equal(fixture.DependencyPath, compilation.GetMetadataReference(baseType.ContainingAssembly)!.Display);
+        Assert.Empty(loader.ReferenceDiagnostics);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void LoadAssembly_ExplicitDependencyResolvesByIdentityAndLoadsTransitiveReferences(bool renameDependency)
