@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using RoslynToRdf.Core.Extraction;
+using RoslynToRdf.Core.Model;
 
 namespace RoslynToRdf.Tests;
 
@@ -25,6 +26,78 @@ public class C { public int X => 1; }
 
         var type = loadedCompilation.GetTypeByMetadataName("Sample.C");
         Assert.NotNull(type);
+    }
+
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    public void LoadAssembly_ImportsPrivateSymbols_ExtractionHonorsVisibility(bool includePrivate, bool includeInternal)
+    {
+        var source = """
+            namespace Sample;
+            public class Visibility
+            {
+                public void PublicMethod() { }
+                private void PrivateMethod() { }
+                private int PrivateField = 1;
+                private int PrivateProperty => PrivateField;
+                private class PrivateNested { public class PrivateDescendant { } }
+                internal void InternalMethod() { }
+                internal int InternalField;
+                internal int InternalProperty => InternalField;
+                internal class InternalNested { public class InternalDescendant { } }
+            }
+            internal class InternalType { }
+            """;
+        var compilation = TestUtilities.CreateCompilation(source, "LoaderVisibility");
+        var (assemblyPath, _) = TestUtilities.EmitToTempAssembly(compilation);
+        var (loadedCompilation, assemblySymbol) = new AssemblyLoader().LoadAssembly(assemblyPath);
+        var type = loadedCompilation.GetTypeByMetadataName("Sample.Visibility")!;
+        var privateSymbols = new[]
+        {
+            type.GetMembers("PrivateMethod").Single(),
+            type.GetMembers("PrivateField").Single(),
+            type.GetMembers("PrivateProperty").Single(),
+            type.GetTypeMembers("PrivateNested").Single()
+        };
+        var internalSymbols = new[]
+        {
+            type.GetMembers("InternalMethod").Single(),
+            type.GetMembers("InternalField").Single(),
+            type.GetMembers("InternalProperty").Single(),
+            type.GetTypeMembers("InternalNested").Single(),
+            loadedCompilation.GetTypeByMetadataName("Sample.InternalType")!
+        };
+        Assert.All(privateSymbols, symbol => Assert.Equal(Accessibility.Private, symbol.DeclaredAccessibility));
+        var privateDescendant = type.GetTypeMembers("PrivateNested").Single().GetTypeMembers("PrivateDescendant").Single();
+        var internalDescendant = type.GetTypeMembers("InternalNested").Single().GetTypeMembers("InternalDescendant").Single();
+
+        var options = new ExtractionOptions { BaseUri = "http://test.example/" };
+        if (includePrivate)
+            options.IncludePrivate = true;
+        if (!includeInternal)
+            options.IncludeInternal = false;
+        var emitter = new TestEmitter();
+        new AssemblyGraphExtractor(emitter, options).Extract(loadedCompilation, assemblySymbol);
+        var minter = new IriMinter(options.BaseUri);
+        var declarationSubjects = emitter.Triples
+            .Where(triple => triple.Predicate == DotNetOntology.Rdf + "type")
+            .Select(triple => triple.Subject)
+            .ToHashSet();
+
+        Assert.Contains(minter.Member(type.GetMembers("PublicMethod").Single()), declarationSubjects);
+        foreach (var symbol in privateSymbols.Append(privateDescendant))
+        {
+            var iri = symbol is INamedTypeSymbol nested ? minter.Type(nested) : minter.Member(symbol);
+            Assert.Equal(includePrivate, declarationSubjects.Contains(iri));
+        }
+        foreach (var symbol in internalSymbols.Append(internalDescendant))
+        {
+            var iri = symbol is INamedTypeSymbol internalType ? minter.Type(internalType) : minter.Member(symbol);
+            Assert.Equal(includeInternal, declarationSubjects.Contains(iri));
+        }
     }
 
     #region Corner Cases

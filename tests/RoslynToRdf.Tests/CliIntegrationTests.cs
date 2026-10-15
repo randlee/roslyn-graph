@@ -26,6 +26,48 @@ public class CliIntegrationTests
         Assert.DoesNotContain("Assembly not found", result.Stderr);
     }
 
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    [InlineData(true, false)]
+    public async Task Cli_EmittedAssembly_HonorsVisibilityFlags(bool includePrivate, bool includeInternal)
+    {
+        var source = """
+            namespace Sample;
+            public class Visibility
+            {
+                public void PublicMethod() { }
+                private void PrivateMethod() { }
+                private int PrivateField = 1;
+                private int PrivateProperty => PrivateField;
+                private class PrivateNested { public class PrivateDescendant { } }
+                internal void InternalMethod() { }
+                internal int InternalField;
+                internal int InternalProperty => InternalField;
+                internal class InternalNested { public class InternalDescendant { } }
+            }
+            internal class InternalType { }
+            """;
+        var compilation = TestUtilities.CreateCompilation(source, "CliVisibility");
+        var (assemblyPath, directory) = TestUtilities.EmitToTempAssembly(compilation);
+        var outputPath = Path.Combine(directory, "visibility.nt");
+        var args = new List<string> { assemblyPath, "--output", outputPath, "--quiet" };
+        if (includePrivate)
+            args.Add("--include-private");
+        if (!includeInternal)
+            args.AddRange(["--include-internal", "false"]);
+
+        var result = await RunCliAsync(args.ToArray());
+
+        Assert.Equal(0, result.ExitCode);
+        var graph = await File.ReadAllTextAsync(outputPath);
+        Assert.Contains("\"PublicMethod\"", graph);
+        foreach (var name in new[] { "PrivateMethod", "PrivateField", "PrivateProperty", "PrivateNested", "PrivateDescendant" })
+            Assert.Equal(includePrivate, graph.Contains($"\"{name}\"", StringComparison.Ordinal));
+        foreach (var name in new[] { "InternalMethod", "InternalField", "InternalProperty", "InternalNested", "InternalType", "InternalDescendant" })
+            Assert.Equal(includeInternal, graph.Contains($"\"{name}\"", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task Cli_TurtleOutput_WritesFileWithPrefixes()
     {

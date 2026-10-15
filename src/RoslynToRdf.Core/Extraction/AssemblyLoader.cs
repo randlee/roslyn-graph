@@ -75,7 +75,9 @@ public sealed class AssemblyLoader
         var compilation = CSharpCompilation.Create(
             "Analysis",
             references: references,
-            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            options: new CSharpCompilationOptions(
+                OutputKind.DynamicallyLinkedLibrary,
+                metadataImportOptions: MetadataImportOptions.All));
 
         // Find the target assembly symbol
         var assemblySymbol = compilation.GetAssemblyOrModuleSymbol(targetRef) as IAssemblySymbol;
