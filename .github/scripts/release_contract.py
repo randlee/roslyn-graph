@@ -58,7 +58,7 @@ def main() -> int:
         expected_formats = {"win-x64": "zip", "osx-x64": "tar.gz", "osx-arm64": "tar.gz"}
         if formats != expected_formats:
             raise ValueError(f"release archive formats must be {expected_formats}")
-        matrix = [{"runner": item["runner"], "rid": item["runtime"], "extension": item["extension"]} for item in contract["releaseArchives"]]
+        matrix = {"include": [{"runner": item["runner"], "rid": item["runtime"], "extension": item["extension"]} for item in contract["releaseArchives"]]}
         result = {"version": version, "packageId": contract["packageId"], "runtimes": sorted(actual_runtimes), "matrix": matrix}
         if args.github_output:
             with Path(args.github_output).open("a", encoding="utf-8") as output:

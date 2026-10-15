@@ -38,10 +38,13 @@ def test_distribution_generators_use_roslyn_graph_public_names(tmp_path):
     distribution_channels.winget(data, winget_path)
     assert sorted(path.name for path in winget_path.iterdir()) == [
         "Randlee.Roslyn-Graph.installer.yaml",
-        "Randlee.Roslyn-Graph.version.yaml",
+        "Randlee.Roslyn-Graph.locale.en-US.yaml",
         "Randlee.Roslyn-Graph.yaml",
     ]
-    locale = (winget_path / "Randlee.Roslyn-Graph.yaml").read_text(encoding="utf-8")
+    locale = (winget_path / "Randlee.Roslyn-Graph.locale.en-US.yaml").read_text(encoding="utf-8")
     installer = (winget_path / "Randlee.Roslyn-Graph.installer.yaml").read_text(encoding="utf-8")
+    version_manifest = (winget_path / "Randlee.Roslyn-Graph.yaml").read_text(encoding="utf-8")
+    assert "ManifestType: defaultLocale" in locale
+    assert "ManifestType: version" in version_manifest
     assert "PackageName: roslyn-graph" in locale
     assert "PortableCommandAlias: roslyn2rdf.exe" in installer

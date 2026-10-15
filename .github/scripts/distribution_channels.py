@@ -176,7 +176,7 @@ def winget(data: dict, output: Path) -> None:
     installer = f"{ARCHIVE_PREFIX}_{version}_win-x64.zip"
     common = f"PackageIdentifier: {IDENTIFIER}\nPackageVersion: {version}\n"
     files = {
-        f"{IDENTIFIER}.yaml": (
+        f"{IDENTIFIER}.locale.en-US.yaml": (
             "PackageIdentifier: " + IDENTIFIER + "\n"
             "PackageVersion: " + version + "\n"
             "PackageLocale: en-US\n"
@@ -200,7 +200,7 @@ def winget(data: dict, output: Path) -> None:
             "ManifestType: installer\n"
             "ManifestVersion: 1.6.0\n"
         ),
-        f"{IDENTIFIER}.version.yaml": (
+        f"{IDENTIFIER}.yaml": (
             common + "ManifestType: version\nManifestVersion: 1.6.0\n"
         ),
     }
