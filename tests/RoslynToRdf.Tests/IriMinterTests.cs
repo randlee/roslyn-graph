@@ -605,7 +605,7 @@ public class C
         var iri = minter.Member(method);
 
         Assert.Contains("%28", iri);
-        Assert.Contains("%3C", iri);
+        Assert.Contains("%60%600", iri);
         Assert.DoesNotContain('<', iri);
         Assert.True(Uri.IsWellFormedUriString(iri, UriKind.Absolute));
     }

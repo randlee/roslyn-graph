@@ -109,13 +109,23 @@ These signature components are percent-escaped in the IRI. Generic method and
 conversion operator IRIs, including their parameter and type parameter IRIs,
 have changed to prevent overload collisions.
 
+Member signatures preserve open generic arguments, including generic arguments
+on containing types. Generic parameters use ordinal positions with separate
+markers for method and type parameters; nested type positions include the outer
+types' arities. Thus overloads taking `List<T>` and `List<U>` have distinct member
+identities, as do conversions to those targets. This changes affected member and
+owned parameter and type parameter IRIs. Function pointer member signatures also
+identify parameter and return types recursively, with passing modes and calling
+conventions. Graph type nodes keep their existing representation of open generic
+constructions as generic definitions.
+
 Array type names preserve rank: `[]` for vectors, `[*]` for non-vector rank-one
 arrays, `[,]` for rank two, and `[,,]` for rank three. Nested arrays preserve each
 element's shape. Multi-dimensional and non-vector array IRIs, plus signatures
 that contain them, have changed; `int[]` and `int[][]` IRIs remain stable.
 Rebuild existing graphs to use these corrected identities. Method IRIs
-without generic arity, conversion targets, or affected array types retain their
-existing format.
+without generic arity, conversion targets, open generic parameters, function
+pointers, or affected array types retain their existing format.
 
 ### Key Relationships
 
