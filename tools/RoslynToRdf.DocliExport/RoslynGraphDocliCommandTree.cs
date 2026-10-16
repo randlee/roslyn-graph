@@ -56,6 +56,10 @@ internal static class RoslynGraphDocliCommandTree
         });
         root.Options.Add(new Option<bool>("--verbose", "-v") { Description = "Verbose output" });
         root.Options.Add(new Option<bool>("--quiet", "-q") { Description = "Quiet output" });
+        root.Options.Add(new Option<bool>("--fail-on-missing-references")
+        {
+            Description = "Fail on unresolved or unreadable assembly references (.dll inputs only)",
+        });
         root.Options.Add(new Option<string[]>("--reference", "-r")
         {
             Description = "Additional assembly references",
