@@ -138,20 +138,49 @@ public partial class IriMinter
     /// <summary>
     /// Gets the full metadata name for a type, handling nested types and generics.
     /// </summary>
-    private static string GetFullMetadataName(ITypeSymbol type)
+    private static string GetFullMetadataName(ITypeSymbol type, bool forMemberSignature = false)
     {
         if (type is IArrayTypeSymbol arrayType)
         {
-            return $"{GetFullMetadataName(arrayType.ElementType)}[]";
+            var suffix = arrayType.IsSZArray ? "[]"
+                : arrayType.Rank == 1 ? "[*]"
+                : $"[{new string(',', arrayType.Rank - 1)}]";
+            return $"{GetFullMetadataName(arrayType.ElementType, forMemberSignature)}{suffix}";
         }
 
         if (type is IPointerTypeSymbol pointerType)
         {
-            return $"{GetFullMetadataName(pointerType.PointedAtType)}*";
+            return $"{GetFullMetadataName(pointerType.PointedAtType, forMemberSignature)}*";
+        }
+
+        if (forMemberSignature && type is IFunctionPointerTypeSymbol functionPointer)
+        {
+            var signature = functionPointer.Signature;
+            var conventions = string.Join(",", signature.UnmanagedCallingConventionTypes
+                .Select(convention => GetFullMetadataName(convention, forMemberSignature: true)));
+            var parameters = string.Join(",", signature.Parameters
+                .Select(parameter => $"{parameter.RefKind}:{GetFullMetadataName(parameter.Type, forMemberSignature: true)}"));
+            var returnType = GetFullMetadataName(signature.ReturnType, forMemberSignature: true);
+            return $"delegate*{signature.CallingConvention}[{conventions}]({parameters})~{signature.RefKind}:{returnType}";
         }
 
         if (type is ITypeParameterSymbol typeParam)
         {
+            if (forMemberSignature)
+            {
+                if (typeParam.DeclaringMethod != null)
+                    return $"``{typeParam.Ordinal}";
+
+                var ordinal = typeParam.Ordinal;
+                var containingType = typeParam.DeclaringType?.ContainingType;
+                while (containingType != null)
+                {
+                    ordinal += containingType.Arity;
+                    containingType = containingType.ContainingType;
+                }
+                return $"`{ordinal}";
+            }
+
             // Include the declaring type or method to make type parameters unique
             var ownerPart = typeParam.DeclaringType != null
                 ? GetFullMetadataName(typeParam.DeclaringType)
@@ -187,18 +216,18 @@ public partial class IriMinter
         foreach (var containing in containingTypes)
         {
             sb.Append(containing.Name);
-            AppendTypeParameters(sb, containing);
+            AppendTypeParameters(sb, containing, forMemberSignature);
             sb.Append('+');
         }
 
         // Type name
         sb.Append(namedType.Name);
-        AppendTypeParameters(sb, namedType);
+        AppendTypeParameters(sb, namedType, forMemberSignature);
 
         return sb.ToString();
     }
 
-    private static void AppendTypeParameters(StringBuilder sb, INamedTypeSymbol type)
+    private static void AppendTypeParameters(StringBuilder sb, INamedTypeSymbol type, bool forMemberSignature)
     {
         if (type.TypeParameters.Length == 0 && type.TypeArguments.Length == 0)
             return;
@@ -206,14 +235,13 @@ public partial class IriMinter
         sb.Append('`');
         sb.Append(type.TypeParameters.Length > 0 ? type.TypeParameters.Length : type.TypeArguments.Length);
 
-        // If this is a constructed generic, include the type arguments
-        if (type.TypeArguments.Length > 0 && !type.TypeArguments.All(t => t is ITypeParameterSymbol))
+        if (type.TypeArguments.Length > 0 && (forMemberSignature || !type.TypeArguments.All(t => t is ITypeParameterSymbol)))
         {
             sb.Append('[');
             for (int i = 0; i < type.TypeArguments.Length; i++)
             {
                 if (i > 0) sb.Append(',');
-                sb.Append(GetFullMetadataName(type.TypeArguments[i]));
+                sb.Append(GetFullMetadataName(type.TypeArguments[i], forMemberSignature));
             }
             sb.Append(']');
         }
@@ -227,6 +255,11 @@ public partial class IriMinter
         if (member is IMethodSymbol method)
         {
             var sb = new StringBuilder();
+            if (method.Arity > 0)
+            {
+                sb.Append("``");
+                sb.Append(method.Arity);
+            }
             sb.Append('(');
             for (int i = 0; i < method.Parameters.Length; i++)
             {
@@ -241,9 +274,14 @@ public partial class IriMinter
                 else if (param.RefKind == RefKind.In)
                     sb.Append("in ");
 
-                sb.Append(GetFullMetadataName(param.Type));
+                sb.Append(GetFullMetadataName(param.Type, forMemberSignature: true));
             }
             sb.Append(')');
+            if (method.MethodKind == MethodKind.Conversion)
+            {
+                sb.Append('~');
+                sb.Append(GetFullMetadataName(method.ReturnType, forMemberSignature: true));
+            }
             return sb.ToString();
         }
 
@@ -254,7 +292,7 @@ public partial class IriMinter
             for (int i = 0; i < prop.Parameters.Length; i++)
             {
                 if (i > 0) sb.Append(',');
-                sb.Append(GetFullMetadataName(prop.Parameters[i].Type));
+                sb.Append(GetFullMetadataName(prop.Parameters[i].Type, forMemberSignature: true));
             }
             sb.Append(']');
             return sb.ToString();

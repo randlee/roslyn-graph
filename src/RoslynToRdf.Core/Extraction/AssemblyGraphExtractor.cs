@@ -98,6 +98,9 @@ public sealed partial class AssemblyGraphExtractor
 
     private bool ShouldIncludeType(INamedTypeSymbol type)
     {
+        if (type.ContainingType != null && !ShouldIncludeType(type.ContainingType))
+            return false;
+
         if (type.IsImplicitlyDeclared && !_options.IncludeCompilerGenerated)
             return false;
 

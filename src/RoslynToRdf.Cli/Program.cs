@@ -40,6 +40,8 @@ public class Program
         var verboseOption = new Option<bool>(["--verbose", "-v"], () => false, "Verbose output");
         var quietOption = new Option<bool>(["--quiet", "-q"], () => false, "Quiet output");
         var refsOption = new Option<string[]>(["--reference", "-r"], () => [], "Additional assembly references");
+        var failOnMissingReferencesOption = new Option<bool>("--fail-on-missing-references", () => false,
+            "Fail on unresolved or unreadable assembly references (.dll inputs only)");
         var searchDirOption = new Option<string[]>(["--search-dir", "-s"], () => [], "Search directories");
         var solutionDirOption = new Option<DirectoryInfo?>("--solution-dir", "Solution directory used to evaluate a source project (defaults to the project directory)");
         var configurationOption = new Option<string?>("--configuration", "MSBuild configuration used to evaluate a source project");
@@ -60,6 +62,7 @@ public class Program
         rootCommand.AddOption(verboseOption);
         rootCommand.AddOption(quietOption);
         rootCommand.AddOption(refsOption);
+        rootCommand.AddOption(failOnMissingReferencesOption);
         rootCommand.AddOption(searchDirOption);
         rootCommand.AddOption(solutionDirOption);
         rootCommand.AddOption(configurationOption);
@@ -83,6 +86,7 @@ public class Program
             var verbose = context.ParseResult.GetValueForOption(verboseOption);
             var quiet = context.ParseResult.GetValueForOption(quietOption);
             var refs = context.ParseResult.GetValueForOption(refsOption)!;
+            var failOnMissingReferences = context.ParseResult.GetValueForOption(failOnMissingReferencesOption);
             var searchDirs = context.ParseResult.GetValueForOption(searchDirOption)!;
             var solutionDir = context.ParseResult.GetValueForOption(solutionDirOption);
             var configuration = context.ParseResult.GetValueForOption(configurationOption);
@@ -91,7 +95,7 @@ public class Program
 
             context.ExitCode = await RunExtraction([assembly, ..additionalAssemblies], output, format, baseUri, includePrivate, includeInternal,
                 excludeAttributes, excludeExternalTypes, extractExceptions, extractSeeAlso, verbose, quiet, refs, searchDirs,
-                solutionDir?.FullName, configuration, platform, targetFramework);
+                solutionDir?.FullName, configuration, platform, targetFramework, failOnMissingReferences);
         });
 
         return await rootCommand.InvokeAsync(args);
@@ -124,7 +128,7 @@ public class Program
     private static async Task<int> RunExtraction(IEnumerable<FileInfo> requestedAssemblies, FileInfo? output, OutputFormat format, string baseUri,
         bool includePrivate, bool includeInternal, bool excludeAttributes, bool excludeExternalTypes,
         bool extractExceptions, bool extractSeeAlso, bool verbose, bool quiet, string[] refs, string[] searchDirs,
-        string? solutionDir, string? configuration, string? platform, string? targetFramework)
+        string? solutionDir, string? configuration, string? platform, string? targetFramework, bool failOnMissingReferences)
     {
         var assemblies = requestedAssemblies
             .GroupBy(assembly => assembly.FullName, StringComparer.OrdinalIgnoreCase)
@@ -135,6 +139,12 @@ public class Program
         if (sourceProjects.Length > 0 && (sourceProjects.Length != 1 || assemblies.Length != 1))
         {
             Console.Error.WriteLine("A source project must be extracted alone; it cannot be combined with --assembly.");
+            return 1;
+        }
+
+        if (sourceProjects.Length > 0 && failOnMissingReferences)
+        {
+            Console.Error.WriteLine("--fail-on-missing-references is supported only for assembly (.dll) inputs, not source projects.");
             return 1;
         }
 
@@ -214,6 +224,17 @@ public class Program
                     foreach (var searchDir in searchDirs) loader.AddSearchDirectory(searchDir);
 
                     var (compilation, assemblySymbol) = loader.LoadAssembly(assembly.FullName);
+                    foreach (var diagnostic in loader.ReferenceDiagnostics)
+                    {
+                        var referencePath = diagnostic.ReferencePath == null ? "" : $" at '{diagnostic.ReferencePath}'";
+                        var referencedBy = diagnostic.ReferencedBy == null ? " (explicit --reference)" : $" referenced by '{diagnostic.ReferencedBy}'";
+                        Console.Error.WriteLine($"Warning: Assembly reference '{diagnostic.AssemblyName}'{referencePath}{referencedBy} could not be loaded: {diagnostic.Reason} Supply --reference (-r) or --search-dir (-s) to resolve dependencies.");
+                    }
+                    if (failOnMissingReferences && loader.ReferenceDiagnostics.Count > 0)
+                    {
+                        Console.Error.WriteLine("Error: Assembly references could not be loaded (--fail-on-missing-references).");
+                        return 1;
+                    }
                     var extractor = new AssemblyGraphExtractor(emitter, options, log);
                     extractor.Extract(compilation, assemblySymbol);
                 }

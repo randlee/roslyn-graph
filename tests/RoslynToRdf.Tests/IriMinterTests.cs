@@ -278,6 +278,63 @@ public class Usage { public Outer<Outer<int>> Field; }";
 
     #region Type Tests - Arrays and Pointers
 
+    [Theory]
+    [InlineData("int[]", "System.Int32[]")]
+    [InlineData("int[,]", "System.Int32[,]")]
+    [InlineData("int[,,]", "System.Int32[,,]")]
+    [InlineData("int[][]", "System.Int32[][]")]
+    [InlineData("int[][,]", "System.Int32[,][]")]
+    [InlineData("int[,][]", "System.Int32[][,]")]
+    public void Type_ArrayShape_EncodesEveryDimension(string typeName, string metadataName)
+    {
+        var compilation = TestUtilities.CreateCompilation("public class C { public " + typeName + " Field; }");
+        Assert.DoesNotContain(compilation.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        var field = compilation.GetTypeByMetadataName("C")!.GetMembers("Field").OfType<IFieldSymbol>().Single();
+
+        Assert.EndsWith("/" + metadataName, Uri.UnescapeDataString(new IriMinter().Type(field.Type)));
+    }
+
+    [Fact]
+    public void Type_NonSzRankOneArray_DistinguishesFromVector()
+    {
+        var compilation = TestUtilities.CreateCompilationWithArrayShapes();
+        var type = compilation.GetTypeByMetadataName("ArrayShapes")!;
+        var vector = Assert.IsAssignableFrom<IArrayTypeSymbol>(type.GetMembers("Vector").OfType<IFieldSymbol>().Single().Type);
+        var variable = Assert.IsAssignableFrom<IArrayTypeSymbol>(type.GetMembers("Variable").OfType<IFieldSymbol>().Single().Type);
+        Assert.True(vector.IsSZArray);
+        Assert.False(variable.IsSZArray);
+        Assert.Equal(1, vector.Rank);
+        Assert.Equal(1, variable.Rank);
+        var minter = new IriMinter();
+
+        Assert.NotEqual(minter.Type(vector), minter.Type(variable));
+        Assert.EndsWith("/System.Int32%5B%5D", minter.Type(vector));
+        Assert.EndsWith("/System.Int32%5B%2A%5D", minter.Type(variable));
+    }
+
+    [Fact]
+    public void Member_ArrayRankOverloads_KeepMethodsAndParametersDistinct()
+    {
+        var compilation = TestUtilities.CreateCompilation("""
+            public class C
+            {
+                public void M(int[] value) { }
+                public void M(int[,] value) { }
+                public void M(int[,,] value) { }
+                public void M(int[][] value) { }
+                public void M(int[][,] value) { }
+                public void M(int[,][] value) { }
+            }
+            """);
+        Assert.DoesNotContain(compilation.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        var methods = compilation.GetTypeByMetadataName("C")!.GetMembers("M").OfType<IMethodSymbol>().ToArray();
+        var minter = new IriMinter();
+
+        Assert.Equal(6, methods.Select(minter.Member).Distinct().Count());
+        Assert.Equal(6, methods.Select(method => minter.Parameter(method, method.Parameters[0])).Distinct().Count());
+        Assert.EndsWith("/member/M%28System.Int32%5B%5D%29", minter.Member(methods[0]));
+    }
+
     [Fact]
     public void Type_SingleDimensionArray_AppendsSquareBrackets()
     {
@@ -548,7 +605,7 @@ public class C
         var iri = minter.Member(method);
 
         Assert.Contains("%28", iri);
-        Assert.Contains("%3C", iri);
+        Assert.Contains("%60%600", iri);
         Assert.DoesNotContain('<', iri);
         Assert.True(Uri.IsWellFormedUriString(iri, UriKind.Absolute));
     }
@@ -673,20 +730,80 @@ public class C
 {
     public void Method<T>() { }
     public void Method() { }
+    public void Method<T, U>() { }
 }";
         var compilation = TestUtilities.CreateCompilation(source, "TestAsm");
+        Assert.DoesNotContain(compilation.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
         var type = compilation.GetTypeByMetadataName("Sample.C")!;
         var methods = type.GetMembers("Method").OfType<IMethodSymbol>().ToArray();
 
         var minter = new IriMinter();
-        var iri1 = minter.Member(methods[0]);
-        var iri2 = minter.Member(methods[1]);
+        Assert.Equal(3, methods.Select(minter.Member).Distinct().Count());
+        Assert.EndsWith("/member/Method%28%29", minter.Member(methods.Single(method => method.Arity == 0)));
+        Assert.EndsWith("/member/Method%60%601%28%29", minter.Member(methods.Single(method => method.Arity == 1)));
+        Assert.EndsWith("/member/Method%60%602%28%29", minter.Member(methods.Single(method => method.Arity == 2)));
+    }
 
-        // Both methods have the same signature (empty parameters), so they will collide
-        // This is a known limitation - generic methods are not distinguished by their type parameters alone
-        // For now, we just verify they generate valid IRIs
-        Assert.Contains("Method", iri1);
-        Assert.Contains("Method", iri2);
+    [Fact]
+    public void Member_GenericMethodWithNestedParameterTypes_KeepsChildIrisDistinct()
+    {
+        var compilation = TestUtilities.CreateCompilation("""
+            using System.Collections.Generic;
+            public class C
+            {
+                public T Method<T>(List<T[]> value) => default;
+                public T Method<T, U>(List<T[]> value) => default;
+            }
+            """);
+        Assert.DoesNotContain(compilation.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        var methods = compilation.GetTypeByMetadataName("C")!.GetMembers("Method").OfType<IMethodSymbol>().ToArray();
+        var minter = new IriMinter();
+
+        Assert.Equal(2, methods.Select(minter.Member).Distinct().Count());
+        Assert.Equal(2, methods.Select(method => minter.Parameter(method, method.Parameters[0])).Distinct().Count());
+        Assert.Equal(2, methods.Select(method => minter.TypeParameter(method, method.TypeParameters[0])).Distinct().Count());
+        Assert.All(methods, method => Assert.Contains("System.Collections.Generic.List", minter.Member(method)));
+    }
+
+    [Theory]
+    [InlineData("implicit", "int", "long", "System.Int32", "System.Int64")]
+    [InlineData("explicit", "int", "long", "System.Int32", "System.Int64")]
+    [InlineData("implicit", "Target<int>", "Target<long>", "Target`1[System.Int32]", "Target`1[System.Int64]")]
+    public void Member_ConversionOperators_DistinguishesTargetTypes(
+        string conversion, string firstTarget, string secondTarget, string firstMetadataName, string secondMetadataName)
+    {
+        var compilation = TestUtilities.CreateCompilation($$"""
+            public class Target<T> { }
+            public class C
+            {
+                public static {{conversion}} operator {{firstTarget}}(C value) => default;
+                public static {{conversion}} operator {{secondTarget}}(C value) => default;
+            }
+            """);
+        Assert.DoesNotContain(compilation.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        var methods = compilation.GetTypeByMetadataName("C")!.GetMembers().OfType<IMethodSymbol>()
+            .Where(method => method.MethodKind == MethodKind.Conversion).ToArray();
+        var minter = new IriMinter();
+
+        Assert.Equal(2, methods.Select(minter.Member).Distinct().Count());
+        Assert.Equal(2, methods.Select(method => minter.Parameter(method, method.Parameters[0])).Distinct().Count());
+        Assert.EndsWith("~" + firstMetadataName, Uri.UnescapeDataString(minter.Member(methods[0])));
+        Assert.EndsWith("~" + secondMetadataName, Uri.UnescapeDataString(minter.Member(methods[1])));
+    }
+
+    [Theory]
+    [InlineData("public string Method(int value) => null;", "Method", "Method(System.Int32)")]
+    [InlineData("public C(int value) { }", ".ctor", ".ctor(System.Int32)")]
+    [InlineData("public static C operator +(C left, C right) => left;", "op_Addition", "op_Addition(C,C)")]
+    public void Member_NonGenericNonConversionMethod_PreservesSignature(string declaration, string name, string signature)
+    {
+        var compilation = TestUtilities.CreateCompilation("public class C { " + declaration + " }");
+        Assert.DoesNotContain(compilation.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        var type = compilation.GetTypeByMetadataName("C")!;
+        var minter = new IriMinter();
+
+        Assert.Equal(minter.Type(type) + "/member/" + signature,
+            Uri.UnescapeDataString(minter.Member(type.GetMembers(name).Single())));
     }
 
     [Fact]
