@@ -127,7 +127,7 @@ An optional category is enabled only through an explicit recorded policy. It mus
 
 ## 4. Verification requirements
 
-The extensive sample solution specified in the [Phase C fixture plan](phase-c/phase-c-plan.md#required-sample-test-solution-and-corner-cases) is mandatory. Synthetic graphs alone do not verify compiler or IL extraction behavior.
+The extensive sample solution specified by [c-2 extraction acceptance](phase-c/sprint-c-2-extraction-facts.md#authoritative-acceptance-criteria) and [c-3 producer/store samples](phase-c/sprint-c-3-new-fact-integration.md#d4-real-producerstore-regression) is mandatory. Synthetic graphs alone do not verify compiler or IL extraction behavior.
 
 | ID | Requirement | Acceptance |
 | --- | --- | --- |

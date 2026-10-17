@@ -52,6 +52,6 @@ Retain the existing Phase C directory/name as the guidelines' legacy-phase excep
 
 ## Plan verification
 
-Guideline source: the installed `plan-hardening/sprint-planning-guidelines.md` (no exact `sprint-plan-guidelines.md` was found). Use native .NET/Python validation, not nonexistent cargo/just commands. There is no repository developer roster; the docs name a workhorse developer role rather than invent a named assignment.
+Guideline source: [the repository's sprint-planning guidelines](../../.claude/skills/plan-hardening/sprint-planning-guidelines.md). Application validation uses .NET/Python, not Rust crate or `just` gates; c-1 uses Cargo only to install the pinned Oxigraph CLI. There is no repository developer roster; the docs name a workhorse developer role rather than invent a named assignment.
 
 Deterministic anchoring checks: each sprint has one scope, deliverables, rooted acceptance, validation and non-closure list; each item above has one feature-acceptance owner; same-wave owned paths do not intersect; every deliverable names code/API/RDF/query choices or explicitly says no RDF/query change; no product redesign or speculative example task appears. Source discovery/shape and live gate results are required before reporting plan-anchoring PASS. Hardening readiness is not claimed by writing this index.
