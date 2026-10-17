@@ -18,7 +18,7 @@ This repository is .NET/Python, not Rust: no crate boundary manifests or `allowe
 | dotnet-extraction-cli | RoslynToRdf.Cli references Core; Core writes dt: triples | Delegate Invoke, function-pointer constituent properties, usesType; source/DLL behavior; attribute opt-in and strict alias | c-2 |
 | rdf-to-reduction-export | Python reduction reads Core's artifact RDF; exporters preserve member facts | New-fact consumers; attribute inverse filtering; registered artifact admission and typed boundary/provenance export | c-3 |
 
-Shared registry/schema ownership: c-2 owns DotNetOntology, dotnet-types.ttl and the VB Workspaces project reference; c-3 owns the rg:references derivation comment. Each sprint owns only its changed packaged copies. No contract-only sprint: the RDF changes have one producer and one consumer, and a separate stub/schema phase adds no useful parallel implementation.
+Shared registry/schema ownership: c-2 owns DotNetOntology, dotnet-types.ttl and the VB Workspaces project reference; c-3 owns the rg:references derivation comment. Each sprint owns only its changed packaged copies. No contract-only sprint: the RDF changes have one producer and one consumer, and a separate stub/schema phase adds no useful parallel implementation. c-2's split decision names the shared extractor API, CLI call sites, ontology declarations and test helper that prevent an independently buildable signatures/body split.
 
 ## Waves and contracts
 
@@ -30,7 +30,7 @@ Shared registry/schema ownership: c-2 owns DotNetOntology, dotnet-types.ttl and 
 
 Critical path: **2 sprints**. Width: **2**. Sprint count: **3**.
 
-c-3 consumes c-1's unbounded `Definition.max_types`/query/export behavior and c-2's concrete signature/usesType RDF. These are completed behaviors rather than declarations that can be hoisted into a thin contract sprint. Repeated ownership of traverse.py and ontology.md is across waves only, never parallel. The named contracts, not file overlap, require c-3 to follow both parents.
+c-3 consumes c-1's unbounded `Definition.max_types`/query/export behavior and c-2's concrete signature/usesType RDF. These are completed behaviors rather than declarations that can be hoisted into a thin contract sprint. Repeated ownership across waves is limited to `tools/rg/roslyn_graph/traverse.py`, `tools/rg/tests/{test_traverse,test_docs_contract}.py`, both `plugins/roslyn-graph/skills/roslyn-graph-{create,explore}/scripts/roslyn_graph/traverse.py` copies, and `plugins/roslyn-graph/skills/roslyn-graph-explore/reference/{graph-definitions,ontology}.md`. These paths are never owned concurrently. The named contracts, not file overlap, require c-3 to follow both parents.
 
 ## Original item ownership
 

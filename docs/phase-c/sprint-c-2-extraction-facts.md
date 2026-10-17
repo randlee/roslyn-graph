@@ -31,6 +31,19 @@ Implement producer changes 3, 4, 7, 8, 9; preserve other declarations/identities
 
 No deletions; c-3 consumes constants/references/ontology.
 
+### Split decision
+
+Keep one producer sprint: signatures and bodies share production entry points, not just test utilities. The following overlaps are verified against the existing code:
+
+| Shared file/symbol | Signature/option work | Body work |
+| --- | --- | --- |
+| `AssemblyGraphExtractor.cs: Extract, ExtractType` | D1 delegate dispatch | D5 optional PE input on `Extract` and explicit-interface dispatch in `ExtractType` |
+| `Program.cs: RunExtraction` | D3 attribute flags and D4 strict alias | D5 source/VB setup and the existing source/DLL `extractor.Extract` call sites |
+| `DotNetOntology.cs`, both `dotnet-types.ttl` copies | D2 signature terms | D5 `MemberRels.UsesType` and its Member -> Type declaration |
+| `TestUtilities.cs` | D1 language-neutral compilation helper | D5 source/DLL C#/VB fixture compilation |
+
+`AssemblyGraphExtractor.Bodies.cs` is new, but depends on those edits and the hooks in `AssemblyGraphExtractor.Members.cs`. A signatures/body split is not independently buildable with disjoint owned paths: serializing it raises the critical path from two to three sprints without increasing usable width. Do not add stubs, partial-method seams or duplicated ontology literals to manufacture parallelism. c-1 remains genuinely parallel; c-3 closes the combined consumer behavior.
+
 ## Authoritative deliverables
 
 ### D1. Delegate Invoke/test helper
@@ -198,12 +211,12 @@ Extraction checks; c-3 owns selection/export.
 - **AC1 [boundary:dotnet-extraction-cli/delegates].** C#/VB source/PE emit exact D1 Invoke/parameter/return triples; ordinary member filtering unchanged.
 - **AC2 [boundary:dotnet-extraction-cli/function-pointers].** D2 ordinals/targets/ref/return/convention facts and A<T>/B<T> identities match; nested/repeated arguments retain positions. Declaration/member identity regressions pass.
 - **AC3 [boundary:dotnet-extraction-cli/options].** Default: no hasAttribute; opt-in: existing shape; conflicting flags fail. Both strict spellings fail the same missing-reference DLL; default retains facts/diagnostics. Source strict rejection remains.
-- **AC4 [boundary:dotnet-extraction-cli/body-facts; req:TX-G02].** Real C#/VB samples cover every D5 operation/token row with unique body-only targets and Decoy. Assert owner/usesType in source/DLL, relevant Debug/Release, PDB present/absent. Internal root's uncalled private method uses only PrivateOnly: extraction includes type/member/target regardless of entry-point reachability. Cover accessor/initializer owner differences, explicit interfaces, catch/pattern/token/generic/calli and source-erased bindings.
+- **AC4 [boundary:dotnet-extraction-cli/body-facts].** Cross-reference: TX-G02. Real C#/VB samples cover every D5 operation/token row with unique body-only targets and Decoy. Assert owner/usesType in source/DLL, relevant Debug/Release, PDB present/absent. Internal root's uncalled private method uses only PrivateOnly: extraction includes type/member/target regardless of entry-point reachability. Cover accessor/initializer owner differences, explicit interfaces, catch/pattern/token/generic/calli and source-erased bindings.
 - **AC5 [boundary:dotnet-extraction-cli/generated-ownership].** Async/iterator/lambda/captured-closure/C# local-function-only targets retain original owners. Shared generated method retains both owners; shared lambda cache never cross-contaminates. Generated declarations unchanged; no type-parameter usesType targets; retain self-use.
 - **AC6 [boundary:dotnet-extraction-cli/vb-workspace].** Real .vbproj via MSBuildWorkspace emits bodies beyond direct-compilation tests. C# unsafe guard preserved; workspace package exactly 4.9.2.
-- **AC7 [req:TX-G03, TX-G04, TX-G17].** External reference retains assembly name/version/culture/token and owner/usesType without registered DB. Assert D6 predicates, no acquisition, unchanged owner artifact graph. An analyzed-library fixture shares bound identity; c-3 follows its definition/preserves export provenance.
-- **AC8 [req:TX-G13].** C#/VB foreach/await retain custom enumerator/result/extension-awaiter helpers. C# ref-struct using/declaration and async foreach/using retain custom Dispose, MoveNextAsync/DisposeAsync awaiter targets omitted by ChildOperations. Include generic/nested lambda/local-function owners and decoys. Exact source/DLL owner/usesType pairs; compile/analyze, never execute.
-- **AC9 [req:TX-G19].** Invalid PE/unwritable output reach `Program.cs` exception exit 1, no `Done`. Body-reader/writer exceptions propagate, never empty-success. Generated-method cycles terminate by owner/module/handle while retaining all types; no recursion/count cutoff. c-1 owns query-cut tests; CLI adds no cut option.
+- **AC7 [boundary:dotnet-extraction-cli/reference-identity].** Cross-references: TX-G03, TX-G04, TX-G17. External reference retains assembly name/version/culture/token and owner/usesType without registered DB. Assert D6 predicates, no acquisition, unchanged owner artifact graph. An analyzed-library fixture shares bound identity; c-3 follows its definition/preserves export provenance.
+- **AC8 [boundary:dotnet-extraction-cli/compiler-selected-bodies].** Cross-reference: TX-G13. C#/VB foreach/await retain custom enumerator/result/extension-awaiter helpers. C# ref-struct using/declaration and async foreach/using retain custom Dispose, MoveNextAsync/DisposeAsync awaiter targets omitted by ChildOperations. Include generic/nested lambda/local-function owners and decoys. Exact source/DLL owner/usesType pairs; compile/analyze, never execute.
+- **AC9 [boundary:dotnet-extraction-cli/body-failure-and-termination].** Cross-reference: TX-G19. Invalid PE/unwritable output reach `Program.cs` exception exit 1, no `Done`. Body-reader/writer exceptions propagate, never empty-success. Generated-method cycles terminate by owner/module/handle while retaining all types; no recursion/count cutoff. c-1 owns query-cut tests; CLI adds no cut option.
 
 ## Authoritative validation
 
