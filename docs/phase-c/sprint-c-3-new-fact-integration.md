@@ -14,6 +14,8 @@ vertical_rationale: integrate new RDF with production reduction/export
 
 ## Scope boundary
 
+Every listed deliverable must land production-ready for this sprint's integration boundary; no stubs or silent deferral.
+
 Consume c-2 delegate/function-pointer/usesType facts with c-1 unlimited/constraint/pointer/enclosing rules. Close consumer changes 3/4/7/9 and verified analyzed-dependency/external-identity gaps. Preserve c-1 limits/errors: no implicit caps, partial-as-complete output or replacement extraction.
 
 ## Owned paths
@@ -26,10 +28,10 @@ Consume c-2 delegate/function-pointer/usesType facts with c-1 unlimited/constrai
 - `plugins/roslyn-graph/skills/roslyn-graph-{create,explore}/scripts/roslyn_graph/traverse.py`
 - `plugins/roslyn-graph/skills/roslyn-graph-{create,explore}/scripts/roslyn_graph/records.py`
 - `plugins/roslyn-graph/skills/roslyn-graph-explore/reference/graph-definitions.md`
+- `plugins/roslyn-graph/skills/roslyn-graph-explore/reference/records.md`
 - `ontology/roslyn-graph.ttl`
 - `plugins/roslyn-graph/skills/roslyn-graph-explore/ontology/roslyn-graph.ttl`
 - `plugins/roslyn-graph/skills/roslyn-graph-explore/reference/ontology.md`
-- `.github/workflows/ci.yml`
 
 No deletions/same-wave overlaps. Overlapping c-1/c-2 contracts must be pushed and their PRs land first.
 
@@ -65,7 +67,9 @@ Add `?r dt:hasMember ?member . ?member dt:usesType ?t` to referenced_by. Preserv
 
 ### D4. Real producer/store regression
 
-`test_phase_c_integration.py`: build c-2 fixtures, run real extractor CLI, load via existing Oxigraph support, call production reduction/export. Add Oxigraph/test execution to existing dotnet/Python CI; no skips/new runner.
+`test_phase_c_integration.py`: build c-2 fixtures, run real extractor CLI, load via existing Oxigraph support, call production reduction/export. Use c-1's existing-matrix CI prerequisites; no skips/new runner.
+
+In the owned `test_phase_c_integration.py`, fail the session fixture if `dotnet`/`oxigraph` is unavailable or Oxigraph differs from the fixture pin `0.5.8`; do not use `requires_oxigraph`/`pytest.skip`. c-1 owns the same precondition in its existing-graph test module and supplies SDK/Oxigraph/build steps to the existing CI matrix. The existing full `tools/rg/tests` invocation runs both modules; verify it collects and executes them on each OS. No additional CI job or change to c-1's fixture is needed here.
 
 **Samples [TX-G01/G02/G07-G14; TX-C04-C08/C12; TX-V01-V04/V06-V07].** Reuse c-2's planned `tests/RoslynToRdf.Tests/Fixtures/PhaseC/**`, D/Ret/Arg, A<T>/B<T>, PrivateOnly/Decoy. Filenames unassigned; rows specify oracles, not existing files. Build C#/VB; extract source/DLL independently. Sets exclude separately asserted framework/generated types; every case excludes disconnected Decoy.
 
@@ -125,6 +129,8 @@ OPTIONAL { ?t dt:typeKind ?kind }
 Copy present `rdf:type`, `dt:definedInAssembly`, `dt:name`, `dt:fullName`, `dt:typeKind` and assembly `dt:name`, `dt:version`, `dt:culture`, `dt:publicKeyToken`. c-2 emits new-stub assembly literals; legacy stubs retain assembly IRI and report missing fields, never parse IRIs or invent metadata. Preserve connecting wrapper/signature witnesses: `dt:genericDefinition`, `dt:typeArgument`/`dt:type`, `dt:pointerElementType`, `dt:arrayElementType` and c-2 signature relations. Attribute-only boundaries remain opt-in. Keep component `rg:references`; external evidence is typed RDF plus context `externalReferences` (owner, predicate, target, assembly, reason, known manifest package identity). Never invent NuGet IDs from assembly names.
 
 `records.read_graph` / `resolve_units` exclude only context-listed external keys from own-component inventory, retaining their evidence in records provenance. Do not suppress other `RECORDS_TYPE_NOT_IN_STORE` errors. A/P/Q remain movable records; E remains dependency evidence. Missing/ambiguous registrations mean incomplete coverage; ordinary unregistered packages are intentional boundaries. Resource/query failure fails, never returns complete partial output.
+
+Update the owned `reference/records.md` Input/provenance sections for pinned `additionalComponents`, retained `externalReferences`, and exclusion of context-listed external keys from movable records; retain the existing schema/field registry. Update `reference/graph-definitions.md` output-context guidance with the same D6/D7 fields and reasons. Extend `test_docs_contract.py` for these documented keys alongside AC10's real reopen/export checks; no new status or schema subsystem.
 
 ## Authoritative acceptance criteria
 

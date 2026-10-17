@@ -24,9 +24,9 @@ Shared registry/schema ownership: c-2 owns DotNetOntology, dotnet-types.ttl and 
 
 | Wave | Track | Sprint | target_boundary | owned_paths summary |
 | --- | --- | --- | --- | --- |
-| 1 | existing graph | c-1 | rg-query-and-existing-graph | Python CLI/query/traversal, shipped queries, their tests/copies and graph-definitions.md |
+| 1 | existing graph | c-1 | rg-query-and-existing-graph | Python CLI/query/traversal, shipped queries, their tests/copies, graph-definitions.md and existing CI prerequisites |
 | 1 | extraction | c-2 | dotnet-extraction-cli | .NET extractor/CLI/tests/fixtures, dt: ontology and generated ontology reference |
-| 2 | integration | c-3 | rdf-to-reduction-export | Python traversal/records export/tests, registered-store context, rg: comment, CI and generated copies |
+| 2 | integration | c-3 | rdf-to-reduction-export | Python traversal/records export/tests, registered-store context, rg: comment and generated copies |
 
 Critical path: **2 sprints**. Width: **2**. Sprint count: **3**.
 

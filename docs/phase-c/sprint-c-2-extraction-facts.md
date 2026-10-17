@@ -9,15 +9,18 @@ recommended_agent: codex-developer
 recommended_model: gpt-6.1-sol
 parallel_safe: [c-1]
 must_follow: []
-vertical_rationale: extractor/CLI share writer contract
+vertical_rationale: thin contract, one implementer, one consumer
 ```
 
 ## Scope boundary
+
+Every listed deliverable must land production-ready for this sprint's producer boundary; no stubs or silent deferral.
 
 Implement producer changes 3, 4, 7, 8, 9; preserve other declarations/identities. Existing `--include-private`, `GetAllTypes`/`GetMembers` cover private/uncalled members. Analyze allocations without execution or caps. c-1 owns query limits/partial results; c-3 D6 owns registered-database selection/batched closure. Emit bound identities/RDF, not database queries.
 
 ## Owned paths
 
+- `README.md` (changed extractor options, source-language and DLL-body descriptions only)
 - `src/RoslynToRdf.Core/Extraction/AssemblyGraphExtractor*.cs`
 - `src/RoslynToRdf.Core/Extraction/ExtractionOptions.cs`
 - `src/RoslynToRdf.Core/Model/{IriMinter,DotNetOntology}.cs`
@@ -30,6 +33,8 @@ Implement producer changes 3, 4, 7, 8, 9; preserve other declarations/identities
 - `tests/RoslynToRdf.Tests/Fixtures/PhaseC/**`
 
 No deletions; c-3 consumes constants/references/ontology.
+
+c-2 closes the `dt:` vocabulary changes and their extractor/CLI implementation together. Its successful `dotnet build RoslynToRdf.sln --configuration Release` plus boundary acceptance tests are c-3's consumption precondition; graph reduction/export acceptance remains exclusively in c-3. The small shared vocabulary does not justify a separate contract-only sprint.
 
 ### Split decision
 
@@ -107,6 +112,8 @@ failOnMissingReferencesOption.AddAlias("--strict");
 ```
 
 Keep false default, diagnostics, assembly-input failure and `--fail-on-missing-references`; no resolver/diagnostic/RDF/query redesign.
+
+Update `README.md` Usage/Options and source/DLL paragraphs with `--include-attributes` (off by default), conflicting attribute flags, `--strict` as the DLL-only alias, `.vbproj` alongside `.csproj`, and the D5 body-type inventory. Replace the blanket DLL metadata-only description without claiming source-syntax locations or runtime inference. Check these statements against CLI help and AC3/AC6/AC4; no unrelated README rewrite.
 
 ### D5. Source/DLL bodies
 

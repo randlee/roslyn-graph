@@ -14,6 +14,8 @@ vertical_rationale: bounded defect fixes in the existing query/traversal path, w
 
 ## Scope boundary
 
+Every listed deliverable must land production-ready for this sprint's integration boundary; no stubs or silent deferral.
+
 Own reviewed changes 1, 2, 5 and 6: remove tool-injected caps and follow existing pointer, constraint and enclosing-type facts. No extractor or ontology redesign. Query, traversal and export return the requested result by default; only explicit user limits cut it. Report cuts as partial and execution/resource failures as failures. Existing batches drain normally; they are not result caps.
 
 ## Owned paths
@@ -22,6 +24,7 @@ Own reviewed changes 1, 2, 5 and 6: remove tool-injected caps and follow existin
 - `tools/rg/roslyn_graph/{traverse,explore}.py`
 - `tools/rg/tests/{test_traverse,test_explore_maintain,test_saved,test_docs_contract}.py`
 - `tools/rg/tests/test_phase_c_existing_graph.py`
+- `.github/workflows/ci.yml` (existing plugin-matrix prerequisites for real-store tests)
 - `plugins/roslyn-graph/skills/roslyn-graph-{create,explore}/scripts/rg.py`
 - `plugins/roslyn-graph/skills/roslyn-graph-{create,explore}/scripts/roslyn_graph/{traverse,explore}.py`
 - `plugins/roslyn-graph/skills/roslyn-graph-explore/queries/{find-type,logical-versions,unsafe-aggregates,unsafe-methods}.rq`
@@ -56,6 +59,8 @@ selected = rows if limit is None else rows[:limit]
 Keep SELECT-form validation on both branches. Set CLI `--limit` default to `None`; reject explicit nonpositive limits. Set export `max_triples: int | None = None`; add optional positive `--max-triples`, pass it through `cmd_export`, and guard only the existing `EXPORT_TOO_LARGE` check. Preserve loud timeout failures and existing `--unbounded` compatibility; reject `--unbounded` combined with `--max-triples` rather than ignoring the explicit limit. No ontology changes.
 
 **Saved queries:** remove built-in `LIMIT` clauses from `plugins/roslyn-graph/skills/roslyn-graph-explore/queries/{find-type,logical-versions,unsafe-aggregates,unsafe-methods}.rq`. Do not rewrite user-supplied SPARQL or remove explicit user limits.
+
+Update the owned `reference/graph-definitions.md` example/default and result-reporting sections: omitted `max_types` is unlimited, explicit finite values remain examples rather than defaults, and `truncated` includes depth cuts. Document optional `--max-triples` and its conflict with `--unbounded`; preserve explicit saved limits. Extend `test_docs_contract.py` to check these changed default/option descriptions against the CLI/definition contract.
 
 ### D2. Pointer constituents
 
@@ -114,6 +119,8 @@ Keep explicit saved follow lists unchanged. Do not add an inverse-follow rule in
 
 ## Authoritative acceptance criteria
 
+Source fixtures use a temporary test-local .NET harness referencing the existing Core project: construct C#/VB `Compilation` with `CSharpCompilation.Create` / `VisualBasicCompilation.Create` and call the existing `AssemblyGraphExtractor.Extract(compilation, compilation.Assembly)`. DLL cases use the existing extractor CLI. The Python fixture owns this harness in its temporary directory; it neither edits c-2's `TestUtilities.cs` nor requires c-2's new `.vbproj` CLI support.
+
 - **AC1 [req:TX-G19; anchor:no-silent-truncation].** update `test_valid_definition_and_defaults` in `tools/rg/tests/test_traverse.py` to assert `max_types is None` and the default follow keys added below. Extend traversal and query/export tests: default selection exceeds 1,500 types; default SELECT returns 2,500 rows; default export returns 600,000 triples. Explicit limits still stop/report partial or fail loudly as appropriate. Execute the four shipped queries with more matches than their former limits and assert all matches. Simulated query/export failure never returns a success result containing partial data. Existing batching remains unchanged.
 - **AC2 [req:TX-G07, pointer portion].** A real extracted `unsafe struct S { P** F; } struct P {}` plus Decoy reduces from S to exactly fixture types {S, P}, with S -> P and no Decoy; existing array/generic tests remain green.
 - **AC1-depth [req:TX-G19].** A -> B -> C at `max_depth=1` selects {A,B} and reports the depth cut; A -> B with no successor reports complete at 1. A -> B -> A retains both edges and terminates complete. Omitted/zero depth selects the entire chain. Run equivalent inverse-follow cases; explicit saved depth remains honored.
@@ -125,6 +132,10 @@ Keep explicit saved follow lists unchanged. Do not add an inverse-follow rule in
 ## Authoritative validation
 
 Run from repository root with Python/pytest, .NET SDK and Oxigraph installed. A skipped required real-store case is not a pass.
+
+In the owned `test_phase_c_existing_graph.py`, use a mandatory session fixture that fails when `dotnet`/`oxigraph` is unavailable or Oxigraph differs from the fixture pin `0.5.8`; do not use the optional `requires_oxigraph` marker.
+
+In `.github/workflows/ci.yml`'s existing `plugin` OS matrix, before Python tests, add .NET SDK 8/10 setup and Rust setup, install `oxigraph-cli` with `cargo install oxigraph-cli --version 0.5.8 --locked` (the existing fixture/config version), and build `RoslynToRdf.sln --configuration Release`. Keep the Windows/macOS/Linux matrix, Python and viewer steps. Verify the existing `tools/rg/tests` invocation collects and executes the mandatory module on every OS; c-1 must pass CI without waiting for c-3.
 
 ```powershell
 python -m pytest tools/rg/tests/test_traverse.py tools/rg/tests/test_explore_maintain.py tools/rg/tests/test_saved.py tools/rg/tests/test_docs_contract.py tools/rg/tests/test_phase_c_existing_graph.py -q
