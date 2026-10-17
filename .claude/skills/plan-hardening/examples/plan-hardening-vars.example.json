@@ -1,0 +1,23 @@
+{
+  "task_id": "phase-bc-plan-hardening-step-1",
+  "phase": "phase-bc",
+  "description": "Plan hardening for phase-bc current plan state",
+  "worktree_path": "/absolute/path/to/worktree",
+  "branch": "plan/phase-bc",
+  "pr_target": "develop",
+  "plan_scope_review_cycle_limit": 3,
+  "critical_review_cycle_limit": 3,
+  "round_id": "STEP1-R1",
+  "round_index": 1,
+  "reviewer": "plan-scope-reviewer",
+  "reviewed_commit": "",
+  "previous_reviewed_commit": "",
+  "findings_hash": "",
+  "supersedes_task_id": "",
+  "replay_nonce": "2026-05-20T00:00:00Z",
+  "source_of_truth": "- docs/plans/phase-bc/phase-bc-plan.md\n- docs/project-plan.md",
+  "references": "- docs/requirements.md\n- docs/architecture.md\n- docs/plans/phase-bc/sprint-bc-1-<slug>.md\n- docs/plans/phase-bc/sprint-bc-2-<slug>.md",
+  "questions_or_concerns": "",
+  "previous_step_json": "",
+  "reviewer_findings_json": ""
+}

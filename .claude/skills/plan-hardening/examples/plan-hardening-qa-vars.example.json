@@ -1,0 +1,24 @@
+{
+  "task_id": "phase-bc-plan-qa",
+  "sprint": "phase-bc",
+  "sprint_doc": "docs/plans/phase-bc/phase-bc-plan.md",
+  "review_mode": "plan",
+  "description": "Focused plan QA for phase-bc after consistency hardening",
+  "pr_number": "",
+  "branch": "plan/phase-bc",
+  "worktree_path": "/absolute/path/to/worktree",
+  "commits": "HEAD",
+  "review_targets": [
+    "docs/plans/phase-bc/phase-bc-plan.md",
+    "docs/plans/phase-bc/sprint-bc-1-<slug>.md",
+    "docs/plans/phase-bc/sprint-bc-2-<slug>.md"
+  ],
+  "references": [
+    "docs/project-plan.md",
+    "docs/requirements.md",
+    "docs/architecture.md"
+  ],
+  "round_index": 1,
+  "changed_files": "",
+  "triage_records": ""
+}
