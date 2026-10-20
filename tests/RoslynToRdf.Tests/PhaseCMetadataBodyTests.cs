@@ -15,6 +15,175 @@ namespace RoslynToRdf.Tests;
 
 public class PhaseCMetadataBodyTests
 {
+    [Theory]
+    [InlineData(false, OptimizationLevel.Debug)]
+    [InlineData(false, OptimizationLevel.Release)]
+    [InlineData(true, OptimizationLevel.Debug)]
+    [InlineData(true, OptimizationLevel.Release)]
+    public void CompilerSelectedHelpers_HaveExactSourceAndPeOwnersWithExtensionAwaiters(bool visualBasic, OptimizationLevel optimization)
+    {
+        const string csharp = """
+            using System;
+            using System.Runtime.CompilerServices;
+            using System.Threading.Tasks;
+            public class DirectOnly {}
+            public class LambdaOnly {}
+            public class LocalOnly {}
+            public class Decoy {}
+            public class Items<T> { public Enumerator<T> GetEnumerator() => null; }
+            public class Enumerator<T> {
+                public T Current => default;
+                public bool MoveNext() => false;
+            }
+            public class Result<T> {}
+            public struct Awaitable<T> {}
+            public struct Awaiter<T> : INotifyCompletion {
+                public bool IsCompleted => true;
+                public Result<T> GetResult() => null;
+                public void OnCompleted(Action continuation) {}
+            }
+            public static class Extensions {
+                public static Awaiter<T> GetAwaiter<T>(this Awaitable<T> value) => default;
+            }
+            public class Owners<T> {
+                public async Task Direct() {
+                    foreach (var value in new Items<DirectOnly>()) { GC.KeepAlive(value); }
+                    GC.KeepAlive(await new Awaitable<DirectOnly>());
+                }
+                public Func<Task> Lambda() => async () => {
+                    foreach (var value in new Items<LambdaOnly>()) { GC.KeepAlive(value); }
+                    GC.KeepAlive(await new Awaitable<LambdaOnly>());
+                };
+                public Task Local() {
+                    async Task Body() {
+                        foreach (var value in new Items<LocalOnly>()) { GC.KeepAlive(value); }
+                        GC.KeepAlive(await new Awaitable<LocalOnly>());
+                    }
+                    return Body();
+                }
+            }
+            """;
+        const string vb = """
+            Imports System
+            Imports System.Runtime.CompilerServices
+            Imports System.Threading.Tasks
+            Public Class DirectOnly
+            End Class
+            Public Class LambdaOnly
+            End Class
+            Public Class LocalOnly
+            End Class
+            Public Class Decoy
+            End Class
+            Public Class Items(Of T)
+                Public Function GetEnumerator() As Enumerator(Of T)
+                    Return Nothing
+                End Function
+            End Class
+            Public Class Enumerator(Of T)
+                Public ReadOnly Property Current As T
+                    Get
+                        Return Nothing
+                    End Get
+                End Property
+                Public Function MoveNext() As Boolean
+                    Return False
+                End Function
+            End Class
+            Public Class Result(Of T)
+            End Class
+            Public Structure Awaitable(Of T)
+            End Structure
+            Public Structure Awaiter(Of T)
+                Implements INotifyCompletion
+                Public ReadOnly Property IsCompleted As Boolean
+                    Get
+                        Return True
+                    End Get
+                End Property
+                Public Function GetResult() As Result(Of T)
+                    Return Nothing
+                End Function
+                Public Sub OnCompleted(continuation As Action) Implements INotifyCompletion.OnCompleted
+                End Sub
+            End Structure
+            Public Module Extensions
+                <Extension>
+                Public Function GetAwaiter(Of T)(value As Awaitable(Of T)) As Awaiter(Of T)
+                    Return Nothing
+                End Function
+            End Module
+            Public Class Owners(Of T)
+                Public Async Function Direct() As Task
+                    For Each value In New Items(Of DirectOnly)()
+                        GC.KeepAlive(value)
+                    Next
+                    GC.KeepAlive(Await New Awaitable(Of DirectOnly)())
+                End Function
+                Public Function Lambda() As Func(Of Task)
+                    Return Async Function()
+                               For Each value In New Items(Of LambdaOnly)()
+                                   GC.KeepAlive(value)
+                               Next
+                               GC.KeepAlive(Await New Awaitable(Of LambdaOnly)())
+                           End Function
+                End Function
+            End Class
+            """;
+        Compilation source = visualBasic
+            ? TestUtilities.CreateVisualBasicCompilation(vb, "VbSelectedHelpers")
+                .AddReferences(MetadataReference.CreateFromFile(typeof(Microsoft.VisualBasic.Constants).Assembly.Location))
+                .AddReferences(MetadataReference.CreateFromFile(Path.Combine(Path.GetDirectoryName(typeof(object).Assembly.Location)!, "System.Runtime.dll")))
+                .WithOptions(new VisualBasicCompilationOptions(OutputKind.DynamicallyLinkedLibrary, optimizationLevel: optimization))
+            : TestUtilities.CreateCompilation(csharp, "CsSelectedHelpers")
+                .WithOptions(TestUtilities.CreateCompilation("").Options.WithOptimizationLevel(optimization));
+        Assert.DoesNotContain(source.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        var emitter = new TestEmitter();
+        var options = new ExtractionOptions { IncludePrivate = true };
+        var extractor = new AssemblyGraphExtractor(emitter, options);
+        extractor.Extract(source, source.Assembly);
+        Assert.Empty(extractor.BodyResolutionDiagnostics);
+        VerifyOwners(source.Assembly, new IriMinter(options.BaseUri), emitter);
+        VerifyMetadata(source, optimization == OptimizationLevel.Debug, VerifyOwners);
+
+        void VerifyOwners(IAssemblySymbol assembly, IriMinter minter, TestEmitter triples)
+        {
+            var families = new[] { "Items`1", "Enumerator`1", "Awaitable`1", "Awaiter`1", "Result`1" };
+            var markers = new[] { "DirectOnly", "LambdaOnly", "LocalOnly", "Decoy" };
+            var allTargets = new HashSet<string> { minter.Type(assembly.GetTypeByMetadataName("Extensions")!) };
+            foreach (var marker in markers)
+            {
+                var argument = assembly.GetTypeByMetadataName(marker)!;
+                allTargets.Add(minter.Type(argument));
+                foreach (var family in families)
+                {
+                    var definition = assembly.GetTypeByMetadataName(family)!;
+                    allTargets.Add(minter.Type(definition));
+                    allTargets.Add(minter.Type(definition.Construct(argument)));
+                }
+            }
+            foreach (var methodName in visualBasic ? new[] { "Direct", "Lambda" } : new[] { "Direct", "Lambda", "Local" })
+            {
+                var argument = assembly.GetTypeByMetadataName(methodName + "Only")!;
+                var expected = new HashSet<string>
+                {
+                    minter.Type(argument), minter.Type(assembly.GetTypeByMetadataName("Extensions")!)
+                };
+                foreach (var family in families)
+                {
+                    var definition = assembly.GetTypeByMetadataName(family)!;
+                    expected.Add(minter.Type(definition));
+                    expected.Add(minter.Type(definition.Construct(argument)));
+                }
+                var owner = minter.Member(assembly.GetTypeByMetadataName("Owners`1")!.GetMembers(methodName).Single());
+                var actual = triples.Triples.Where(triple => triple.Subject == owner
+                    && triple.Predicate == minter.OntologyPrefix + "usesType" && allTargets.Contains(triple.Object))
+                    .Select(triple => triple.Object).ToArray();
+                Assert.Equal(expected.OrderBy(value => value), actual.OrderBy(value => value));
+            }
+        }
+    }
+
     [Fact]
     public void MetadataBodies_DeconstructionRetainsEmittedExtensionAndSignatureTargets()
     {
