@@ -7,6 +7,54 @@ namespace RoslynToRdf.Tests;
 public class PhaseCSourceBodyTests
 {
     [Fact]
+    public void Deconstruction_EmitsSelectedAssignmentNestedAndForeachMethodsOnly()
+    {
+        var compilation = TestUtilities.CreateCompilation("""
+            class AssignmentInput {}
+            class OuterInput {}
+            class InnerInput {}
+            class ForeachInput {}
+            class Decoy {}
+            static class AssignmentExtensions {
+                public static void Deconstruct(this AssignmentInput input, out int left, out int right) { left = right = 0; }
+            }
+            static class OuterExtensions {
+                public static void Deconstruct(this OuterInput input, out InnerInput inner, out int right) { inner = null; right = 0; }
+            }
+            static class InnerExtensions {
+                public static void Deconstruct(this InnerInput input, out int left, out int right) { left = right = 0; }
+            }
+            static class ForeachExtensions {
+                public static void Deconstruct(this ForeachInput input, out int left, out int right) { left = right = 0; }
+            }
+            static class DecoyExtensions {
+                public static void Deconstruct(this Decoy input, out int left, out int right) { left = right = 0; }
+            }
+            class Root {
+                public void Assignment(AssignmentInput input) { var (left, right) = input; }
+                public void Nested(OuterInput input) { var ((left, middle), right) = input; }
+                public void Foreach(ForeachInput[] inputs) { foreach (var (left, right) in inputs) {} }
+            }
+            """);
+        var (emitter, minter) = Extract(compilation);
+        var rows = new (string Owner, string[] Targets)[]
+        {
+            ("Assignment", ["AssignmentExtensions"]),
+            ("Nested", ["OuterExtensions", "InnerExtensions"]),
+            ("Foreach", ["ForeachExtensions"])
+        };
+        foreach (var row in rows)
+        {
+            AssertUses(compilation, emitter, minter, "Root", row.Owner, row.Targets);
+            var owner = minter.Member(compilation.GetTypeByMetadataName("Root")!.GetMembers(row.Owner).Single());
+            foreach (var decoy in rows.Where(other => other.Owner != row.Owner).SelectMany(other => other.Targets).Append("DecoyExtensions"))
+                Assert.DoesNotContain(emitter.Triples, triple => triple.Subject == owner
+                    && triple.Predicate == minter.OntologyPrefix + "usesType"
+                    && triple.Object == minter.Type(compilation.GetTypeByMetadataName(decoy)!));
+        }
+    }
+
+    [Fact]
     public void UnsafeSourceRows_SeparatePointerFunctionPointerAndSizeOfTargets()
     {
         var compilation = TestUtilities.CreateCompilation("""

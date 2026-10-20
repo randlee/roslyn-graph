@@ -16,6 +16,41 @@ namespace RoslynToRdf.Tests;
 public class PhaseCMetadataBodyTests
 {
     [Fact]
+    public void MetadataBodies_DeconstructionRetainsEmittedExtensionAndSignatureTargets()
+    {
+        const string source = """
+            using System;
+            public class DeconstructionInput {}
+            public class FirstComponent {}
+            public class SecondComponent {}
+            public class Decoy {}
+            public static class DeconstructionExtensions {
+                public static void Deconstruct(this DeconstructionInput input,
+                    out FirstComponent first, out SecondComponent second) {
+                    first = null;
+                    second = null;
+                }
+            }
+            public class Root {
+                public void Body(DeconstructionInput input) {
+                    var (first, second) = input;
+                    GC.KeepAlive(first);
+                    GC.KeepAlive(second);
+                }
+            }
+            """;
+        VerifyMetadata(TestUtilities.CreateCompilation(source, "DeconstructionBody"), false, (assembly, minter, triples) =>
+        {
+            var owner = assembly.GetTypeByMetadataName("Root")!.GetMembers("Body").Single();
+            foreach (var target in new[] { "DeconstructionInput", "DeconstructionExtensions", "FirstComponent", "SecondComponent" })
+                AssertUse(triples, minter, assembly, owner, target);
+            Assert.DoesNotContain(triples.Triples, triple => triple.Subject == minter.Member(owner)
+                && triple.Predicate == minter.OntologyPrefix + "usesType"
+                && triple.Object == minter.Type(assembly.GetTypeByMetadataName("Decoy")!));
+        });
+    }
+
+    [Fact]
     public void MetadataBodies_NonVectorRankOneArrayDoesNotInventVectorInstantiation()
     {
         var metadata = new MetadataBuilder();

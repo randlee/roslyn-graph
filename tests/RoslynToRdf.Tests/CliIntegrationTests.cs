@@ -3,6 +3,12 @@ using RoslynToRdf.Cli;
 
 namespace RoslynToRdf.Tests;
 
+[CollectionDefinition("ProcessConsole", DisableParallelization = true)]
+public class ProcessConsoleCollection
+{
+}
+
+[Collection("ProcessConsole")]
 public class CliIntegrationTests
 {
     [Fact]

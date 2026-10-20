@@ -128,6 +128,24 @@ public sealed partial class AssemblyGraphExtractor
 
     private void CollectSelectedSourceMembers(SyntaxNode node, SemanticModel model, string ownerIri)
     {
+        CSharp.DeconstructionInfo? deconstruction = node switch
+        {
+            CSharpSyntax.AssignmentExpressionSyntax assignment => CSharp.CSharpExtensions.GetDeconstructionInfo(model, assignment),
+            CSharpSyntax.ForEachVariableStatementSyntax variable => CSharp.CSharpExtensions.GetDeconstructionInfo(model, variable),
+            _ => null
+        };
+        if (deconstruction.HasValue)
+        {
+            var pending = new Stack<CSharp.DeconstructionInfo>();
+            pending.Push(deconstruction.Value);
+            while (pending.TryPop(out var current))
+            {
+                EmitBodySymbol(ownerIri, current.Method);
+                if (!current.Nested.IsDefaultOrEmpty)
+                    foreach (var nested in current.Nested)
+                        pending.Push(nested);
+            }
+        }
         if (node is CSharpSyntax.CommonForEachStatementSyntax forEach)
         {
             var info = CSharp.CSharpExtensions.GetForEachStatementInfo(model, forEach);
