@@ -33,7 +33,7 @@ public sealed partial class AssemblyGraphExtractor
         private readonly MetadataReader _reader;
         private readonly IAssemblySymbol _assembly;
         private readonly Dictionary<AssemblyReferenceHandle, IAssemblySymbol?> _assemblies = new();
-        private readonly HashSet<(string Owner, MethodDefinitionHandle Method)> _visited = new();
+        private readonly HashSet<(string Owner, MethodDefinitionHandle Method, string TypeArguments, string MethodArguments)> _visited = new();
         private static readonly Dictionary<ushort, OpCode> OpCodesByValue = typeof(OpCodes).GetFields()
             .Where(field => field.FieldType == typeof(OpCode))
             .Select(field => (OpCode)field.GetValue(null)!)
@@ -87,14 +87,16 @@ public sealed partial class AssemblyGraphExtractor
             var root = (MethodDefinitionHandle)entity;
             if (IsGenerated(root))
                 return;
-            var pending = new Queue<(MethodDefinitionHandle Handle, BodyContext Context)>();
-            pending.Enqueue((root, Context(symbol)));
+            var pending = new Queue<(MethodDefinitionHandle Handle, BodyContext Context, ImmutableHashSet<MethodDefinitionHandle> Ancestors)>();
+            pending.Enqueue((root, Context(symbol), ImmutableHashSet<MethodDefinitionHandle>.Empty));
             while (pending.TryDequeue(out var work))
             {
-                if (!_visited.Add((owner, work.Handle)))
+                if (work.Ancestors.Contains(work.Handle)
+                    || !_visited.Add((owner, work.Handle, ContextKey(work.Context.TypeArguments), ContextKey(work.Context.MethodArguments))))
                     continue;
+                var ancestors = work.Ancestors.Add(work.Handle);
                 var definition = _reader.GetMethodDefinition(work.Handle);
-                EnqueueStateMachine(definition, pending, owner, work.Context);
+                EnqueueStateMachine(definition, pending, owner, work.Context, ancestors);
                 if (definition.RelativeVirtualAddress == 0)
                     continue;
                 var body = _pe.GetMethodBody(definition.RelativeVirtualAddress);
@@ -124,7 +126,7 @@ public sealed partial class AssemblyGraphExtractor
                                 && (opcode == OpCodes.Call || opcode == OpCodes.Callvirt
                                     || opcode == OpCodes.Newobj || opcode == OpCodes.Ldftn
                                     || opcode == OpCodes.Ldvirtftn))
-                                pending.Enqueue((target, TokenContext(handle, work.Context)));
+                                pending.Enqueue((target, TokenContext(handle, work.Context), ancestors));
                             break;
                         case OperandType.InlineSig:
                             var signatureHandle = MetadataTokens.EntityHandle(il.ReadInt32());
@@ -162,6 +164,9 @@ public sealed partial class AssemblyGraphExtractor
 
         private BodyContext Context(IMethodSymbol method) => new(
             TypeArguments(method.ContainingType), method.TypeArguments.Select(FromSymbol).ToImmutableArray());
+
+        private static string ContextKey(ImmutableArray<BodyType> arguments) =>
+            string.Concat(arguments.Select(argument => $"{argument.Key.Length}:{argument.Key}"));
 
         private ImmutableArray<BodyType> TypeArguments(INamedTypeSymbol type)
         {
@@ -290,7 +295,8 @@ public sealed partial class AssemblyGraphExtractor
         }
 
         private void EnqueueStateMachine(MethodDefinition method,
-            Queue<(MethodDefinitionHandle Handle, BodyContext Context)> pending, string owner, BodyContext context)
+            Queue<(MethodDefinitionHandle Handle, BodyContext Context, ImmutableHashSet<MethodDefinitionHandle> Ancestors)> pending,
+            string owner, BodyContext context, ImmutableHashSet<MethodDefinitionHandle> ancestors)
         {
             foreach (var handle in method.GetCustomAttributes())
             {
@@ -323,7 +329,7 @@ public sealed partial class AssemblyGraphExtractor
                     {
                         if (!_reader.StringComparer.Equals(_reader.GetMethodDefinition(candidate).Name, "MoveNext"))
                             continue;
-                        pending.Enqueue((candidate, new BodyContext(arguments, ImmutableArray<BodyType>.Empty)));
+                        pending.Enqueue((candidate, new BodyContext(arguments, ImmutableArray<BodyType>.Empty), ancestors));
                         matched = true;
                     }
                 }

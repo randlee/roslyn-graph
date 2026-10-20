@@ -764,6 +764,72 @@ public class PhaseCMetadataBodyTests
         });
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MetadataBodies_SameOwnerRetainsEveryGenericLocalContext(bool reverse)
+    {
+        var source = """
+            public class First {}
+            public class Second {}
+            public class Box<T> {}
+            public class Root {
+                public object Both() {
+                    object Local<T>() => new Box<T>();
+                    System.GC.KeepAlive(Local<FIRST>());
+                    return Local<SECOND>();
+                }
+            }
+            """.Replace("FIRST", reverse ? "Second" : "First")
+                .Replace("SECOND", reverse ? "First" : "Second");
+        VerifyMetadata(TestUtilities.CreateCompilation(source, "GenericLocalContexts"), false, (assembly, minter, triples) =>
+        {
+            var owner = assembly.GetTypeByMetadataName("Root")!.GetMembers("Both").Single();
+            var definition = assembly.GetTypeByMetadataName("Box`1")!;
+            var expected = new[] { "First", "Second" }.Select(name =>
+                minter.Type(definition.Construct(assembly.GetTypeByMetadataName(name)!))).ToHashSet();
+            var actual = triples.Triples.Where(triple => triple.Subject == minter.Member(owner)
+                && triple.Predicate == minter.OntologyPrefix + "usesType"
+                && expected.Contains(triple.Object)).Select(triple => triple.Object).ToHashSet();
+            Assert.True(expected.SetEquals(actual), $"Missing contexts: {string.Join(", ", expected.Except(actual))}");
+        });
+    }
+
+    [Fact]
+    public async Task MetadataBodies_RecursiveGenericLocalTerminatesWithoutDroppingSiblingContext()
+    {
+        const string source = """
+            public class First {}
+            public class Second {}
+            public class Box<T> {}
+            public class Witness<T> {}
+            public class Root {
+                public object Both() {
+                    object Local<T>(bool recurse) {
+                        if (recurse) return Local<Box<T>>(false);
+                        return new Witness<T>();
+                    }
+                    System.GC.KeepAlive(Local<First>(true));
+                    return Local<Second>(true);
+                }
+            }
+            """;
+        await Task.Run(() => VerifyMetadata(TestUtilities.CreateCompilation(source, "RecursiveGenericLocal"), false,
+            (assembly, minter, triples) =>
+            {
+                var owner = assembly.GetTypeByMetadataName("Root")!.GetMembers("Both").Single();
+                foreach (var name in new[] { "First", "Second" })
+                    foreach (var generic in new[] { "Box`1", "Witness`1" })
+                    {
+                        var target = assembly.GetTypeByMetadataName(generic)!
+                            .Construct(assembly.GetTypeByMetadataName(name)!);
+                        Assert.Contains(triples.Triples, triple => triple.Subject == minter.Member(owner)
+                            && triple.Predicate == minter.OntologyPrefix + "usesType"
+                            && triple.Object == minter.Type(target));
+                    }
+            })).WaitAsync(TimeSpan.FromSeconds(30));
+    }
+
     private static void AssertUse(TestEmitter triples, IriMinter minter, IAssemblySymbol assembly, ISymbol owner, string target)
     {
         Assert.Contains(triples.Triples, triple => triple.Subject == minter.Member(owner)
