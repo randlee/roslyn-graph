@@ -129,3 +129,36 @@ def test_shipped_queries_are_not_limited_by_their_former_caps(tmp_path: Path):
     assert len(oxigraph.select(store, (queries / "logical-versions.rq").read_text(encoding="utf-8"))) == 501
     assert len(oxigraph.select(store, (queries / "unsafe-aggregates.rq").read_text(encoding="utf-8"))) == 2_001
     assert len(oxigraph.select(store, (queries / "unsafe-methods.rq").read_text(encoding="utf-8"))) == 2_001
+
+
+def test_real_store_depth_bounds_distinguish_cuts_leaves_cycles_and_inverse(tmp_path: Path):
+    """AC1-depth: bounded lookahead reports only real omissions in either direction."""
+    asm, graph = "urn:depth-assembly", "urn:depth-graph"
+
+    def store_for(name: str, edges: list[tuple[str, str]]):
+        store, nt = tmp_path / name, tmp_path / f"{name}.nt"
+        names = {node for edge in edges for node in edge}
+        lines = [f"<{asm}> <{RDF_TYPE}> <{DT}Assembly> ."]
+        for node in names:
+            lines += [f"<urn:{node}> <{DT}definedInAssembly> <{asm}> .", f'<urn:{node}> <{DT}accessibility> "Public" .',
+                      f'<urn:{node}> <{DT}fullName> "{node}" .']
+        lines += [f"<urn:{source}> <{DT}inherits> <urn:{target}> ." for source, target in edges]
+        nt.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        oxigraph.load(store, nt, graph)
+        return store
+
+    direct = store_for("direct", [("A", "B"), ("B", "C")])
+    limited = SimpleNamespace(follow=["base_types"], max_depth=1, max_types=None, generic_arguments=False)
+    types, _edges, stats, truncated = traverse.expand(direct, limited, {"urn:A": "A"})
+    assert set(types) == {"urn:A", "urn:B"} and truncated and stats[-1]["stopped"] == "max_depth=1"
+    unlimited = SimpleNamespace(follow=["base_types"], max_depth=0, max_types=None, generic_arguments=False)
+    assert set(traverse.expand(direct, unlimited, {"urn:A": "A"})[0]) == {"urn:A", "urn:B", "urn:C"}
+    leaf = store_for("leaf", [("A", "B")])
+    assert not traverse.expand(leaf, limited, {"urn:A": "A"})[3]
+    cycle = store_for("cycle", [("A", "B"), ("B", "A")])
+    cycle_types, cycle_edges, _stats, cycle_truncated = traverse.expand(cycle, limited, {"urn:A": "A"})
+    assert set(cycle_types) == {"urn:A", "urn:B"} and ("urn:B", "urn:A") in cycle_edges and not cycle_truncated
+    inverse = store_for("inverse", [("B", "A"), ("C", "B")])
+    inverse_definition = SimpleNamespace(follow=["referenced_by"], max_depth=1, max_types=None, generic_arguments=False)
+    inverse_types, _edges, inverse_stats, inverse_truncated = traverse.expand(inverse, inverse_definition, {"urn:A": "A"})
+    assert set(inverse_types) == {"urn:A", "urn:B"} and inverse_truncated and inverse_stats[-1]["stopped"] == "max_depth=1"
