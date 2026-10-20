@@ -22,6 +22,33 @@ REPO = Path(__file__).parents[3]
 BUILT_EXTRACTOR = REPO / "src" / "RoslynToRdf.Cli" / "bin" / "Release" / "net8.0" / "RoslynToRdf.Cli.dll"
 
 
+def extract_source_with_core_harness(tmp_path: Path, language: str, source: str) -> Path:
+    """Test-local Core harness required by C.1 source acceptance fixtures."""
+    harness = tmp_path / "core-harness"
+    harness.mkdir()
+    core = REPO / "src" / "RoslynToRdf.Core" / "RoslynToRdf.Core.csproj"
+    (harness / "Harness.csproj").write_text(f'''<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net8.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings></PropertyGroup><ItemGroup><ProjectReference Include="{core}" /><PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.9.2" /><PackageReference Include="Microsoft.CodeAnalysis.VisualBasic" Version="4.9.2" /></ItemGroup></Project>''')
+    (harness / "Program.cs").write_text('''using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.VisualBasic;
+using RoslynToRdf.Core.Emitters;
+using RoslynToRdf.Core.Extraction;
+var language = args[0]; var source = File.ReadAllText(args[1]); var output = args[2];
+var references = new[] { MetadataReference.CreateFromFile(typeof(object).Assembly.Location) };
+Compilation compilation = language == "vb"
+ ? VisualBasicCompilation.Create("Fixture", new[] { VisualBasicSyntaxTree.ParseText(source) }, references, new VisualBasicCompilationOptions(OutputKind.DynamicallyLinkedLibrary))
+ : CSharpCompilation.Create("Fixture", new[] { CSharpSyntaxTree.ParseText(source) }, references, new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, allowUnsafe: true));
+if (compilation.GetDiagnostics().Any(d => d.Severity == DiagnosticSeverity.Error)) throw new Exception(string.Join("\\n", compilation.GetDiagnostics()));
+using var stream = File.Create(output); using var emitter = new TurtleEmitter(stream);
+new AssemblyGraphExtractor(emitter, new ExtractionOptions { IncludePrivate = true }).Extract(compilation, compilation.Assembly);
+''')
+    source_path, output = harness / f"Fixture.{language}", harness / "fixture.ttl"
+    source_path.write_text(source)
+    completed = subprocess.run(["dotnet", "run", "--project", str(harness / "Harness.csproj"), "--", language, str(source_path), str(output)], capture_output=True, text=True)
+    assert completed.returncode == 0 and output.is_file(), completed.stdout + completed.stderr
+    return output
+
+
 @pytest.fixture(scope="session", autouse=True)
 def require_real_store_tools():
     dotnet = shutil.which("dotnet")
@@ -78,13 +105,45 @@ def test_real_csharp_constraint_and_nested_fixtures_emit_follow_facts(tmp_path: 
     project.write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>')
     (tmp_path / "Fixture.cs").write_text("public interface IFoo {} public interface IBar {} public class S<T> where T : IFoo {} public class H { public void M<U>() where U : IBar {} } public class Outer { public class Inner {} } public class OtherOuter { public class OtherInner {} }")
     ttl = tmp_path / "fixture.ttl"
-    completed = subprocess.run(["dotnet", str(BUILT_EXTRACTOR), str(project), "--output", str(ttl), "--format", "Turtle", "--include-private", "--quiet"], capture_output=True, text=True)
+    completed = subprocess.run(["dotnet", str(BUILT_EXTRACTOR), str(project), "--output", str(ttl), "--format", "Turtle", "--include-private", "--configuration", "Release", "--quiet"], capture_output=True, text=True)
     assert completed.returncode == 0 and ttl.is_file(), completed.stderr
     store = tmp_path / "store"
     oxigraph.load(store, ttl, "urn:fixture")
     constraints = oxigraph.select(store, f"PREFIX dt: <{DT}> SELECT ?owner ?constraint WHERE {{ GRAPH ?g {{ ?owner dt:hasTypeParameter ?p . ?p dt:constrainedToType ?constraint . }} }}")
     nested = oxigraph.select(store, f"PREFIX dt: <{DT}> SELECT ?inner ?outer WHERE {{ GRAPH ?g {{ ?inner dt:nestedIn ?outer . }} }}")
     assert constraints and nested
+
+
+def test_real_visual_basic_constraint_and_nested_fixture_emits_follow_facts(tmp_path: Path):
+    """AC3/AC4 require source-mode parity for Visual Basic fixtures."""
+    if not BUILT_EXTRACTOR.is_file():
+        pytest.fail("Phase C fixture requires the Release RoslynToRdf CLI built by authoritative validation.")
+    project = tmp_path / "Fixture.vbproj"
+    project.write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>')
+    (tmp_path / "Fixture.vb").write_text("Public Interface IFoo\nEnd Interface\nPublic Interface IBar\nEnd Interface\nPublic Class S(Of T As IFoo)\nEnd Class\nPublic Class H\nPublic Sub M(Of U As IBar)()\nEnd Sub\nEnd Class\nPublic Class Outer\nPublic Class Inner\nEnd Class\nEnd Class")
+    build = subprocess.run(["dotnet", "build", str(project), "--configuration", "Release"], capture_output=True, text=True)
+    assert build.returncode == 0, build.stderr
+    ttl = tmp_path / "fixture.ttl"
+    completed = subprocess.run(["dotnet", str(BUILT_EXTRACTOR), str(project), "--output", str(ttl), "--format", "Turtle", "--include-private", "--configuration", "Release", "--quiet"], capture_output=True, text=True)
+    assert completed.returncode == 0 and ttl.is_file(), completed.stderr
+    store = tmp_path / "store"
+    oxigraph.load(store, ttl, "urn:fixture")
+    constraints = oxigraph.select(store, f"PREFIX dt: <{DT}> SELECT ?owner WHERE {{ GRAPH ?g {{ ?owner dt:hasTypeParameter ?p . ?p dt:constrainedToType ?c . }} }}")
+    nested = oxigraph.select(store, f"PREFIX dt: <{DT}> SELECT ?inner WHERE {{ GRAPH ?g {{ ?inner dt:nestedIn ?outer . }} }}")
+    assert constraints and nested
+
+
+@pytest.mark.parametrize(("language", "source"), [
+    ("cs", "public interface IFoo {} public class S<T> where T : IFoo {} public class Outer { public class Inner {} }"),
+    ("vb", "Public Interface IFoo\nEnd Interface\nPublic Class S(Of T As IFoo)\nEnd Class\nPublic Class Outer\nPublic Class Inner\nEnd Class\nEnd Class"),
+])
+def test_core_harness_extracts_csharp_and_vb_source_fixtures(tmp_path: Path, language: str, source: str):
+    """C.1 source fixtures use Compilation.Create and AssemblyGraphExtractor directly."""
+    ttl = extract_source_with_core_harness(tmp_path, language, source)
+    store = tmp_path / "store"
+    oxigraph.load(store, ttl, "urn:fixture")
+    assert oxigraph.select(store, f"PREFIX dt: <{DT}> SELECT ?p WHERE {{ GRAPH ?g {{ ?owner dt:hasTypeParameter ?p . ?p dt:constrainedToType ?c . }} }}")
+    assert oxigraph.select(store, f"PREFIX dt: <{DT}> SELECT ?inner WHERE {{ GRAPH ?g {{ ?inner dt:nestedIn ?outer . }} }}")
 
 
 def test_unlimited_defaults_return_more_than_former_traversal_and_query_caps(tmp_path: Path, monkeypatch):
