@@ -69,3 +69,17 @@ def test_unlimited_defaults_return_more_than_former_traversal_and_query_caps(tmp
     monkeypatch.setattr(explore, "store_for", lambda _path: (store, {"kind": "solution"}))
     result = explore.query(tmp_path / "manifest.json", "SELECT ?s WHERE { GRAPH ?g { ?s <urn:predicate> <urn:object> } }", union=False)
     assert result["rowCount"] == 2_500 and len(result["rows"]) == 2_500 and not result["truncated"]
+
+
+def test_unlimited_default_export_exceeds_former_triple_cap(tmp_path: Path, monkeypatch):
+    """AC1: a default export returns every triple instead of silently capping at 500k."""
+    count, graph = 600_001, "urn:export-graph"
+    nt, store = tmp_path / "export.nt", tmp_path / "store"
+    nt.write_text("".join(f"<urn:export:{i}> <urn:predicate> <urn:object> .\n" for i in range(count)), encoding="utf-8")
+    oxigraph.load(store, nt, graph)
+    monkeypatch.setattr(explore, "store_for", lambda _path: (store, {"kind": "solution"}))
+    output = tmp_path / "export.nt"
+    result = explore.export(tmp_path / "manifest.json", "CONSTRUCT { ?s ?p ?o } WHERE { GRAPH ?g { ?s ?p ?o } }", output,
+                            union=False, logical=False)
+    assert result["summary"]["triples"] == count
+    assert sum(1 for _ in output.open(encoding="utf-8")) == count
