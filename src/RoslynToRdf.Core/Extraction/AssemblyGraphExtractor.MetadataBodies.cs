@@ -52,6 +52,14 @@ public sealed partial class AssemblyGraphExtractor
                 if (_reader.GetString(definition.Name) != assembly.Identity.Name
                     || definition.Version != assembly.Identity.Version)
                     throw new BadImageFormatException("Body image does not match the extracted assembly.");
+                var importedModule = assembly.GetMetadata()?.GetModules().FirstOrDefault();
+                if (importedModule is not null)
+                {
+                    var importedReader = importedModule.GetMetadataReader();
+                    if (importedReader.GetGuid(importedReader.GetModuleDefinition().Mvid)
+                        != _reader.GetGuid(_reader.GetModuleDefinition().Mvid))
+                        throw new BadImageFormatException("Body image module identity does not match the extracted assembly.");
+                }
             }
             catch
             {
@@ -86,7 +94,7 @@ public sealed partial class AssemblyGraphExtractor
                 if (!_visited.Add((owner, work.Handle)))
                     continue;
                 var definition = _reader.GetMethodDefinition(work.Handle);
-                EnqueueStateMachine(definition, pending, owner);
+                EnqueueStateMachine(definition, pending, owner, work.Context);
                 if (definition.RelativeVirtualAddress == 0)
                     continue;
                 var body = _pe.GetMethodBody(definition.RelativeVirtualAddress);
@@ -102,7 +110,7 @@ public sealed partial class AssemblyGraphExtractor
                     ushort value = il.ReadByte();
                     if (value == 0xfe)
                         value = (ushort)(0xfe00 | il.ReadByte());
-                    if (!OpCodesByValue.TryGetValue(value, out var opcode))
+                    if (!OpCodesByValue.TryGetValue(value, out var opcode) || opcode.OpCodeType == OpCodeType.Nternal)
                         throw new BadImageFormatException($"Unknown IL opcode 0x{value:x4}.");
                     switch (opcode.OperandType)
                     {
@@ -157,8 +165,10 @@ public sealed partial class AssemblyGraphExtractor
 
         private ImmutableArray<BodyType> TypeArguments(INamedTypeSymbol type)
         {
-            var outer = type.ContainingType is null ? ImmutableArray<BodyType>.Empty : TypeArguments(type.ContainingType);
-            return outer.AddRange(type.TypeArguments.Select(FromSymbol));
+            var nesting = new Stack<INamedTypeSymbol>();
+            for (var current = type; current is not null; current = current.ContainingType)
+                nesting.Push(current);
+            return nesting.SelectMany(current => current.TypeArguments).Select(FromSymbol).ToImmutableArray();
         }
 
         private BodyContext TokenContext(EntityHandle handle, BodyContext caller)
@@ -280,7 +290,7 @@ public sealed partial class AssemblyGraphExtractor
         }
 
         private void EnqueueStateMachine(MethodDefinition method,
-            Queue<(MethodDefinitionHandle Handle, BodyContext Context)> pending, string owner)
+            Queue<(MethodDefinitionHandle Handle, BodyContext Context)> pending, string owner, BodyContext context)
         {
             foreach (var handle in method.GetCustomAttributes())
             {
@@ -304,13 +314,16 @@ public sealed partial class AssemblyGraphExtractor
                 {
                     if (MetadataName(typeHandle) != typeName)
                         continue;
-                    var bodyType = DecodeType(typeHandle, BodyContext.Empty);
+                    var bodyType = DecodeType(typeHandle, context);
                     Emit(owner, bodyType);
+                    var arguments = context.TypeArguments.AddRange(context.MethodArguments);
+                    if (arguments.Length != bodyType.Arguments.Length)
+                        arguments = bodyType.Arguments;
                     foreach (var candidate in _reader.GetTypeDefinition(typeHandle).GetMethods())
                     {
                         if (!_reader.StringComparer.Equals(_reader.GetMethodDefinition(candidate).Name, "MoveNext"))
                             continue;
-                        pending.Enqueue((candidate, new BodyContext(bodyType.Arguments, ImmutableArray<BodyType>.Empty)));
+                        pending.Enqueue((candidate, new BodyContext(arguments, ImmutableArray<BodyType>.Empty)));
                         matched = true;
                     }
                 }
@@ -321,19 +334,30 @@ public sealed partial class AssemblyGraphExtractor
 
         private string? MetadataName(EntityHandle handle)
         {
-            if (handle.Kind == HandleKind.TypeDefinition)
+            var segments = new Stack<string>();
+            var visited = new HashSet<EntityHandle>();
+            while (!handle.IsNil)
             {
-                var type = _reader.GetTypeDefinition((TypeDefinitionHandle)handle);
-                var outer = type.GetDeclaringType();
-                return outer.IsNil ? Qualify(type.Namespace, type.Name) : MetadataName(outer) + "+" + _reader.GetString(type.Name);
+                if (!visited.Add(handle))
+                    throw new BadImageFormatException("Cyclic nested type ownership.");
+                if (handle.Kind == HandleKind.TypeDefinition)
+                {
+                    var type = _reader.GetTypeDefinition((TypeDefinitionHandle)handle);
+                    var outer = type.GetDeclaringType();
+                    segments.Push(outer.IsNil ? Qualify(type.Namespace, type.Name) : _reader.GetString(type.Name));
+                    handle = outer;
+                }
+                else if (handle.Kind == HandleKind.TypeReference)
+                {
+                    var type = _reader.GetTypeReference((TypeReferenceHandle)handle);
+                    var nested = type.ResolutionScope.Kind == HandleKind.TypeReference;
+                    segments.Push(nested ? _reader.GetString(type.Name) : Qualify(type.Namespace, type.Name));
+                    handle = nested ? type.ResolutionScope : default;
+                }
+                else
+                    return null;
             }
-            if (handle.Kind == HandleKind.TypeReference)
-            {
-                var type = _reader.GetTypeReference((TypeReferenceHandle)handle);
-                return type.ResolutionScope.Kind == HandleKind.TypeReference
-                    ? MetadataName(type.ResolutionScope) + "+" + _reader.GetString(type.Name) : Qualify(type.Namespace, type.Name);
-            }
-            return null;
+            return string.Join("+", segments);
         }
 
         private string Qualify(StringHandle space, StringHandle name) =>
@@ -364,6 +388,11 @@ public sealed partial class AssemblyGraphExtractor
         {
             var reference = reader.GetTypeReference(handle);
             var name = MetadataName(handle)!;
+            if (reference.ResolutionScope.IsNil)
+            {
+                var forwarded = ResolveExportedType(name);
+                return forwarded is null ? Missing($"exported {name}") : FromSymbol(forwarded);
+            }
             IAssemblySymbol? assembly;
             switch (reference.ResolutionScope.Kind)
             {
@@ -374,20 +403,59 @@ public sealed partial class AssemblyGraphExtractor
                     assembly = _assembly;
                     break;
                 case HandleKind.TypeReference:
-                    var outer = GetTypeFromReference(reader, (TypeReferenceHandle)reference.ResolutionScope, 0).Named;
-                    var nestedName = reader.GetString(reference.Name);
-                    var symbol = outer?.GetTypeMembers().SingleOrDefault(type => type.MetadataName == nestedName);
+                    var nestedNames = new Stack<string>();
+                    var current = handle;
+                    var visited = new HashSet<TypeReferenceHandle>();
+                    while (reader.GetTypeReference(current).ResolutionScope.Kind == HandleKind.TypeReference)
+                    {
+                        if (!visited.Add(current))
+                            throw new BadImageFormatException("Cyclic nested type reference.");
+                        var nestedReference = reader.GetTypeReference(current);
+                        nestedNames.Push(reader.GetString(nestedReference.Name));
+                        current = (TypeReferenceHandle)nestedReference.ResolutionScope;
+                    }
+                    var symbol = GetTypeFromReference(reader, current, 0).Named;
+                    while (nestedNames.TryPop(out var nestedName))
+                        symbol = symbol?.GetTypeMembers().SingleOrDefault(type => type.MetadataName == nestedName);
                     return symbol is null ? Missing(name) : FromSymbol(symbol);
                 default:
-                    if (reference.ResolutionScope.IsNil)
-                    {
-                        var forwarded = _assembly.ResolveForwardedType(name);
-                        return forwarded is null ? Missing($"forwarded {name}") : FromSymbol(forwarded);
-                    }
                     return Missing($"{name} in unavailable scope {reference.ResolutionScope.Kind}");
             }
             var resolved = assembly?.GetTypeByMetadataName(name) ?? assembly?.ResolveForwardedType(name);
             return resolved is null ? Missing(name) : FromSymbol(resolved);
+        }
+
+        private INamedTypeSymbol? ResolveExportedType(string name)
+        {
+            foreach (var handle in _reader.ExportedTypes)
+            {
+                var exported = _reader.GetExportedType(handle);
+                var segments = new Stack<string>();
+                segments.Push(_reader.GetString(exported.Name));
+                var implementation = exported.Implementation;
+                var visited = new HashSet<ExportedTypeHandle> { handle };
+                while (implementation.Kind == HandleKind.ExportedType)
+                {
+                    var outer = (ExportedTypeHandle)implementation;
+                    if (!visited.Add(outer))
+                        throw new BadImageFormatException("Cyclic exported-type ownership.");
+                    exported = _reader.GetExportedType(outer);
+                    segments.Push(_reader.GetString(exported.Name));
+                    implementation = exported.Implementation;
+                }
+                var space = _reader.GetString(exported.Namespace);
+                var fullName = (space.Length == 0 ? "" : space + ".") + string.Join("+", segments);
+                if (fullName != name)
+                    continue;
+                if (implementation.Kind != HandleKind.AssemblyReference)
+                {
+                    Unresolved($"exported type {name} in unavailable multi-module implementation");
+                    return null;
+                }
+                var assembly = ResolveAssembly((AssemblyReferenceHandle)implementation);
+                return assembly?.GetTypeByMetadataName(name) ?? assembly?.ResolveForwardedType(name);
+            }
+            return _assembly.ResolveForwardedType(name);
         }
 
         private IAssemblySymbol? ResolveAssembly(AssemblyReferenceHandle handle)
@@ -398,7 +466,10 @@ public sealed partial class AssemblyGraphExtractor
             var identity = new AssemblyIdentity(_reader.GetString(reference.Name), reference.Version,
                 reference.Culture.IsNil ? null : _reader.GetString(reference.Culture),
                 _reader.GetBlobContent(reference.PublicKeyOrToken),
-                (reference.Flags & System.Reflection.AssemblyFlags.PublicKey) != 0);
+                (reference.Flags & System.Reflection.AssemblyFlags.PublicKey) != 0,
+                isRetargetable: (reference.Flags & System.Reflection.AssemblyFlags.Retargetable) != 0,
+                contentType: (reference.Flags & System.Reflection.AssemblyFlags.WindowsRuntime) != 0
+                    ? System.Reflection.AssemblyContentType.WindowsRuntime : System.Reflection.AssemblyContentType.Default);
             var bound = _assembly.Modules.First().ReferencedAssemblies;
             var boundSymbols = _assembly.Modules.First().ReferencedAssemblySymbols;
             for (var index = 0; index < bound.Length; index++)
@@ -423,7 +494,8 @@ public sealed partial class AssemblyGraphExtractor
         private BodyType FromSymbol(ITypeSymbol symbol)
         {
             if (symbol is ITypeParameterSymbol parameter)
-                return BodyType.Empty with { Key = (parameter.TypeParameterKind == TypeParameterKind.Method ? "!!" : "!") + parameter.Ordinal };
+                return BodyType.Empty with { Key = (parameter.TypeParameterKind == TypeParameterKind.Method ? "!!" : "!") + parameter.Ordinal,
+                    SignatureType = parameter };
             if (symbol is INamedTypeSymbol named)
             {
                 var definition = SymbolEqualityComparer.Default.Equals(named.ContainingAssembly, _assembly)
@@ -431,7 +503,7 @@ public sealed partial class AssemblyGraphExtractor
                     ? MetadataTokens.EntityHandle(named.MetadataToken) : default;
                 return new BodyType(named, ImmutableArray.Create<ITypeSymbol>(named), TypeArguments(named),
                     named.ContainingAssembly.Identity + ":" + named.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                    definition.Kind == HandleKind.TypeDefinition ? (TypeDefinitionHandle)definition : default);
+                    definition.Kind == HandleKind.TypeDefinition ? (TypeDefinitionHandle)definition : default, named);
             }
             if (symbol is IArrayTypeSymbol array)
                 return FromSymbol(array.ElementType);
@@ -458,7 +530,7 @@ public sealed partial class AssemblyGraphExtractor
             Emit(owner, signature.ParameterTypes);
         }
 
-        private void Unresolved(string detail) => _extractor.Log($"Unresolved metadata body dependency: {detail}");
+        private void Unresolved(string detail) => _extractor.ReportBodyDiagnostic($"Unresolved metadata body dependency: {detail}");
         private BodyType Missing(string detail)
         {
             Unresolved(detail);
@@ -467,17 +539,53 @@ public sealed partial class AssemblyGraphExtractor
 
         public BodyType GetTypeFromSpecification(MetadataReader reader, BodyContext genericContext,
             TypeSpecificationHandle handle, byte rawTypeKind) => reader.GetTypeSpecification(handle).DecodeSignature(this, genericContext);
-        public BodyType GetArrayType(BodyType elementType, ArrayShape shape) => elementType with { Key = elementType.Key + "[" + shape.Rank + "]" };
-        public BodyType GetByReferenceType(BodyType elementType) => elementType with { Key = elementType.Key + "&" };
-        public BodyType GetPointerType(BodyType elementType) => elementType with { Key = elementType.Key + "*" };
-        public BodyType GetSZArrayType(BodyType elementType) => elementType with { Key = elementType.Key + "[]" };
+        public BodyType GetArrayType(BodyType elementType, ArrayShape shape) =>
+            new(null, elementType.Types, ImmutableArray<BodyType>.Empty, elementType.Key + "[" + shape.Rank + "]",
+                SignatureType: elementType.SignatureType is null || shape.Rank == 1
+                    ? null : _extractor._compilation!.CreateArrayTypeSymbol(elementType.SignatureType, shape.Rank));
+        public BodyType GetByReferenceType(BodyType elementType) =>
+            new(null, elementType.Types, ImmutableArray<BodyType>.Empty, elementType.Key + "&", SignatureType: elementType.SignatureType);
+        public BodyType GetPointerType(BodyType elementType) =>
+            new(null, elementType.Types, ImmutableArray<BodyType>.Empty, elementType.Key + "*",
+                SignatureType: elementType.SignatureType is null ? null : _extractor._compilation!.CreatePointerTypeSymbol(elementType.SignatureType));
+        public BodyType GetSZArrayType(BodyType elementType) =>
+            new(null, elementType.Types, ImmutableArray<BodyType>.Empty, elementType.Key + "[]",
+                SignatureType: elementType.SignatureType is null ? null : _extractor._compilation!.CreateArrayTypeSymbol(elementType.SignatureType));
         public BodyType GetPinnedType(BodyType elementType) => elementType;
         public BodyType GetModifiedType(BodyType modifier, BodyType unmodifiedType, bool isRequired) =>
             unmodifiedType with { Types = unmodifiedType.Types.AddRange(modifier.Types),
                 Key = unmodifiedType.Key + (isRequired ? "modreq(" : "modopt(") + modifier.Key + ")" };
-        public BodyType GetGenericInstantiation(BodyType genericType, ImmutableArray<BodyType> typeArguments) =>
-            new(genericType.Named, genericType.Types.AddRange(typeArguments.SelectMany(argument => argument.Types)), typeArguments,
-                genericType.Key + "<" + string.Join(",", typeArguments.Select(argument => argument.Key)) + ">", genericType.Definition);
+        public BodyType GetGenericInstantiation(BodyType genericType, ImmutableArray<BodyType> typeArguments)
+        {
+            var types = genericType.Types.AddRange(typeArguments.SelectMany(argument => argument.Types));
+            INamedTypeSymbol? constructed = null;
+            if (genericType.Named is not null && typeArguments.All(argument => argument.SignatureType is not null))
+            {
+                var nesting = new Stack<INamedTypeSymbol>();
+                for (var current = genericType.Named; current is not null; current = current.ContainingType)
+                    nesting.Push(current.OriginalDefinition);
+                var offset = 0;
+                while (nesting.TryPop(out var definition))
+                {
+                    var target = constructed is null ? definition
+                        : constructed.GetTypeMembers(definition.Name, definition.Arity)
+                            .SingleOrDefault(candidate => candidate.MetadataName == definition.MetadataName);
+                    if (target is null || offset + definition.Arity > typeArguments.Length)
+                        throw new BadImageFormatException("Invalid nested generic instantiation.");
+                    constructed = definition.Arity == 0 ? target
+                        : target.Construct(typeArguments.Skip(offset).Take(definition.Arity)
+                            .Select(argument => argument.SignatureType!).ToArray());
+                    offset += definition.Arity;
+                }
+                if (offset != typeArguments.Length)
+                    throw new BadImageFormatException("Invalid generic argument count.");
+                if (constructed is not null)
+                    types = types.Add(constructed);
+            }
+            return new BodyType(constructed ?? genericType.Named, types, typeArguments,
+                genericType.Key + "<" + string.Join(",", typeArguments.Select(argument => argument.Key)) + ">",
+                genericType.Definition, constructed);
+        }
         public BodyType GetGenericMethodParameter(BodyContext genericContext, int index) =>
             index < genericContext.MethodArguments.Length ? genericContext.MethodArguments[index] : BodyType.Empty with { Key = "!!" + index };
         public BodyType GetGenericTypeParameter(BodyContext genericContext, int index) =>
@@ -515,7 +623,8 @@ public sealed partial class AssemblyGraphExtractor
     }
 
     private sealed record BodyType(INamedTypeSymbol? Named, ImmutableArray<ITypeSymbol> Types,
-        ImmutableArray<BodyType> Arguments, string Key = "", TypeDefinitionHandle Definition = default)
+        ImmutableArray<BodyType> Arguments, string Key = "", TypeDefinitionHandle Definition = default,
+        ITypeSymbol? SignatureType = null)
     {
         public static BodyType Empty { get; } = new(null, ImmutableArray<ITypeSymbol>.Empty, ImmutableArray<BodyType>.Empty);
     }

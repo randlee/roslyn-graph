@@ -5,6 +5,50 @@ namespace RoslynToRdf.Tests;
 
 public class CliIntegrationTests
 {
+    [Fact]
+    public async Task Cli_StrictAliasMatchesLegacyMissingReferenceFailure()
+    {
+        using var fixture = new AssemblyReferenceFixture();
+        foreach (var option in new[] { "--strict", "--fail-on-missing-references" })
+        {
+            var result = await RunCliAsync([
+                fixture.TargetPath, "-o", Path.Combine(fixture.DirectoryPath, option[2..] + ".nt"), option
+            ]);
+            Assert.Equal(1, result.ExitCode);
+            Assert.Contains(fixture.DependencyName, result.Stderr);
+            Assert.DoesNotContain("Done.", result.Stdout);
+        }
+    }
+
+    [Fact]
+    public async Task Cli_UnwritableOutputIsFatalWithoutDone()
+    {
+        using var fixture = new AssemblyReferenceFixture();
+        var result = await RunCliAsync([fixture.TargetPath, "-o", fixture.DirectoryPath]);
+        Assert.Equal(1, result.ExitCode);
+        Assert.Contains("Error:", result.Stderr);
+        Assert.DoesNotContain("Done.", result.Stdout);
+    }
+
+    [Fact]
+    public async Task Cli_UnresolvedSourceBodyWarnsEvenWhenQuiet()
+    {
+        using var fixture = new AssemblyReferenceFixture();
+        var projectPath = Path.Combine(fixture.DirectoryPath, "Unresolved.csproj");
+        await File.WriteAllTextAsync(projectPath, """
+            <Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>
+            """);
+        await File.WriteAllTextAsync(Path.Combine(fixture.DirectoryPath, "Unresolved.cs"),
+            "public class Inventory { public void Run() { MissingType value = null; } }");
+        var result = await RunCliAsync([
+            projectPath, "-o", Path.Combine(fixture.DirectoryPath, "unresolved.nt"), "--quiet"
+        ]);
+        Assert.Equal(0, result.ExitCode);
+        Assert.Empty(result.Stdout);
+        Assert.Contains("Warning: Unresolved body type", result.Stderr);
+        Assert.Contains("MissingType", result.Stderr);
+    }
+
     [Theory]
     [InlineData(null, false)]
     [InlineData("--exclude-attributes", false)]
@@ -130,7 +174,9 @@ public class CliIntegrationTests
         Assert.Contains(fixture.DependencyName, result.Stderr);
         Assert.Contains(fixture.DependencyPath, result.Stderr);
         Assert.Contains("Roslyn could not bind", result.Stderr);
-        Assert.Single(result.Stderr.Split(Environment.NewLine).Where(line => line.StartsWith("Warning:")));
+        Assert.Single(result.Stderr.Split(Environment.NewLine).Where(line => line.StartsWith("Warning: Assembly reference")));
+        if (!strict)
+            Assert.Contains("Warning: Unresolved metadata body dependency", result.Stderr);
         if (!strict)
             Assert.Contains("ReferenceFixture.Target", await File.ReadAllTextAsync(outputPath));
     }
@@ -201,7 +247,9 @@ public class CliIntegrationTests
         Assert.Contains(fixture.TargetPath, result.Stderr);
         Assert.Contains("--reference (-r)", result.Stderr);
         Assert.Contains("--search-dir (-s)", result.Stderr);
-        Assert.Single(result.Stderr.Split(Environment.NewLine).Where(line => line.StartsWith("Warning:")));
+        Assert.Single(result.Stderr.Split(Environment.NewLine).Where(line => line.StartsWith("Warning: Assembly reference")));
+        if (!strict)
+            Assert.Contains("Warning: Unresolved metadata body dependency", result.Stderr);
         if (strict)
             Assert.Contains("--fail-on-missing-references", result.Stderr);
         else

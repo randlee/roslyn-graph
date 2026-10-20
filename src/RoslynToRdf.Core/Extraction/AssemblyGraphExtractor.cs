@@ -54,6 +54,7 @@ public sealed partial class AssemblyGraphExtractor
     public void Extract(Compilation compilation, IAssemblySymbol targetAssembly, string? peImagePath = null)
     {
         _peImagePath = peImagePath;
+        _bodyResolutionDiagnostics.Clear();
         try
         {
             ExtractCore(compilation, targetAssembly);

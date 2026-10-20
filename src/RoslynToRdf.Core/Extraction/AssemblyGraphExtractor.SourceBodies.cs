@@ -48,6 +48,7 @@ public sealed partial class AssemblyGraphExtractor
                 continue;
             var model = _compilation.GetSemanticModel(root.SyntaxTree);
             var visited = new HashSet<IOperation>(ReferenceEqualityComparer.Instance);
+            var controlFlowRoots = new HashSet<IOperation>(ReferenceEqualityComparer.Instance);
             var pending = new Stack<SyntaxNode>();
             if (root is CSharpSyntax.TypeDeclarationSyntax typeDeclaration)
             {
@@ -64,10 +65,16 @@ public sealed partial class AssemblyGraphExtractor
                     pending.Push(child);
                 var operation = model.GetOperation(node);
                 if (operation != null)
+                {
                     VisitSourceOperations(operation, ownerIri, model, visited);
+                    while (operation.Parent != null)
+                        operation = operation.Parent;
+                    controlFlowRoots.Add(operation);
+                }
                 CollectSelectedSourceMembers(node, model, ownerIri);
             }
-            CollectSourceControlFlow(root, model, ownerIri, visited);
+            foreach (var operation in controlFlowRoots)
+                CollectSourceControlFlow(operation, model, ownerIri, visited);
         }
     }
 
@@ -105,10 +112,15 @@ public sealed partial class AssemblyGraphExtractor
                 case IIsTypeOperation isType: EmitBodyType(ownerIri, isType.TypeOperand); break;
                 case ITypePatternOperation pattern: EmitBodyType(ownerIri, pattern.MatchedType); break;
                 case IDeclarationPatternOperation declaration: EmitBodyType(ownerIri, declaration.MatchedType); break;
-                case IRecursivePatternOperation recursive: EmitBodyType(ownerIri, recursive.MatchedType); break;
+                case IRecursivePatternOperation recursive:
+                    EmitBodyType(ownerIri, recursive.MatchedType);
+                    EmitBodySymbol(ownerIri, recursive.DeconstructSymbol);
+                    break;
                 case ICatchClauseOperation catchClause: EmitBodyType(ownerIri, catchClause.ExceptionType); break;
                 case INameOfOperation nameOf:
                     EmitBodySymbol(ownerIri, model.GetSymbolInfo(nameOf.Argument.Syntax).Symbol);
+                    foreach (var namedMember in model.GetMemberGroup(nameOf.Argument.Syntax))
+                        EmitBodySymbol(ownerIri, namedMember);
                     break;
             }
         }
@@ -168,24 +180,29 @@ public sealed partial class AssemblyGraphExtractor
                 method.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)))));
         if (!CSharp.CSharpExtensions.TryGetSpeculativeSemanticModel(model, syntax.SpanStart, statement, out var speculative))
         {
-            Log($"Could not bind implicit await for {method.ToDisplayString()} in {ownerIri}");
-            return;
+            var originalStatement = syntax.AncestorsAndSelf().OfType<CSharpSyntax.StatementSyntax>().FirstOrDefault();
+            if (originalStatement == null)
+            {
+                ReportBodyDiagnostic($"Could not bind implicit await for {method.ToDisplayString()} in {ownerIri}");
+                return;
+            }
+            var annotation = new SyntaxAnnotation();
+            var replacement = statement.WithAdditionalAnnotations(annotation);
+            var tree = syntax.SyntaxTree;
+            var replacementTree = tree.WithRootAndOptions(tree.GetRoot().ReplaceNode(originalStatement, replacement), tree.Options);
+            speculative = model.Compilation.ReplaceSyntaxTree(tree, replacementTree).GetSemanticModel(replacementTree);
+            statement = (CSharpSyntax.ExpressionStatementSyntax)replacementTree.GetRoot().GetAnnotatedNodes(annotation).Single();
         }
         var info = CSharp.CSharpExtensions.GetAwaitExpressionInfo(speculative, (CSharpSyntax.AwaitExpressionSyntax)statement.Expression);
         if (info.GetAwaiterMethod == null)
-            Log($"Could not resolve implicit awaiter for {method.ToDisplayString()} in {ownerIri}");
+            ReportBodyDiagnostic($"Could not resolve implicit awaiter for {method.ToDisplayString()} in {ownerIri}");
         EmitBodySymbol(ownerIri, info.GetAwaiterMethod);
         EmitBodySymbol(ownerIri, info.IsCompletedProperty);
         EmitBodySymbol(ownerIri, info.GetResultMethod);
     }
 
-    private void CollectSourceControlFlow(SyntaxNode root, SemanticModel model, string ownerIri, HashSet<IOperation> visited)
+    private void CollectSourceControlFlow(IOperation operation, SemanticModel model, string ownerIri, HashSet<IOperation> visited)
     {
-        var operation = model.GetOperation(root);
-        if (operation == null)
-            return;
-        while (operation.Parent != null)
-            operation = operation.Parent;
         ControlFlowGraph? graph = operation switch
         {
             IMethodBodyOperation method => ControlFlowGraph.Create(method),

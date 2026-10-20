@@ -224,6 +224,8 @@ public class Program
                     log?.Invoke("AllowUnsafeBlocks is false; unsafe-method analysis is skipped for this project.");
                 var extractor = new AssemblyGraphExtractor(emitter, options, log);
                 extractor.Extract(compilation, compilation.Assembly);
+                foreach (var diagnostic in extractor.BodyResolutionDiagnostics)
+                    Console.Error.WriteLine($"Warning: {diagnostic}");
             }
             else
             {
@@ -249,6 +251,8 @@ public class Program
                     }
                     var extractor = new AssemblyGraphExtractor(emitter, options, log);
                     extractor.Extract(compilation, assemblySymbol, peImagePath: assembly.FullName);
+                    foreach (var diagnostic in extractor.BodyResolutionDiagnostics)
+                        Console.Error.WriteLine($"Warning: {diagnostic}");
                 }
             }
             emitter.Flush();

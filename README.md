@@ -35,6 +35,9 @@ roslyn2rdf MyAssembly.dll --fail-on-missing-references
 # Analyze an evaluated C# source project
 roslyn2rdf MyProject.csproj -o source-graph.nt
 
+# Analyze an evaluated Visual Basic source project
+roslyn2rdf MyProject.vbproj -o vb-source-graph.nt
+
 # Install the bundled Claude Code and Codex skills in a repository
 roslyn2rdf skill --install /path/to/repository
 

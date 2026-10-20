@@ -7,6 +7,15 @@ public sealed partial class AssemblyGraphExtractor
 {
     private string? _peImagePath;
     private readonly HashSet<(string Owner, string Target)> _bodyTypeEdges = new();
+    private readonly List<string> _bodyResolutionDiagnostics = new();
+    public IReadOnlyList<string> BodyResolutionDiagnostics => _bodyResolutionDiagnostics.AsReadOnly();
+
+    private void ReportBodyDiagnostic(string message)
+    {
+        if (!_bodyResolutionDiagnostics.Contains(message))
+            _bodyResolutionDiagnostics.Add(message);
+        LogVerbose(message);
+    }
 
     private void ExtractBodyDependencies(ISymbol member, string ownerIri)
     {
@@ -81,7 +90,7 @@ public sealed partial class AssemblyGraphExtractor
                         pending.Push(argument);
                     break;
                 case IErrorTypeSymbol:
-                    Log($"Unresolved body type for {ownerIri}: {current.ToDisplayString()}");
+                    ReportBodyDiagnostic($"Unresolved body type for {ownerIri}: {current.ToDisplayString()}");
                     break;
             }
         }
