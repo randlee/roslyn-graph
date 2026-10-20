@@ -14,17 +14,19 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from . import artifacts, config, explore, maintain, oxigraph
+from . import artifacts, build, config, explore, maintain, oxigraph
 from .result import ProblemList, RgError
 from .util import DT, RDF_TYPE, RG, full_path, nt_iri, nt_literal
 
 SCHEMA_VERSION = 1
 BATCH = 250
+_ADMISSION_FAILURES = {"ambiguous-artifacts", "registered-definition-unavailable", "external-boundary"}
 FOLLOW = {  # relation -> graph patterns binding ?t (the referencing type) and ?r (the referenced type)
     "base_types": ["?t dt:inherits ?r"],
     "interfaces": ["?t dt:implements ?r"],
     "member_types": ["?t dt:hasMember ?m . ?m dt:returnType|dt:propertyType|dt:fieldType|dt:eventType ?r"],
     "parameter_types": ["?t dt:hasMember ?m . ?m dt:hasParameter ?p . ?p dt:parameterType ?r"],
+    "body_types": ["?t dt:hasMember ?member . ?member dt:usesType ?r"],
     "constraints": ["?t dt:hasTypeParameter ?parameter . ?parameter dt:constrainedToType ?r",
                     "?t dt:hasMember ?method . ?method dt:hasTypeParameter ?parameter . ?parameter dt:constrainedToType ?r"],
     "enclosing_type": ["?t dt:nestedIn ?r"],
@@ -37,6 +39,7 @@ INVERSE_FOLLOW = {  # relation -> patterns binding ?t (the consumed type) and ?r
         "?r dt:implements ?t",
         "?r dt:hasMember ?m . ?m dt:returnType|dt:propertyType|dt:fieldType|dt:eventType ?t",
         "?r dt:hasMember ?m . ?m dt:hasParameter ?p . ?p dt:parameterType ?t",
+        "?r dt:hasMember ?member . ?member dt:usesType ?t",
         "?r dt:hasTypeParameter ?parameter . ?parameter dt:constrainedToType ?t",
         "?r dt:hasMember ?method . ?method dt:hasTypeParameter ?parameter . ?parameter dt:constrainedToType ?t",
         "?r dt:hasAttribute ?at . ?at dt:attributeType ?t",
@@ -117,7 +120,7 @@ def load_definition(path: Path) -> Definition:
     implementations = seeds.get("implementations", "transitive")
     if implementations not in IMPLEMENTATIONS:
         bad("seeds.implementations", f"must be one of {sorted(IMPLEMENTATIONS)}")
-    follow = strings(expand, "follow", "expand") if "follow" in expand else ["base_types", "interfaces", "member_types", "parameter_types", "constraints", "enclosing_type"]
+    follow = strings(expand, "follow", "expand") if "follow" in expand else ["base_types", "interfaces", "member_types", "parameter_types", "body_types", "constraints", "enclosing_type"]
     for item in follow:
         if item not in FOLLOW:
             bad("expand.follow", f"unknown relation {item!r}", f"Use {', '.join(FOLLOW)}.")
@@ -179,10 +182,185 @@ def _own(var: str) -> str:
     return _OWN.format(t=f"?{var}", v=var)
 
 
+class DependencyStores:
+    def __init__(self, store: Path, manifest: dict):
+        self.sources = [(store, manifest.get("kind") != "assembly")]
+        self.manifest = manifest
+        self.candidates: list[tuple[Path, dict]] = []
+        self.known_components: list[dict] = []
+        self.additional_components: list[dict] = []
+        self.diagnostics: list[dict] = []
+        self.resolved: set[str] = set()
+        self.reasons: dict[str, str] = {}
+        self.external_references: list[dict] = []
+        self.packages: dict[str, dict] = {}
+
+    def report(self, reason: str, **details):
+        item = {"reason": reason, **details}
+        if item not in self.diagnostics:
+            self.diagnostics.append(item)
+
+    @classmethod
+    def registered(cls, root: Path, definition: Definition, manifest: dict, store: Path | None = None):
+        result = cls(store or root / "store.oxigraph", manifest)
+        result.report("body-coverage-unknown", artifactId=manifest.get("artifactId"))
+        recorded = manifest.get("workspace", {})
+        if not isinstance(recorded, dict):
+            result.report("registration-unavailable", message="The source manifest has invalid workspace provenance.")
+            return result
+        if getattr(definition, "manifest", "") and (not recorded.get("path") or not recorded.get("collection")):
+            result.report("registration-unavailable", message="The source manifest has no recorded workspace and collection.")
+            return result
+        if getattr(definition, "manifest", "") and (not isinstance(recorded["path"], str) or not isinstance(recorded["collection"], str)):
+            result.report("registration-unavailable", message="The source manifest has invalid workspace provenance.")
+            return result
+        workspace_path = Path(recorded["path"]) if getattr(definition, "manifest", "") else definition.workspace
+        collection_name = recorded["collection"] if getattr(definition, "manifest", "") else definition.collection
+        try:
+            workspace = config.load(workspace_path)
+            collection = workspace.collections.get(collection_name)
+            if collection is None:
+                result.report("registration-unavailable", workspace=str(workspace_path), collection=collection_name)
+                return result
+        except (RgError, UnicodeError, OSError) as exc:
+            result.report("registration-unavailable", workspace=str(workspace_path), message=str(exc))
+            return result
+        profiles = {collection.base, *collection.overlays}
+        for name in list(profiles):
+            profiles.update(getattr(workspace.profiles[name], "packages", []))
+        present = {manifest.get("artifactId")}
+        for key in ("components", "baseComponents", "overlayComponents"):
+            present.update(item["artifactId"] for item in manifest.get(key, []))
+        for path in sorted((root / "assemblies").rglob("manifest.json")):
+            try:
+                candidate = artifacts.read_manifest(path)
+            except (RgError, UnicodeError) as exc:
+                result.report("manifest-unreadable", manifestPath=str(path), message=str(exc))
+                continue
+            if not isinstance(candidate, dict):
+                result.report("manifest-invalid", manifestPath=str(path))
+                continue
+            registration = candidate.get("workspace", {})
+            if (not isinstance(registration, dict) or not isinstance(registration.get("path"), str)
+                    or not isinstance(registration.get("profile"), str)
+                    or not isinstance(candidate.get("build", {}), dict)
+                    or not isinstance(candidate.get("package") or {}, dict)
+                    or not isinstance(candidate.get("assembly", {}), dict)):
+                result.report("manifest-invalid", manifestPath=str(path))
+                continue
+            if Path(registration["path"]).resolve() != workspace.path.resolve():
+                continue
+            if candidate.get("schemaVersion") != 2 or candidate.get("kind") != "assembly":
+                result.report("manifest-unsupported", manifestPath=str(path))
+                continue
+            if (not isinstance(candidate.get("artifactId"), str) or not candidate["artifactId"]
+                    or not isinstance(candidate.get("graphIri"), str) or not candidate["graphIri"]):
+                result.report("manifest-invalid", manifestPath=str(path))
+                continue
+            result.known_components.append(candidate)
+            if registration["profile"] not in profiles:
+                continue
+            if candidate.get("artifactId") in present:
+                continue
+            profile = workspace.profiles[registration["profile"]]
+            framework = candidate.get("build", {}).get("targetFramework") or (candidate.get("package") or {}).get("targetFramework")
+            if framework != profile.target_framework:
+                result.report("framework-incompatible", manifestPath=str(path), targetFramework=framework)
+                continue
+            result.candidates.append((path, candidate))
+        return result
+
+    def select(self, columns: str, pattern: str, values: str = "") -> list[dict]:
+        rows = []
+        for path, named in self.sources:
+            scoped = f"GRAPH ?g {{ {pattern} }}" if named else pattern
+            rows.extend(oxigraph.select(path, f"PREFIX dt: <{DT}> SELECT DISTINCT {columns} WHERE {{ {values} {scoped} }}"))
+        return [dict(row) for row in {tuple(sorted(row.items())) for row in rows}]
+
+    def resolve(self, refs: set[str]):
+        unresolved = refs - self.resolved
+        self.resolved.update(unresolved)
+        if not unresolved:
+            return
+        source_path, source_named = self.sources[0]
+        own_pattern = f"GRAPH ?g {{ {_own('t')} }}" if source_named else _own("t")
+        existing = {row["t"] for batch in _batches(sorted(unresolved))
+                    for row in oxigraph.select(source_path, f"PREFIX dt: <{DT}> SELECT DISTINCT ?t WHERE {{ "
+                                               f"VALUES ?t {{ {_values(batch)} }} {own_pattern} }}")}
+        unresolved -= existing
+        bound = {}
+        for batch in _batches(sorted(unresolved)):
+            for row in self.select("?t ?asm ?name ?version ?culture ?token",
+                                   "?t dt:definedInAssembly ?asm . ?asm dt:name ?name ; dt:version ?version . "
+                                   "OPTIONAL { ?asm dt:culture ?culture } OPTIONAL { ?asm dt:publicKeyToken ?token }",
+                                   f"VALUES ?t {{ {_values(batch)} }}"):
+                bound.setdefault(row["t"], []).append(row)
+        for ref, references in bound.items():
+            packages = [component["package"] for component in self.known_components if component.get("package") and
+                        all(all(component.get("assembly", {}).get(field, "") == reference.get(variable, "")
+                                for field, variable in (("name", "name"), ("version", "version"), ("culture", "culture"),
+                                                        ("publicKeyToken", "token"))) for reference in references)]
+            if packages and all(package == packages[0] for package in packages):
+                self.packages[ref] = packages[0]
+        matches: dict[str, dict[str, tuple[Path, dict]]] = {}
+        for path, manifest in self.candidates:
+            candidate_store = path.parent / "store.oxigraph"
+            if not candidate_store.is_dir():
+                self.report("store-unavailable", manifestPath=str(path))
+                continue
+            for batch in _batches(sorted(unresolved)):
+                try:
+                    rows = oxigraph.select(candidate_store, f"PREFIX dt: <{DT}> SELECT DISTINCT ?t ?asm ?name ?version ?culture ?token WHERE {{ "
+                                           f"VALUES ?t {{ {_values(batch)} }} {_own('t')} ?t dt:definedInAssembly ?asm ; dt:fullName ?full . "
+                                           "?asm dt:name ?name ; dt:version ?version . OPTIONAL { ?asm dt:culture ?culture } "
+                                           "OPTIONAL { ?asm dt:publicKeyToken ?token } }")
+                except RgError as exc:
+                    corrupt = all(problem.code == "OXIGRAPH_FAILED" and
+                                  any(re.match(r"^\s*(?:Error: )?Corruption:", line)
+                                      for line in problem.context.get("stderr", []))
+                                  for problem in exc.problems)
+                    if not corrupt:
+                        raise
+                    self.report("store-unavailable", manifestPath=str(path), message=str(exc))
+                    for options in matches.values():
+                        options.pop(manifest["artifactId"], None)
+                    break
+                for row in rows:
+                    references = bound.get(row["t"], [])
+                    if references and all(all(row.get(key, "") == reference.get(key, "") for key in ("asm", "name", "version", "culture", "token"))
+                                          for reference in references):
+                        matches.setdefault(row["t"], {})[manifest["artifactId"]] = (path, manifest)
+                    else:
+                        self.report("identity-incompatible", target=row["t"], artifactId=manifest.get("artifactId"))
+        for ref in sorted(unresolved):
+            options = matches.get(ref, {})
+            if len(options) == 1:
+                path, manifest = next(iter(options.values()))
+                if not any(pin["artifactId"] == manifest["artifactId"] for pin in self.additional_components):
+                    self.sources.append((path.parent / "store.oxigraph", False))
+                    self.additional_components.append({key: manifest.get(key) for key in ("artifactId", "graphIri", "origin", "package", "assembly")} |
+                                                      {"manifestPath": str(path.resolve())})
+                    self.report("body-coverage-unknown", artifactId=manifest["artifactId"])
+            elif len(options) > 1:
+                self.reasons[ref] = "ambiguous-artifacts"
+                self.report("ambiguous-artifacts", target=ref, candidateIds=sorted(options))
+            else:
+                bound_names = {row["name"] for row in bound.get(ref, [])}
+                registered = [manifest for _, manifest in self.candidates if manifest.get("assembly", {}).get("name") in bound_names]
+                self.reasons[ref] = "registered-definition-unavailable" if registered else "external-boundary"
+                if registered:
+                    self.report("registered-definition-unavailable", target=ref, candidateIds=sorted({item["artifactId"] for item in registered}))
+
+
+def _select(store: Path | DependencyStores, columns: str, pattern: str, values: str = "") -> list[dict]:
+    if isinstance(store, DependencyStores):
+        return store.select(columns, pattern, values)
+    return oxigraph.select(store, f"PREFIX dt: <{DT}> SELECT DISTINCT {columns} WHERE {{ {values} GRAPH ?g {{ {pattern} }} }}")
+
+
 def find_seeds(store: Path, d: Definition) -> tuple[dict[str, str], list[str]]:
     """Physical IRIs of component types matching the seeds, with their full names; plus unmatched seeds."""
-    rows = oxigraph.select(store, f"PREFIX dt: <{DT}> SELECT DISTINCT ?t ?full ?kind WHERE {{ GRAPH ?g {{ "
-                                  f"{_own('t')} ?t dt:fullName ?full ; dt:typeKind ?kind . }} }}")
+    rows = _select(store, "?t ?full ?kind", f"{_own('t')} ?t dt:fullName ?full ; dt:typeKind ?kind .")
     matched: dict[str, str] = {}
     unmatched = []
     for name in d.seed_types:
@@ -204,18 +382,16 @@ def _pairs(store: Path, subjects: list[str], pattern: str) -> list[tuple[str, st
     an outer VALUES into UNION branches (a 60 ms lookup becomes 10 s), so relations are never UNIONed."""
     pairs: list[tuple[str, str]] = []
     for batch in _batches(sorted(subjects)):
-        rows = oxigraph.select(store, f"PREFIX dt: <{DT}> SELECT DISTINCT ?t ?r WHERE {{ VALUES ?t {{ {_values(batch)} }} "
-                                      f"GRAPH ?g {{ {pattern} }} }}")
+        rows = _select(store, "?t ?r", pattern, f"VALUES ?t {{ {_values(batch)} }}")
         pairs += [(r["t"], r["r"]) for r in rows]
-    return pairs
+    return sorted(set(pairs))
 
 
 def _inverse_pairs(store: Path, targets: list[str], pattern: str) -> list[tuple[str, str]]:
     """Return (consumed target, component consumer) pairs for an inverse follow pattern."""
     pairs: list[tuple[str, str]] = []
     for batch in _batches(sorted(targets)):
-        rows = oxigraph.select(store, f"PREFIX dt: <{DT}> SELECT DISTINCT ?t ?r WHERE {{ VALUES ?t {{ {_values(batch)} }} "
-                                      f"GRAPH ?g {{ {pattern} }} }}")
+        rows = _select(store, "?t ?r", pattern, f"VALUES ?t {{ {_values(batch)} }}")
         pairs += [(r["t"], r["r"]) for r in rows]
     return pairs
 
@@ -223,17 +399,22 @@ def _inverse_pairs(store: Path, targets: list[str], pattern: str) -> list[tuple[
 def _own_names(store: Path, iris: set[str]) -> dict[str, str]:
     """The subset of IRIs that are component types, with their full names."""
     names: dict[str, str] = {}
+    if isinstance(store, DependencyStores):
+        store.resolve(iris)
     for batch in _batches(sorted(iris)):
-        rows = oxigraph.select(store, f"PREFIX dt: <{DT}> SELECT DISTINCT ?t ?full WHERE {{ VALUES ?t {{ {_values(batch)} }} "
-                                      f"GRAPH ?g {{ {_own('t')} ?t dt:fullName ?full . }} }}")
+        rows = _select(store, "?t ?full", f"{_own('t')} ?t dt:fullName ?full .", f"VALUES ?t {{ {_values(batch)} }}")
         names.update({r["t"]: r["full"] for r in rows})
+    if isinstance(store, DependencyStores):
+        names = {key: value for key, value in names.items() if store.reasons.get(key) not in _ADMISSION_FAILURES}
     return names
 
 
 def _underlying(store: Path, refs: set[str], generic_arguments: bool) -> dict[str, set[str]]:
     """Each referenced IRI mapped to itself plus the types inside it: generic definition, array element and
     (when enabled) type arguments, recursively."""
-    patterns = ["?t dt:genericDefinition ?r", "?t dt:arrayElementType ?r", "?t dt:pointerElementType ?r"]
+    patterns = ["?t dt:genericDefinition ?r", "?t dt:arrayElementType ?r", "?t dt:pointerElementType ?r",
+                "?t dt:signatureReturnType ?r", "?t dt:signatureParameter ?parameter . ?parameter dt:parameterType ?r",
+                "?t dt:callingConventionType ?r"]
     if generic_arguments:
         patterns.append("?t dt:typeArgument ?a . ?a dt:type ?r")
     children: dict[str, set[str]] = {}
@@ -265,8 +446,7 @@ def find_implementations(store: Path, targets: set[str], transitive: bool) -> di
     while frontier:
         # 1. every IRI naming a target: the type in any version, plus constructed generics of it
         literals = " ".join(nt_literal(n) for n in sorted(frontier))
-        bases = {r["base"] for r in oxigraph.select(store, f"PREFIX dt: <{DT}> SELECT DISTINCT ?base WHERE {{ "
-                                                           f"VALUES ?target {{ {literals} }} GRAPH ?g {{ ?base dt:fullName ?target }} }}")}
+        bases = {r["base"] for r in _select(store, "?base", "?base dt:fullName ?target", f"VALUES ?target {{ {literals} }}")}
         bases |= {r for _, r in _pairs(store, sorted(bases), "?r dt:genericDefinition ?t")}
         # 2. component types implementing or deriving from any of them
         candidates = {r for pattern in ("?r dt:implements ?t", "?r dt:inherits ?t") for _, r in _pairs(store, sorted(bases), pattern)}
@@ -292,6 +472,8 @@ def expand(store: Path, d: Definition, start: dict[str, str]) -> tuple[dict[str,
         for relation in d.follow:
             if relation in INVERSE_FOLLOW:
                 for pattern in INVERSE_FOLLOW[relation]:
+                    if "dt:attributeType" in pattern and "attributes" not in d.follow:
+                        continue
                     inverse.update(_inverse_pairs(store, frontier, pattern))
             else:
                 for pattern in FOLLOW[relation]:
@@ -328,6 +510,8 @@ def expand(store: Path, d: Definition, start: dict[str, str]) -> tuple[dict[str,
         for relation in d.follow:
             if relation in INVERSE_FOLLOW:
                 for pattern in INVERSE_FOLLOW[relation]:
+                    if "dt:attributeType" in pattern and "attributes" not in d.follow:
+                        continue
                     inverse.update(_inverse_pairs(store, frontier, pattern))
             else:
                 for pattern in FOLLOW[relation]:
@@ -373,6 +557,7 @@ def member_lines(store: Path, types: list[str]) -> list[str]:
     lines += [f"{nt_iri(m)} {nt_iri(DT + 'name')} {nt_literal(n)} ." for m, n in _pairs(store, members, "?t dt:name ?r")]
     for predicate in MEMBER_TYPE_PREDICATES:
         lines += [f"{nt_iri(m)} {nt_iri(DT + predicate)} {nt_iri(t)} ." for m, t in _pairs(store, members, f"?t dt:{predicate} ?r")]
+    lines += [f"{nt_iri(m)} {nt_iri(DT + 'usesType')} {nt_iri(t)} ." for m, t in _pairs(store, members, "?t dt:usesType ?r")]
     parameters = _pairs(store, members, "?t dt:hasParameter ?r")
     params = sorted({p for _, p in parameters})
     lines += [f"{nt_iri(m)} {nt_iri(DT + 'hasParameter')} {nt_iri(p)} ." for m, p in parameters]
@@ -415,11 +600,116 @@ def export_lines(store: Path, types: dict[str, str], edges: list[tuple[str, str]
     return list(dict.fromkeys(lines))
 
 
+def evidence_lines(store: DependencyStores, types: dict[str, str], definition: Definition) -> list[str]:
+    selected = sorted(types)
+    references = {target for relation in definition.follow if relation not in INVERSE_FOLLOW
+                  for pattern in FOLLOW[relation] for _, target in _pairs(store, selected, pattern)}
+    underlying = _underlying(store, references, definition.generic_arguments)
+    reachable = references | {target for targets in underlying.values() for target in targets}
+    identities = _pairs(store, sorted(reachable | set(selected)), "?t dt:definedInAssembly ?r")
+    boundary = {target for target, _ in identities if target not in types and target in reachable}
+    for batch in _batches(sorted(boundary)):
+        for row in _select(store, "?t", _own("t"), f"VALUES ?t {{ {_values(batch)} }}"):
+            if store.reasons.get(row["t"]) not in _ADMISSION_FAILURES:
+                store.reasons[row["t"]] = "selection-boundary"
+    memberships = _pairs(store, selected, "?t dt:hasMember ?r")
+    members = {member for _, member in memberships}
+    parameters = _pairs(store, sorted(members), "?t dt:hasParameter ?r")
+    owners = set(selected) | members | {parameter for _, parameter in parameters}
+    links: set[tuple[str, str, str]] = set()
+    predicates = []
+    for relation, names in (
+        ("base_types", ["inherits"]), ("interfaces", ["implements"]),
+        ("enclosing_type", ["nestedIn"]), ("body_types", ["usesType"]),
+        ("member_types", list(MEMBER_TYPE_PREDICATES)), ("parameter_types", ["parameterType"]),
+        ("constraints", ["constrainedToType"]),
+    ):
+        if relation in definition.follow:
+            predicates.extend(names)
+    for predicate in predicates:
+        for owner, target in _pairs(store, sorted(owners), f"?t dt:{predicate} ?r"):
+            links.add((owner, predicate, target))
+    if "parameter_types" in definition.follow:
+        links.update((owner, "hasParameter", target) for owner, target in parameters)
+    if "constraints" in definition.follow:
+        constraints = _pairs(store, sorted(owners), "?t dt:hasTypeParameter ?r")
+        links.update((owner, "hasTypeParameter", target) for owner, target in constraints)
+        links.update((owner, "constrainedToType", target) for owner, target in
+                     _pairs(store, sorted({target for _, target in constraints}), "?t dt:constrainedToType ?r"))
+    if "attributes" in definition.follow:
+        attributes = _pairs(store, sorted(owners), "?t dt:hasAttribute ?r")
+        links.update((owner, "hasAttribute", target) for owner, target in attributes)
+        links.update((owner, "attributeType", target) for owner, target in
+                     _pairs(store, sorted({target for _, target in attributes}), "?t dt:attributeType ?r"))
+    links.update((owner, "hasMember", member) for owner, member in memberships)
+    wrapper_nodes = set(reachable)
+    for predicate in ("genericDefinition", "arrayElementType", "pointerElementType", "signatureReturnType",
+                      "signatureParameter", "callingConventionType"):
+        pairs = _pairs(store, sorted(reachable), f"?t dt:{predicate} ?r")
+        links.update((owner, predicate, target) for owner, target in pairs)
+        wrapper_nodes.update(target for _, target in pairs)
+    if definition.generic_arguments:
+        arguments = _pairs(store, sorted(reachable), "?t dt:typeArgument ?r")
+        links.update((owner, "typeArgument", target) for owner, target in arguments)
+        wrapper_nodes.update(target for _, target in arguments)
+        links.update((owner, "type", target) for owner, target in
+                     _pairs(store, sorted({target for _, target in arguments}), "?t dt:type ?r"))
+    links.update((owner, "parameterType", target) for owner, target in
+                 _pairs(store, sorted(wrapper_nodes), "?t dt:parameterType ?r"))
+    if not getattr(definition, "members", True):
+        if not boundary:
+            return []
+        required = set(boundary)
+        witness_links = set()
+        frontier = set(boundary)
+        while frontier:
+            incoming = {link for link in links if link[2] in frontier}
+            witness_links.update(incoming)
+            frontier = {owner for owner, _, _ in incoming} - required - set(selected)
+            required.update(frontier)
+        links = witness_links
+        wrapper_nodes &= required
+        identities = [(subject, assembly) for subject, assembly in identities if subject in boundary]
+    lines = [f"{nt_iri(owner)} {nt_iri(DT + predicate)} {nt_iri(target)} ." for owner, predicate, target in sorted(links)]
+    identity_nodes = boundary | wrapper_nodes
+    if getattr(definition, "members", True):
+        identity_nodes.update(selected)
+    assembly_by_type = dict(identities)
+    for subject, assembly in identities:
+        lines.append(f"{nt_iri(subject)} {nt_iri(DT + 'definedInAssembly')} {nt_iri(assembly)} .")
+    for subject, kind in _pairs(store, sorted(identity_nodes), "?t a ?r"):
+        lines.append(f"{nt_iri(subject)} {nt_iri(RDF_TYPE)} {nt_iri(kind)} .")
+    for predicate in ("name", "fullName", "typeKind", "refKind", "signatureReturnRefKind", "callingConvention"):
+        lines.extend(f"{nt_iri(subject)} {nt_iri(DT + predicate)} {nt_literal(value)} ."
+                     for subject, value in _pairs(store, sorted(identity_nodes), f"?t dt:{predicate} ?r"))
+    for predicate in ("ordinal", "index", "arrayRank"):
+        for subject, ordinal in _pairs(store, sorted(identity_nodes), f"?t dt:{predicate} ?r"):
+            lines.append(f'{nt_iri(subject)} {nt_iri(DT + predicate)} "{int(ordinal)}"^^{nt_iri(XSD_INTEGER)} .')
+    assembly_values: dict[str, dict[str, str]] = {}
+    for predicate in ("name", "version", "culture", "publicKeyToken"):
+        for assembly, value in _pairs(store, sorted(set(assembly_by_type.values())), f"?t dt:{predicate} ?r"):
+            assembly_values.setdefault(assembly, {})[predicate] = value
+            lines.append(f"{nt_iri(assembly)} {nt_iri(DT + predicate)} {nt_literal(value)} .")
+    for owner, predicate, target in sorted(links):
+        if target not in boundary:
+            continue
+        assembly = assembly_by_type[target]
+        evidence = {"owner": owner, "predicate": DT + predicate, "target": target, "assembly": assembly,
+                    "reason": store.reasons.get(target, "external-boundary")}
+        if target in store.packages:
+            evidence["package"] = store.packages[target]
+        store.external_references.append(evidence)
+        if not {"name", "version"} <= set(assembly_values.get(assembly, {})):
+            store.report("external-identity-incomplete", target=target, assembly=assembly)
+    return list(dict.fromkeys(lines))
+
+
 def run(definition_path: Path, data_root: str | None, output_dir: Path | None, open_page: bool) -> dict[str, Any]:
     d = load_definition(definition_path)
     root = artifacts.artifact_root(data_root)
     manifest_path = resolve_manifest(d, root)
-    store, manifest = explore.store_for(manifest_path)
+    source_store, manifest = explore.store_for(manifest_path)
+    store = DependencyStores.registered(root, d, manifest, source_store)
     if d.logical and manifest["kind"] != "view":
         d.logical = False
     seeds, unmatched = find_seeds(store, d)
@@ -435,10 +725,23 @@ def run(definition_path: Path, data_root: str | None, output_dir: Path | None, o
     lines = export_lines(store, types, edges)
     if d.members:
         lines += member_lines(store, sorted(types))
+    lines += evidence_lines(store, types, d)
+    lines = list(dict.fromkeys(lines))
     collapsed = 0
+    mapping = {}
     if d.logical:
         before = len(lines)
-        lines = explore.collapse(lines, explore.logical_map(store, manifest))
+        mapping = explore.logical_map(source_store, manifest)
+        for path, named in store.sources[1:]:
+            for row in oxigraph.select(path, f"PREFIX dt: <{DT}> SELECT ?t ?full ?name WHERE {{ {_own('t')} "
+                                            "?t dt:fullName ?full ; dt:definedInAssembly ?asm . ?asm dt:name ?name . }"):
+                if row["t"] in types and row["name"] in manifest.get("view", {}).get("policyAssemblies", []):
+                    mapping[row["t"]] = build.logical_iri(row["name"], row["full"])
+        lines = explore.collapse(lines, mapping)
+        for reference in store.external_references:
+            rewritten = explore.collapse([f"{nt_iri(reference['owner'])} {nt_iri(reference['predicate'])} {nt_iri(reference['target'])} ."], mapping)[0]
+            reference["owner"] = explore._NT_LINE.match(rewritten).group(1)[1:-1]
+            reference["target"] = mapping.get(reference["target"], reference["target"])
         collapsed = before - len(lines)
     out_dir = output_dir or d.path.parent / "out"
     stem = d.path.name.removesuffix(".toml").removesuffix(".graph")
@@ -451,6 +754,11 @@ def run(definition_path: Path, data_root: str | None, output_dir: Path | None, o
         "definition": {"path": str(d.path), "title": d.title, "text": d.path.read_text(encoding="utf-8")},
         "result": {"seeds": sorted(set(seeds.values())), "implementations": len(implementations), "types": len(types),
                    "referenceEdges": len(edges), "truncated": truncated, "logical": d.logical},
+        "additionalComponents": store.additional_components,
+        "externalReferences": store.external_references,
+        "logicalTypeMappings": mapping,
+        "diagnostics": store.diagnostics,
+        "coverage": {"complete": not store.diagnostics, "reasons": sorted({item["reason"] for item in store.diagnostics})},
     })
     page = explore.render(d.visualizer, data, out_dir / f"{stem}.html", d.title)
     if open_page:
@@ -472,4 +780,6 @@ def run(definition_path: Path, data_root: str | None, output_dir: Path | None, o
         "data": str(data),
         "page": page["output"],
         "opened": open_page,
+        "diagnostics": store.diagnostics,
+        "coverage": {"complete": not store.diagnostics, "reasons": sorted({item["reason"] for item in store.diagnostics})},
     }

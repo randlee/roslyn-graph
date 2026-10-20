@@ -98,6 +98,11 @@ With `members = true` (the default) every exported type also carries its members
 type), plus original `dt:usesType` body edges. Self-use facts remain even though projected
 `rg:references` self-edges are omitted. With `logical = true` the members of a type present in
 several versions are merged with the type. Set `members = false` for very large graphs.
+With `members = false`, enabled external boundaries still retain the minimal original witness path:
+type-to-member ownership, the member's typed edge and any necessary wrapper/signature chain, plus
+boundary identity. Unrelated member names, flags, parameters and other member details remain omitted.
+Without boundary targets, this option's existing output is unchanged. `externalReferences` is present
+in the context in either mode.
 
 ### Dependency context and boundaries
 
@@ -118,7 +123,8 @@ neither; there is no newest-version fallback. An unregistered package is an inte
 Legacy missing identity fields are reported, not invented. Published manifests lack affirmative
 body-coverage certification, so known facts remain usable but missing coverage evidence is
 unknown/incomplete; even existing `dt:usesType` triples do not certify completeness.
-Store/query/resource failures remain errors, not complete partial results.
+Missing or corrupt candidate stores are diagnosed without hiding independent candidates.
+Other store/query/resource failures remain errors, not complete partial results.
 
 ## Example
 

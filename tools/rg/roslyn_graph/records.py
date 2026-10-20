@@ -301,6 +301,9 @@ def read_graph(path: Path) -> GraphInput:
                          f"Regenerate {path.name} with rg.py graph or rg.py export, or delete the broken sidecar and pass --manifest.",
                          path=str(sidecar)) from exc
     manifest = ((context or {}).get("source") or {}).get("manifest")
+    external = {entry["target"] for entry in (context or {}).get("externalReferences", [])}
+    names = {key: name for key, name in names.items() if key not in external}
+    edges = {(owner, target) for owner, target in edges if owner in names and target in names}
     return GraphInput("graph", path.resolve(), manifest, names, edges, context)
 
 
@@ -365,30 +368,60 @@ def project_path(component: dict[str, Any]) -> str:
 class Store:
     """Batched, cached lookups over one solution or view store."""
 
-    def __init__(self, manifest_path: Path, timeout: int | None):
+    def __init__(self, manifest_path: Path, timeout: int | None, context: dict[str, Any] | None = None):
         self.manifest_path = manifest_path
         self.path, self.manifest = explore.store_for(manifest_path)
         self.timeout = timeout
         self._components: dict[str, dict[str, Any]] | None = None
         self._component_manifests: dict[str, dict[str, Any]] = {}
         self._root: Path | None = None
+        self.context = context or {}
+        self._additional: list[tuple[Path, dict[str, Any]]] = []
+        seen: dict[str, dict[str, Any]] = {}
+        for entry in self.context.get("additionalComponents", []):
+            if not isinstance(entry, dict) or not all(isinstance(entry.get(key), str) and entry[key]
+                                                    for key in ("artifactId", "graphIri", "manifestPath")):
+                raise RgError.of("RECORDS_MANIFEST_BROKEN", "An additional component pin lacks its artifact ID, graph IRI or manifest path.")
+            path = Path(entry["manifestPath"])
+            if not path.is_absolute():
+                path = self.root() / path
+            pinned = artifacts.read_manifest(path)
+            if (not isinstance(pinned, dict) or artifacts.manifest_kind(pinned) != "assembly"
+                    or pinned.get("artifactId") != entry["artifactId"] or pinned.get("graphIri") != entry["graphIri"]):
+                raise RgError.of("RECORDS_MANIFEST_BROKEN", f"{path} no longer matches its pinned assembly artifact.", pin=entry)
+            if entry["artifactId"] in seen:
+                if seen[entry["artifactId"]] != entry:
+                    raise RgError.of("RECORDS_MANIFEST_BROKEN", f"Conflicting pins for {entry['artifactId']}.")
+                continue
+            seen[entry["artifactId"]] = entry
+            store_path, _ = explore.store_for(path)
+            self._additional.append((store_path, entry))
+            self._component_manifests[entry["graphIri"]] = pinned
 
     def select(self, query: str) -> list[dict[str, str]]:
         return oxigraph.select(self.path, query, timeout=self.timeout)
 
+    def _component_rows(self, variables: str, values: str, pattern: str) -> list[dict[str, str]]:
+        prefix = f"PREFIX dt: <{DT}> PREFIX rg: <{RG}> SELECT DISTINCT {variables} WHERE {{ {values} "
+        datasets = [(self.path, self.manifest if self.manifest.get("kind") == "assembly" else None)] + self._additional
+        rows: list[dict[str, str]] = []
+        for path, entry in datasets:
+            body = f"{pattern} BIND(<{entry['graphIri']}> AS ?g)" if entry else f"GRAPH ?g {{ {pattern} }}"
+            rows.extend(oxigraph.select(path, prefix + body + " }", timeout=self.timeout))
+        return rows
+
     def pairs(self, subjects: list[str], pattern: str) -> list[tuple[str, str]]:
         out: list[tuple[str, str]] = []
         for batch in _batches(sorted(set(subjects))):
-            rows = self.select(f"PREFIX dt: <{DT}> PREFIX rg: <{RG}> SELECT DISTINCT ?t ?r WHERE {{ VALUES ?t {{ {_values(batch)} }} "
-                               f"GRAPH ?g {{ {pattern} }} }}")
+            rows = self._component_rows("?t ?r", f"VALUES ?t {{ {_values(batch)} }}", pattern)
             out += [(r["t"], r["r"]) for r in rows]
-        return out
+        return sorted(set(out))
 
     def own_graphs(self, iris: list[str]) -> dict[str, str]:
         """Component types among the IRIs, with the named graph (component) defining each."""
         out: dict[str, str] = {}
         for batch in _batches(sorted(set(iris))):
-            rows = self.select(f"PREFIX dt: <{DT}> SELECT DISTINCT ?t ?g WHERE {{ VALUES ?t {{ {_values(batch)} }} GRAPH ?g {{ {_OWN} }} }}")
+            rows = self._component_rows("?t ?g", f"VALUES ?t {{ {_values(batch)} }}", _OWN)
             out.update({r["t"]: r["g"] for r in rows})
         return out
 
@@ -396,16 +429,16 @@ class Store:
         """(IRI, full name, graph) of every component type with one of the full names."""
         out: list[tuple[str, str, str]] = []
         for batch in _batches(sorted(set(names))):
-            rows = self.select(f"PREFIX dt: <{DT}> SELECT DISTINCT ?t ?full ?g WHERE {{ VALUES ?full {{ {' '.join(nt_literal(n) for n in batch)} }} "
-                               f"GRAPH ?g {{ ?t dt:fullName ?full . {_OWN} }} }}")
+            rows = self._component_rows("?t ?full ?g", f"VALUES ?full {{ {' '.join(nt_literal(n) for n in batch)} }}",
+                                        f"?t dt:fullName ?full . {_OWN}")
             out += [(r["t"], r["full"], r["g"]) for r in rows]
-        return out
+        return sorted(set(out))
 
     def logical_types(self) -> dict[str, str]:
         """Physical IRI -> logical IRI; empty for solutions."""
-        if self.manifest.get("kind") != "view":
-            return {}
-        return explore.logical_map(self.path, self.manifest)
+        mapping = explore.logical_map(self.path, self.manifest) if self.manifest.get("kind") == "view" else {}
+        mapping.update(self.context.get("logicalTypeMappings", {}))
+        return mapping
 
     def root(self) -> Path:
         if self._root is None:
@@ -421,8 +454,11 @@ class Store:
             if m.get("kind") == "view":
                 base = artifacts.read_manifest(self.root() / m["baseSolution"]["manifestPath"])
                 entries = list(base.get("components", [])) + list(m.get("overlayComponents", []))
+            elif m.get("kind") == "assembly":
+                entries = [dict(m, manifestPath=str(self.manifest_path.resolve()))]
             else:
                 entries = list(m.get("components", []))
+            entries += [entry for _, entry in self._additional]
             self._components = {c["graphIri"]: c for c in entries}
         return self._components
 
@@ -618,7 +654,8 @@ def resolve_units(store: Store, source: GraphInput) -> tuple[list[Unit], dict[st
         reverse: dict[str, list[str]] = {}
         for t, l in logical.items():
             reverse.setdefault(l, []).append(t)
-        wanted = {s: sorted(reverse.get(s, [s])) for s in source.names}
+        external = {entry["target"] for entry in (source.context or {}).get("externalReferences", [])}
+        wanted = {s: sorted(reverse.get(s, [s])) for s in source.names if s not in external}
         graph_of = store.own_graphs([p for ps in wanted.values() for p in ps])
         units = [Unit(s, source.names[s], [p for p in ps if p in graph_of]) for s, ps in wanted.items()]
         missing = sorted(source.names[u.key] for u in units if not u.physicals)
@@ -669,7 +706,7 @@ def run(graph: str | None, selection: str | None, manifest: str | None, schema_a
         raise RgError.of("RECORDS_FIELD_UNAVAILABLE", f"The schema binds {unavailable}, which a selection cannot fill.",
                          "Graph edge fields need --graph input; remove them from the schema.", fields=unavailable)
     manifest_path = Path(store_manifest)
-    store = Store(manifest_path, timeout)
+    store = Store(manifest_path, timeout, source.context)
     units, graph_of = resolve_units(store, source)
     fields = Fields(store, graph_of, source)
     kept, removed = apply_filters(units, fields, filters)
