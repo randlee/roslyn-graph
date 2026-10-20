@@ -155,13 +155,7 @@ public partial class IriMinter
 
         if (type is IFunctionPointerTypeSymbol functionPointer)
         {
-            var signature = functionPointer.Signature;
-            var conventions = string.Join(",", signature.UnmanagedCallingConventionTypes
-                .Select(convention => GetFullMetadataName(convention, forMemberSignature)));
-            var parameters = string.Join(",", signature.Parameters
-                .Select(parameter => $"{parameter.RefKind}:{GetFullMetadataName(parameter.Type, forMemberSignature)}"));
-            var returnType = GetFullMetadataName(signature.ReturnType, forMemberSignature);
-            return $"delegate*{signature.CallingConvention}[{conventions}]({parameters})~{signature.RefKind}:{returnType}";
+            return GetFunctionPointerMetadataName(functionPointer, forMemberSignature);
         }
 
         if (type is ITypeParameterSymbol typeParam)
@@ -225,6 +219,52 @@ public partial class IriMinter
         AppendTypeParameters(sb, namedType, forMemberSignature);
 
         return sb.ToString();
+    }
+
+    // Function-pointer types have no containing assembly of their own.  A metadata name alone is therefore not a
+    // sufficient key: two referenced assemblies can each define the same constituent name.  Member signatures keep
+    // their established ordinal-form keys; standalone function-pointer type keys include recursively bound identity.
+    private static string GetFunctionPointerMetadataName(IFunctionPointerTypeSymbol pointer, bool forMemberSignature)
+    {
+        var signature = pointer.Signature;
+        var constituent = forMemberSignature
+            ? (Func<ITypeSymbol, string>)(type => GetFullMetadataName(type, true))
+            : GetBoundConstituentIdentity;
+        var conventions = string.Join(",", signature.UnmanagedCallingConventionTypes.Select(convention => constituent(convention)));
+        var parameters = string.Join(",", signature.Parameters
+            .Select(parameter => $"{parameter.RefKind}:{constituent(parameter.Type)}"));
+        var returnType = constituent(signature.ReturnType);
+        return $"delegate*{signature.CallingConvention}[{conventions}]({parameters})~{signature.RefKind}:{returnType}";
+    }
+
+    private static string GetBoundConstituentIdentity(ITypeSymbol type)
+    {
+        return type switch
+        {
+            IArrayTypeSymbol array => GetBoundConstituentIdentity(array.ElementType)
+                + (array.IsSZArray ? "[]" : array.Rank == 1 ? "[*]" : $"[{new string(',', array.Rank - 1)}]"),
+            IPointerTypeSymbol pointer => GetBoundConstituentIdentity(pointer.PointedAtType) + "*",
+            IFunctionPointerTypeSymbol functionPointer => GetFunctionPointerMetadataName(functionPointer, false),
+            ITypeParameterSymbol parameter => GetFullMetadataName(parameter),
+            INamedTypeSymbol named => GetBoundNamedTypeIdentity(named),
+            _ => GetFullMetadataName(type),
+        };
+    }
+
+    private static string GetBoundNamedTypeIdentity(INamedTypeSymbol type)
+    {
+        var assembly = type.ContainingAssembly;
+        var assemblyIdentity = assembly is null
+            ? "_builtin_"
+            : $"{assembly.Identity.Name},{assembly.Identity.Version}";
+        var definition = type.OriginalDefinition;
+        var name = GetFullMetadataName(definition);
+        if (type.IsGenericType && !type.IsUnboundGenericType
+            && !type.TypeArguments.All(argument => argument is ITypeParameterSymbol))
+        {
+            name += "[" + string.Join(",", type.TypeArguments.Select(argument => GetBoundConstituentIdentity(argument))) + "]";
+        }
+        return $"{assemblyIdentity}:{name}";
     }
 
     private static void AppendTypeParameters(StringBuilder sb, INamedTypeSymbol type, bool forMemberSignature)

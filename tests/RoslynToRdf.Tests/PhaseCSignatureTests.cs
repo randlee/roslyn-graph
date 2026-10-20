@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using System.Collections.Immutable;
 using RoslynToRdf.Core.Extraction;
 using RoslynToRdf.Core.Model;
 
@@ -6,6 +7,58 @@ namespace RoslynToRdf.Tests;
 
 public class PhaseCSignatureTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FunctionPointers_KeepAssemblyQualifiedConstituentsDistinct(bool metadata)
+    {
+        var left = Emit("Left", "namespace Shared { public struct Arg {} }");
+        var right = Emit("Right", "namespace Shared { public struct Arg {} }");
+        var consumer = TestUtilities.CreateCompilation("""
+            extern alias left;
+            extern alias right;
+            public unsafe class Root {
+                public delegate*<left::Shared.Arg, void> First;
+                public delegate*<right::Shared.Arg, void> Second;
+                public delegate*<delegate*<left::Shared.Arg[], void>, void> NestedLeft;
+                public delegate*<delegate*<right::Shared.Arg[], void>, void> NestedRight;
+            }
+            """, "Root", allowUnsafe: true)
+            .AddReferences(AliasedReference(left, "left"), AliasedReference(right, "right"));
+        Assert.DoesNotContain(consumer.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+
+        Compilation context = consumer;
+        IAssemblySymbol assembly = consumer.Assembly;
+        if (metadata)
+        {
+            var image = Emit(consumer);
+            var rootReference = MetadataReference.CreateFromImage(image);
+            context = TestUtilities.CreateCompilation("", "MetadataConsumer")
+                .AddReferences(MetadataReference.CreateFromImage(left), MetadataReference.CreateFromImage(right), rootReference);
+            assembly = (IAssemblySymbol)context.GetAssemblyOrModuleSymbol(rootReference)!;
+        }
+
+        var root = assembly.GetTypeByMetadataName("Root")!;
+        var first = (IFunctionPointerTypeSymbol)((IFieldSymbol)root.GetMembers("First").Single()).Type;
+        var second = (IFunctionPointerTypeSymbol)((IFieldSymbol)root.GetMembers("Second").Single()).Type;
+        var nestedLeft = (IFunctionPointerTypeSymbol)((IFieldSymbol)root.GetMembers("NestedLeft").Single()).Type;
+        var nestedRight = (IFunctionPointerTypeSymbol)((IFieldSymbol)root.GetMembers("NestedRight").Single()).Type;
+        var minter = new IriMinter();
+        Assert.NotEqual(minter.Type(first), minter.Type(second));
+        Assert.NotEqual(minter.Type(nestedLeft), minter.Type(nestedRight));
+
+        var emitter = Extract(context, assembly);
+        AssertSignatureParameter(emitter, minter, first, first.Signature.Parameters.Single().Type);
+        AssertSignatureParameter(emitter, minter, second, second.Signature.Parameters.Single().Type);
+        var nestedLeftParameter = (IFunctionPointerTypeSymbol)nestedLeft.Signature.Parameters.Single().Type;
+        var nestedRightParameter = (IFunctionPointerTypeSymbol)nestedRight.Signature.Parameters.Single().Type;
+        Assert.NotEqual(minter.Type(nestedLeftParameter), minter.Type(nestedRightParameter));
+        AssertSignatureParameter(emitter, minter, nestedLeft, nestedLeftParameter);
+        AssertSignatureParameter(emitter, minter, nestedRight, nestedRightParameter);
+        AssertSignatureParameter(emitter, minter, nestedLeftParameter, nestedLeftParameter.Signature.Parameters.Single().Type);
+        AssertSignatureParameter(emitter, minter, nestedRightParameter, nestedRightParameter.Signature.Parameters.Single().Type);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -146,6 +199,24 @@ public class PhaseCSignatureTests
         }
         Assert.DoesNotContain(emitter.Triples, triple => triple.Subject == subject
             && (triple.Predicate == minter.OntologyPrefix + "hasParameter" || triple.Predicate == minter.OntologyPrefix + "returnType"));
+    }
+
+    private static void AssertSignatureParameter(TestEmitter emitter, IriMinter minter, IFunctionPointerTypeSymbol pointer, ITypeSymbol target)
+    {
+        Has(emitter, minter.Type(pointer) + "/sigparam/0", "parameterType", minter.Type(target));
+    }
+
+    private static MetadataReference AliasedReference(byte[] image, string alias) =>
+        MetadataReference.CreateFromImage(image, new MetadataReferenceProperties(aliases: ImmutableArray.Create(alias)));
+
+    private static byte[] Emit(string assemblyName, string source) => Emit(TestUtilities.CreateCompilation(source, assemblyName));
+
+    private static byte[] Emit(Compilation compilation)
+    {
+        using var stream = new MemoryStream();
+        var result = compilation.Emit(stream);
+        Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
+        return stream.ToArray();
     }
 
     private static TestEmitter Extract(Compilation compilation, IAssemblySymbol assembly)
