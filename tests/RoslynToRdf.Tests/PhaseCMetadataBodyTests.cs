@@ -764,6 +764,89 @@ public class PhaseCMetadataBodyTests
         });
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MetadataBodies_SameOwnerRetainsEveryGenericLocalContext(bool reverse)
+    {
+        var source = """
+            public class First {}
+            public class Second {}
+            public class Box<T> {}
+            public class Decoy {}
+            public class Root {
+                public object Both() {
+                    object Local<T>() => new Box<T>();
+                    System.GC.KeepAlive(Local<FIRST>());
+                    return Local<SECOND>();
+                }
+            }
+            """.Replace("FIRST", reverse ? "Second" : "First")
+                .Replace("SECOND", reverse ? "First" : "Second");
+        VerifyMetadata(TestUtilities.CreateCompilation(source, "GenericLocalContexts"), false, (assembly, minter, triples) =>
+        {
+            var owner = assembly.GetTypeByMetadataName("Root")!.GetMembers("Both").Single();
+            var definition = assembly.GetTypeByMetadataName("Box`1")!;
+            var expected = new[] { "First", "Second" }.Select(name =>
+                minter.Type(definition.Construct(assembly.GetTypeByMetadataName(name)!))).ToHashSet();
+            var actual = triples.Triples.Where(triple => triple.Subject == minter.Member(owner)
+                && triple.Predicate == minter.OntologyPrefix + "usesType"
+                && expected.Contains(triple.Object)).Select(triple => triple.Object).ToHashSet();
+            Assert.True(expected.SetEquals(actual), $"Missing contexts: {string.Join(", ", expected.Except(actual))}");
+            Assert.DoesNotContain(triples.Triples, triple => triple.Predicate == minter.OntologyPrefix + "usesType"
+                && triple.Object == minter.Type(assembly.GetTypeByMetadataName("Decoy")!));
+        });
+    }
+
+    [Fact]
+    public async Task MetadataBodies_RecursiveGenericLocalTerminatesWithoutDroppingSiblingContext()
+    {
+        const string source = """
+            public class First {}
+            public class Second {}
+            public class Box<T> {}
+            public class Witness<T> {}
+            public class Decoy {}
+            public class Root {
+                public object Both() {
+                    object Local<T>(bool recurse) {
+                        if (recurse) return Local<Box<T>>(false);
+                        return new Witness<T>();
+                    }
+                    System.GC.KeepAlive(Local<First>(true));
+                    return Local<Second>(true);
+                }
+            }
+            """;
+        await Task.Run(() => VerifyMetadata(TestUtilities.CreateCompilation(source, "RecursiveGenericLocal"), false,
+            (assembly, minter, triples) =>
+            {
+                var owner = assembly.GetTypeByMetadataName("Root")!.GetMembers("Both").Single();
+                foreach (var name in new[] { "First", "Second" })
+                    foreach (var generic in new[] { "Box`1", "Witness`1" })
+                    {
+                        var target = assembly.GetTypeByMetadataName(generic)!
+                            .Construct(assembly.GetTypeByMetadataName(name)!);
+                        Assert.Contains(triples.Triples, triple => triple.Subject == minter.Member(owner)
+                            && triple.Predicate == minter.OntologyPrefix + "usesType"
+                            && triple.Object == minter.Type(target));
+                    }
+                Assert.DoesNotContain(triples.Triples, triple => triple.Predicate == minter.OntologyPrefix + "usesType"
+                    && triple.Object == minter.Type(assembly.GetTypeByMetadataName("Decoy")!));
+            }, verifyDiagnostics: diagnostics =>
+            {
+                Assert.Equal(2, diagnostics.Count);
+                Assert.All(diagnostics, diagnostic =>
+                {
+                    Assert.Contains("recursive generic context not expanded", diagnostic);
+                    Assert.Contains("owner http://dotnet.example/type/RecursiveGenericLocal/0.0.0.0/Root/member/Both%28%29", diagnostic);
+                    Assert.Contains("method <Both>g__Local", diagnostic);
+                });
+                Assert.Single(diagnostics, diagnostic => diagnostic.Contains("First"));
+                Assert.Single(diagnostics, diagnostic => diagnostic.Contains("Second"));
+            })).WaitAsync(TimeSpan.FromSeconds(30));
+    }
+
     private static void AssertUse(TestEmitter triples, IriMinter minter, IAssemblySymbol assembly, ISymbol owner, string target)
     {
         Assert.Contains(triples.Triples, triple => triple.Subject == minter.Member(owner)
@@ -772,7 +855,7 @@ public class PhaseCMetadataBodyTests
     }
 
     private static void VerifyMetadata(Compilation source, bool pdb, Action<IAssemblySymbol, IriMinter, TestEmitter> verify,
-        bool includePrivate = true)
+        bool includePrivate = true, Action<IReadOnlyList<string>>? verifyDiagnostics = null)
     {
         var directory = Path.Combine(Path.GetTempPath(), "roslyn2rdf-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -800,7 +883,10 @@ public class PhaseCMetadataBodyTests
             var options = new ExtractionOptions { IncludePrivate = includePrivate, IncludeInternal = true };
             var extractor = new AssemblyGraphExtractor(emitter, options);
             extractor.Extract(compilation, assembly, peImagePath: path);
-            Assert.Empty(extractor.BodyResolutionDiagnostics);
+            if (verifyDiagnostics is null)
+                Assert.Empty(extractor.BodyResolutionDiagnostics);
+            else
+                verifyDiagnostics(extractor.BodyResolutionDiagnostics);
             verify(assembly, new IriMinter(options.BaseUri), emitter);
         }
         finally
