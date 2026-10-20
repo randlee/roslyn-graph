@@ -158,7 +158,7 @@
 |---|---|---|---|
 | `rg:builtFromProject` | `dt:Assembly` | `rg:Project` | Source project that produced a source assembly |
 | `rg:logicalType` | `dt:Type` | `rg:LogicalType` | Links a physical, versioned dt:Type to its logical type |
-| `rg:references` | `dt:Type` | `dt:Type` | Written only into exported traversal graphs: the subject type uses the object type as a base type, interface, member type, parameter type or generic argument |
+| `rg:references` | `dt:Type` | `dt:Type` | Written only into exported traversal graphs: the subject type uses the object type as a base type, interface, member type, parameter type, generic argument or member-body type (dt:usesType) |
 | `rg:assemblyName` | `rg:LogicalType` | `xsd:string` |  |
 | `rg:baseSolution` | `rg:LogicalTypeView` | `rg:SolutionBuild` |  |
 | `rg:policy` | `rg:LogicalTypeView` | `xsd:string` |  |

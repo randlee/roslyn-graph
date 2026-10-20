@@ -11,4 +11,3 @@ SELECT ?type ?fullName ?kind ?assemblyName ?version ?graph WHERE {
   }
 }
 ORDER BY ?fullName ?version
-LIMIT 200

@@ -65,6 +65,24 @@ def test_library_queries_use_the_saved_query_header(query):
     assert described["title"] and described["problems"] == [], described["problems"]
 
 
+def test_graph_definition_docs_match_unlimited_defaults_and_export_options():
+    from roslyn_graph import traverse
+
+    doc = (EXPLORE / "reference" / "graph-definitions.md").read_text(encoding="utf-8")
+    assert "omitted = until closure" in doc
+    assert "`--max-triples`" in doc and "`--unbounded`" in doc
+    for relation in ("constraints", "enclosing_type", "body_types"):
+        assert relation in traverse.FOLLOW and f"`{relation}`" in doc
+
+
+def test_graph_and_records_docs_describe_pinned_components_and_external_evidence():
+    for name in ("graph-definitions.md", "records.md"):
+        doc = (EXPLORE / "reference" / name).read_text(encoding="utf-8")
+        for field in ("additionalComponents", "artifactId", "graphIri", "manifestPath", "externalReferences"):
+            assert f"`{field}`" in doc, f"{name} omits {field}"
+        assert "incomplete" in doc
+
+
 def test_params_are_substituted_and_escaped():
     text = explore.read_query('SELECT * WHERE { ?t <p> "{{TYPE}}" . ?u <q> "{{TYPE}}" }', None, ['TYPE=A"B\\C'])
     assert text == 'SELECT * WHERE { ?t <p> "A\\"B\\\\C" . ?u <q> "A\\"B\\\\C" }'
