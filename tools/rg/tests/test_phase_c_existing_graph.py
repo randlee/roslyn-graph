@@ -13,7 +13,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from roslyn_graph import oxigraph, traverse
+from roslyn_graph import explore, oxigraph, traverse
 from roslyn_graph.util import DT, RDF_TYPE
 
 
@@ -46,3 +46,26 @@ def test_real_store_pointer_constraint_and_enclosing_follow(tmp_path: Path):
     types, _edges, _stats, truncated = traverse.expand(store, definition, {s: "S", inner: "Outer.Inner"})
     assert set(types) == {s, iface, inner, outer} and p not in types and decoy not in types and not truncated
     assert traverse._underlying(store, {pointer}, False)[pointer] == {pointer, p}
+
+
+def test_unlimited_defaults_return_more_than_former_traversal_and_query_caps(tmp_path: Path, monkeypatch):
+    """AC1: omitted caps must not quietly cut real Oxigraph results."""
+    asm, graph = "urn:large-assembly", "urn:large-graph"
+    types = [f"urn:type:{i}" for i in range(1_501)]
+    lines = [f"<{asm}> <{RDF_TYPE}> <{DT}Assembly> ."]
+    for index, iri in enumerate(types):
+        lines.extend((f"<{iri}> <{DT}definedInAssembly> <{asm}> .", f'<{iri}> <{DT}accessibility> "Public" .',
+                      f'<{iri}> <{DT}fullName> "Fixture.T{index}" .'))
+        if index:
+            lines.append(f"<{types[0]}> <{DT}inherits> <{iri}> .")
+    for index in range(2_500):
+        lines.append(f"<urn:row:{index}> <urn:predicate> <urn:object> .")
+    nt, store = tmp_path / "large.nt", tmp_path / "store"
+    nt.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    oxigraph.load(store, nt, graph)
+    definition = SimpleNamespace(follow=["base_types"], max_depth=0, max_types=None, generic_arguments=False)
+    selected, _edges, _stats, truncated = traverse.expand(store, definition, {types[0]: "Fixture.T0"})
+    assert len(selected) == 1_501 and not truncated
+    monkeypatch.setattr(explore, "store_for", lambda _path: (store, {"kind": "solution"}))
+    result = explore.query(tmp_path / "manifest.json", "SELECT ?s WHERE { GRAPH ?g { ?s <urn:predicate> <urn:object> } }", union=False)
+    assert result["rowCount"] == 2_500 and len(result["rows"]) == 2_500 and not result["truncated"]
