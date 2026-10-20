@@ -170,10 +170,10 @@ def test_query_is_unlimited_by_default_and_marks_explicit_limits_partial(monkeyp
 
 def test_export_rejects_invalid_or_conflicting_explicit_limits(tmp_path):
     query = "CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }"
-    for kwargs, code in (({"max_triples": 0}, "EXPORT_LIMIT_INVALID"), ({"unbounded": True, "max_triples": 1}, "EXPORT_LIMIT_CONFLICT")):
+    for kwargs in ({"max_triples": 0}, {"unbounded": True, "max_triples": 1}):
         with pytest.raises(RgError) as info:
             explore.export(tmp_path / "manifest.json", query, tmp_path / "o.nt", True, False, **kwargs)
-        assert info.value.problems[0].code == code
+        assert info.value.problems[0].code == "USAGE"
 
 
 def test_read_query_needs_exactly_one_source(tmp_path):

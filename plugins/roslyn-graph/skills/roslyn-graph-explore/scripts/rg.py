@@ -239,8 +239,9 @@ def parser() -> argparse.ArgumentParser:
         else:
             p.add_argument("--output", required=True)
             p.add_argument("--logical", action="store_true", help="Collapse physical type versions to logical types (views only).")
-            p.add_argument("--max-triples", type=positive, help="Maximum triples to export; a reached bound fails loudly.")
-            p.add_argument("--unbounded", action="store_true", help="Disable the export timeout; incompatible with --max-triples.")
+            limits = p.add_mutually_exclusive_group()
+            limits.add_argument("--max-triples", type=positive, help="Maximum triples to export; a reached bound fails loudly.")
+            limits.add_argument("--unbounded", action="store_true", help="Disable the export timeout; incompatible with --max-triples.")
 
     p = add("render", cmd_render, "Build a self-contained page for a registered visualizer.")
     p.add_argument("--visualizer", default="explorer")

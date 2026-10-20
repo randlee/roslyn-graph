@@ -77,7 +77,7 @@ def bounded_select(text: str, limit: int) -> str:
 def query(manifest_path: Path, text: str, union: bool, limit: int | None = None, timeout: int = QUERY_TIMEOUT) -> dict[str, Any]:
     store, manifest = store_for(manifest_path)
     if limit is not None and limit <= 0:
-        raise RgError.of("QUERY_LIMIT_INVALID", "--limit must be a positive integer.")
+        raise RgError.of("USAGE", "--limit must be a positive integer.")
     query_text = text if limit is None else bounded_select(text, limit)
     # Validate SELECT form whether or not an explicit bound is requested.
     if limit is None:
@@ -180,9 +180,9 @@ def export(manifest_path: Path, text: str, output: Path, union: bool, logical: b
     if not re.search(r"\bCONSTRUCT\b", text, re.IGNORECASE):
         raise RgError.of("EXPORT_NEEDS_CONSTRUCT", "Exports use a CONSTRUCT query.", "See reference/query-design.md for the viewer-ready CONSTRUCT patterns.")
     if max_triples is not None and max_triples <= 0:
-        raise RgError.of("EXPORT_LIMIT_INVALID", "--max-triples must be a positive integer.")
+        raise RgError.of("USAGE", "--max-triples must be a positive integer.")
     if unbounded and max_triples is not None:
-        raise RgError.of("EXPORT_LIMIT_CONFLICT", "--unbounded cannot be combined with --max-triples.")
+        raise RgError.of("USAGE", "--unbounded cannot be combined with --max-triples.")
     store, manifest = store_for(manifest_path)
     output.parent.mkdir(parents=True, exist_ok=True)
     raw = output.with_suffix(".raw.nt")
