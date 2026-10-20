@@ -70,6 +70,23 @@ def test_real_csharp_pointer_fixture_extracts_and_reduces_without_decoy(tmp_path
     assert rows, "unsafe pointer fixture must emit dt:pointerElementType"
 
 
+def test_real_csharp_constraint_and_nested_fixtures_emit_follow_facts(tmp_path: Path):
+    """AC3/AC4 source-mode evidence for existing constraint and enclosing-type facts."""
+    if not BUILT_EXTRACTOR.is_file():
+        pytest.fail("Phase C fixture requires the Release RoslynToRdf CLI built by authoritative validation.")
+    project = tmp_path / "Fixture.csproj"
+    project.write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>')
+    (tmp_path / "Fixture.cs").write_text("public interface IFoo {} public interface IBar {} public class S<T> where T : IFoo {} public class H { public void M<U>() where U : IBar {} } public class Outer { public class Inner {} } public class OtherOuter { public class OtherInner {} }")
+    ttl = tmp_path / "fixture.ttl"
+    completed = subprocess.run(["dotnet", str(BUILT_EXTRACTOR), str(project), "--output", str(ttl), "--format", "Turtle", "--include-private", "--quiet"], capture_output=True, text=True)
+    assert completed.returncode == 0 and ttl.is_file(), completed.stderr
+    store = tmp_path / "store"
+    oxigraph.load(store, ttl, "urn:fixture")
+    constraints = oxigraph.select(store, f"PREFIX dt: <{DT}> SELECT ?owner ?constraint WHERE {{ GRAPH ?g {{ ?owner dt:hasTypeParameter ?p . ?p dt:constrainedToType ?constraint . }} }}")
+    nested = oxigraph.select(store, f"PREFIX dt: <{DT}> SELECT ?inner ?outer WHERE {{ GRAPH ?g {{ ?inner dt:nestedIn ?outer . }} }}")
+    assert constraints and nested
+
+
 def test_unlimited_defaults_return_more_than_former_traversal_and_query_caps(tmp_path: Path, monkeypatch):
     """AC1: omitted caps must not quietly cut real Oxigraph results."""
     asm, graph = "urn:large-assembly", "urn:large-graph"
