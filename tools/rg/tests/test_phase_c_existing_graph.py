@@ -27,7 +27,7 @@ def extract_source_with_core_harness(tmp_path: Path, language: str, source: str)
     harness = tmp_path / "core-harness"
     harness.mkdir()
     core = REPO / "src" / "RoslynToRdf.Core" / "RoslynToRdf.Core.csproj"
-    (harness / "Harness.csproj").write_text(f'''<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net8.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings></PropertyGroup><ItemGroup><ProjectReference Include="{core}" /><PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.9.2" /><PackageReference Include="Microsoft.CodeAnalysis.VisualBasic" Version="4.9.2" /></ItemGroup></Project>''')
+    (harness / "Harness.csproj").write_text(f'''<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net8.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><EnableDefaultCompileItems>false</EnableDefaultCompileItems></PropertyGroup><ItemGroup><Compile Include="Program.cs" /><ProjectReference Include="{core}" /><PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.9.2" /><PackageReference Include="Microsoft.CodeAnalysis.VisualBasic" Version="4.9.2" /></ItemGroup></Project>''')
     (harness / "Program.cs").write_text('''using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.VisualBasic;
@@ -47,6 +47,35 @@ new AssemblyGraphExtractor(emitter, new ExtractionOptions { IncludePrivate = tru
     completed = subprocess.run(["dotnet", "run", "--project", str(harness / "Harness.csproj"), "--", language, str(source_path), str(output)], capture_output=True, text=True)
     assert completed.returncode == 0 and output.is_file(), completed.stdout + completed.stderr
     return output
+
+
+def extract_compiled_fixture(tmp_path: Path, language: str, source: str) -> Path:
+    """DLL-mode companion: compile the fixture, then use the shipped extractor CLI."""
+    if not BUILT_EXTRACTOR.is_file():
+        pytest.fail("Phase C fixture requires the Release RoslynToRdf CLI built by authoritative validation.")
+    extension = "cs" if language == "cs" else "vb"
+    project = tmp_path / f"Fixture.{extension}proj"
+    unsafe = "<AllowUnsafeBlocks>true</AllowUnsafeBlocks>" if language == "cs" else ""
+    root_namespace = "<RootNamespace></RootNamespace>" if language == "vb" else ""
+    project.write_text(f"<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net8.0</TargetFramework>{unsafe}{root_namespace}</PropertyGroup></Project>")
+    (tmp_path / f"Fixture.{extension}").write_text(source)
+    build = subprocess.run(["dotnet", "build", str(project), "--configuration", "Release"], capture_output=True, text=True)
+    assert build.returncode == 0, build.stderr
+    ttl = tmp_path / "fixture.ttl"
+    completed = subprocess.run(["dotnet", str(BUILT_EXTRACTOR), str(tmp_path / "bin" / "Release" / "net8.0" / "Fixture.dll"),
+                                "--output", str(ttl), "--format", "Turtle", "--include-private", "--quiet"], capture_output=True, text=True)
+    assert completed.returncode == 0 and ttl.is_file(), completed.stderr
+    return ttl
+
+
+def selected_names(store: Path, seed: str, follow: list[str]) -> set[str]:
+    """Run graph reduction from a real extracted type and return its exact component names."""
+    definition = SimpleNamespace(follow=follow, max_depth=0, max_types=None, generic_arguments=False)
+    rows = oxigraph.select(store, f'PREFIX dt: <{DT}> SELECT ?t WHERE {{ GRAPH ?g {{ ?t dt:fullName "{seed}" }} }}')
+    assert len(rows) == 1, f"expected exactly one extracted seed named {seed}, got {rows}"
+    types, _edges, _stats, truncated = traverse.expand(store, definition, {rows[0]["t"]: seed})
+    assert not truncated
+    return set(types.values())
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -81,56 +110,38 @@ def test_real_store_pointer_constraint_and_enclosing_follow(tmp_path: Path):
 
 
 def test_real_csharp_pointer_fixture_extracts_and_reduces_without_decoy(tmp_path: Path):
-    """AC2 source-mode evidence: the existing extractor emits pointer constituents used by traversal."""
-    if not BUILT_EXTRACTOR.is_file():
-        pytest.fail("Phase C fixture requires the Release RoslynToRdf CLI built by authoritative validation.")
-    project = tmp_path / "Fixture.csproj"
-    project.write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net8.0</TargetFramework><AllowUnsafeBlocks>true</AllowUnsafeBlocks></PropertyGroup></Project>')
-    (tmp_path / "Fixture.cs").write_text("public unsafe struct S { public P** F; } public struct P {} public struct Decoy {}")
-    ttl = tmp_path / "fixture.ttl"
-    completed = subprocess.run(["dotnet", str(BUILT_EXTRACTOR), str(project), "--output", str(ttl), "--format", "Turtle", "--include-private", "--quiet"],
-                               capture_output=True, text=True)
-    assert completed.returncode == 0 and ttl.is_file(), completed.stderr
+    """AC2 source evidence must construct a Compilation and call Core directly."""
+    ttl = extract_source_with_core_harness(tmp_path, "cs", "public unsafe struct S { public P** F; } public struct P {} public struct Decoy {}")
     store = tmp_path / "store"
     oxigraph.load(store, ttl, "urn:fixture")
     rows = oxigraph.select(store, f"PREFIX dt: <{DT}> SELECT ?pointer ?p WHERE {{ GRAPH ?g {{ ?pointer dt:pointerElementType ?p . ?p dt:fullName \"P\" }} }}")
     assert rows, "unsafe pointer fixture must emit dt:pointerElementType"
+    assert selected_names(store, "S", ["member_types"]) == {"S", "P"}
 
 
-def test_real_csharp_constraint_and_nested_fixtures_emit_follow_facts(tmp_path: Path):
-    """AC3/AC4 source-mode evidence for existing constraint and enclosing-type facts."""
-    if not BUILT_EXTRACTOR.is_file():
-        pytest.fail("Phase C fixture requires the Release RoslynToRdf CLI built by authoritative validation.")
-    project = tmp_path / "Fixture.csproj"
-    project.write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>')
-    (tmp_path / "Fixture.cs").write_text("public interface IFoo {} public interface IBar {} public class S<T> where T : IFoo {} public class H { public void M<U>() where U : IBar {} } public class Outer { public class Inner {} } public class OtherOuter { public class OtherInner {} }")
-    ttl = tmp_path / "fixture.ttl"
-    completed = subprocess.run(["dotnet", str(BUILT_EXTRACTOR), str(project), "--output", str(ttl), "--format", "Turtle", "--include-private", "--configuration", "Release", "--quiet"], capture_output=True, text=True)
-    assert completed.returncode == 0 and ttl.is_file(), completed.stderr
+def test_real_compiled_pointer_fixture_emits_pointer_constituent(tmp_path: Path):
+    """AC2 DLL-mode evidence uses the extractor CLI on the compiled assembly."""
+    ttl = extract_compiled_fixture(tmp_path, "cs", "public unsafe struct S { public P** F; } public struct P {} public struct Decoy {}")
     store = tmp_path / "store"
     oxigraph.load(store, ttl, "urn:fixture")
-    constraints = oxigraph.select(store, f"PREFIX dt: <{DT}> SELECT ?owner ?constraint WHERE {{ GRAPH ?g {{ ?owner dt:hasTypeParameter ?p . ?p dt:constrainedToType ?constraint . }} }}")
-    nested = oxigraph.select(store, f"PREFIX dt: <{DT}> SELECT ?inner ?outer WHERE {{ GRAPH ?g {{ ?inner dt:nestedIn ?outer . }} }}")
-    assert constraints and nested
+    assert oxigraph.select(store, f"PREFIX dt: <{DT}> SELECT ?pointer WHERE {{ GRAPH ?g {{ ?pointer dt:pointerElementType ?p . }} }}")
+    assert selected_names(store, "S", ["member_types"]) == {"S", "P"}
 
 
-def test_real_visual_basic_constraint_and_nested_fixture_emits_follow_facts(tmp_path: Path):
-    """AC3/AC4 require source-mode parity for Visual Basic fixtures."""
-    if not BUILT_EXTRACTOR.is_file():
-        pytest.fail("Phase C fixture requires the Release RoslynToRdf CLI built by authoritative validation.")
-    project = tmp_path / "Fixture.vbproj"
-    project.write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>')
-    (tmp_path / "Fixture.vb").write_text("Public Interface IFoo\nEnd Interface\nPublic Interface IBar\nEnd Interface\nPublic Class S(Of T As IFoo)\nEnd Class\nPublic Class H\nPublic Sub M(Of U As IBar)()\nEnd Sub\nEnd Class\nPublic Class Outer\nPublic Class Inner\nEnd Class\nEnd Class")
-    build = subprocess.run(["dotnet", "build", str(project), "--configuration", "Release"], capture_output=True, text=True)
-    assert build.returncode == 0, build.stderr
-    ttl = tmp_path / "fixture.ttl"
-    completed = subprocess.run(["dotnet", str(BUILT_EXTRACTOR), str(project), "--output", str(ttl), "--format", "Turtle", "--include-private", "--configuration", "Release", "--quiet"], capture_output=True, text=True)
-    assert completed.returncode == 0 and ttl.is_file(), completed.stderr
+@pytest.mark.parametrize(("language", "source"), [
+    ("cs", "public interface IFoo {} public interface IBar {} public class S<T> where T : IFoo {} public class H { public void M<U>() where U : IBar {} } public class Outer { public class Inner {} } public class Decoy {}"),
+    ("vb", "Public Interface IFoo\nEnd Interface\nPublic Interface IBar\nEnd Interface\nPublic Class S(Of T As IFoo)\nEnd Class\nPublic Class H\nPublic Sub M(Of U As IBar)()\nEnd Sub\nEnd Class\nPublic Class Outer\nPublic Class Inner\nEnd Class\nEnd Class\nPublic Class Decoy\nEnd Class"),
+])
+@pytest.mark.parametrize("mode", ["source", "dll"])
+def test_real_constraints_and_nested_fixtures_reduce_exactly(tmp_path: Path, language: str, source: str, mode: str):
+    """AC3/AC4: C#/VB source harness and compiled DLL select only the intended facts."""
+    ttl = extract_source_with_core_harness(tmp_path, language, source) if mode == "source" else extract_compiled_fixture(tmp_path, language, source)
     store = tmp_path / "store"
     oxigraph.load(store, ttl, "urn:fixture")
-    constraints = oxigraph.select(store, f"PREFIX dt: <{DT}> SELECT ?owner WHERE {{ GRAPH ?g {{ ?owner dt:hasTypeParameter ?p . ?p dt:constrainedToType ?c . }} }}")
-    nested = oxigraph.select(store, f"PREFIX dt: <{DT}> SELECT ?inner WHERE {{ GRAPH ?g {{ ?inner dt:nestedIn ?outer . }} }}")
-    assert constraints and nested
+    generic_seed = "S(Of T)" if language == "vb" and mode == "source" else "S<T>"
+    assert selected_names(store, generic_seed, ["constraints"]) == {generic_seed, "IFoo"}
+    assert selected_names(store, "H", ["constraints"]) == {"H", "IBar"}
+    assert selected_names(store, "Outer.Inner", ["enclosing_type"]) == {"Outer.Inner", "Outer"}
 
 
 @pytest.mark.parametrize(("language", "source"), [
