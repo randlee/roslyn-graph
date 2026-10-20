@@ -37,7 +37,7 @@ def test_real_store_pointer_constraint_and_enclosing_follow(tmp_path: Path):
         lines += [f"<{iri}> <{DT}definedInAssembly> <{asm}> .", f'<{iri}> <{DT}accessibility> "Public" .',
                   f'<{iri}> <{DT}fullName> "{name}" .']
     pointer, parameter = "urn:pointer", "urn:parameter"
-    lines += [f"<{s}> <{DT}pointerElementType> <{p}> .", f"<{s}> <{DT}hasTypeParameter> <{parameter}> .",
+    lines += [f"<{pointer}> <{DT}pointerElementType> <{p}> .", f"<{s}> <{DT}hasTypeParameter> <{parameter}> .",
               f"<{parameter}> <{DT}constrainedToType> <{iface}> .", f"<{inner}> <{DT}nestedIn> <{outer}> ."]
     nt, store = tmp_path / "fixture.nt", tmp_path / "store"
     nt.write_text("\n".join(lines) + "\n", encoding="utf-8")
