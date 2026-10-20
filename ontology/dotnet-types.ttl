@@ -122,6 +122,12 @@ dt:isUnmanagedType a rdf:Property ; rdfs:label "isUnmanagedType" ; rdfs:domain d
 dt:specialType a rdf:Property ; rdfs:label "specialType" ; rdfs:comment "Roslyn SpecialType name for built-in types, such as System_Int32" ; rdfs:domain dt:Type ; rdfs:range xsd:string .
 dt:enumUnderlyingType a rdf:Property ; rdfs:label "enumUnderlyingType" ; rdfs:domain dt:Enum ; rdfs:range dt:Type .
 dt:pointerElementType a rdf:Property ; rdfs:label "pointerElementType" ; rdfs:domain dt:Type ; rdfs:range dt:Type .
+dt:signatureReturnType a rdf:Property ; rdfs:domain dt:Type ; rdfs:range dt:Type .
+dt:signatureParameter a rdf:Property ; rdfs:domain dt:Type ; rdfs:range dt:Parameter .
+dt:signatureReturnRefKind a rdf:Property ; rdfs:domain dt:Type ; rdfs:range xsd:string .
+dt:callingConvention a rdf:Property ; rdfs:domain dt:Type ; rdfs:range xsd:string .
+dt:callingConventionType a rdf:Property ; rdfs:domain dt:Type ; rdfs:range dt:Type .
+dt:usesType a rdf:Property ; rdfs:domain dt:Member ; rdfs:range dt:Type .
 dt:arrayRank a rdf:Property ; rdfs:label "arrayRank" ; rdfs:domain dt:Type ; rdfs:range xsd:integer .
 
 # Generic type arguments: dt:typeArgument points at an argument node <type>/typearg/<i> carrying dt:index and dt:type.

@@ -6,6 +6,107 @@ namespace RoslynToRdf.Tests;
 public class CliIntegrationTests
 {
     [Theory]
+    [InlineData(null, false)]
+    [InlineData("--exclude-attributes", false)]
+    [InlineData("--include-attributes", true)]
+    public async Task Cli_AttributesAreExplicitlyOptIn(string? option, bool expected)
+    {
+        var compilation = TestUtilities.CreateCompilation(
+            "[System.Obsolete] public class Attributed { }", "PhaseCAttributes");
+        var (assemblyPath, directory) = TestUtilities.EmitToTempAssembly(compilation);
+        var outputPath = Path.ChangeExtension(assemblyPath, ".nt");
+        try
+        {
+            var arguments = new List<string> { assemblyPath, "-o", outputPath, "--quiet" };
+            if (option != null)
+                arguments.Add(option);
+            var result = await RunCliAsync(arguments.ToArray());
+            Assert.Equal(0, result.ExitCode);
+            var graph = await File.ReadAllTextAsync(outputPath);
+            Assert.Equal(expected, graph.Contains("/ontology/hasAttribute>"));
+        }
+        finally
+        {
+            File.Delete(assemblyPath);
+            File.Delete(outputPath);
+            Directory.Delete(directory);
+        }
+    }
+
+    [Fact]
+    public async Task Cli_ConflictingAttributeOptionsFailBeforeOutput()
+    {
+        using var fixture = new AssemblyReferenceFixture();
+        var outputPath = Path.Combine(fixture.DirectoryPath, "conflict.nt");
+        var result = await RunCliAsync([
+            fixture.TargetPath, "-o", outputPath, "--include-attributes", "--exclude-attributes"
+        ]);
+        Assert.Equal(1, result.ExitCode);
+        Assert.Contains("cannot be combined", result.Stderr);
+        Assert.False(File.Exists(outputPath));
+    }
+
+    [Theory]
+    [InlineData("--strict")]
+    [InlineData("--fail-on-missing-references")]
+    public async Task Cli_StrictAliasesRejectVbSource(string option)
+    {
+        using var fixture = new AssemblyReferenceFixture();
+        var projectPath = Path.Combine(fixture.DirectoryPath, "source.vbproj");
+        var outputPath = Path.Combine(fixture.DirectoryPath, "source.nt");
+        await File.WriteAllTextAsync(projectPath, "<Project />");
+        var result = await RunCliAsync([projectPath, "-o", outputPath, option]);
+        Assert.Equal(1, result.ExitCode);
+        Assert.Contains("supported only for assembly", result.Stderr);
+        Assert.False(File.Exists(outputPath));
+    }
+
+    [Fact]
+    public async Task Cli_VbProjectIncludesGenericAndBodyDependencies()
+    {
+        using var fixture = new AssemblyReferenceFixture();
+        var projectPath = Path.Combine(fixture.DirectoryPath, "Inventory.vbproj");
+        var outputPath = Path.Combine(fixture.DirectoryPath, "inventory.nt");
+        await File.WriteAllTextAsync(projectPath, """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net8.0</TargetFramework>
+                <RootNamespace></RootNamespace>
+              </PropertyGroup>
+            </Project>
+            """);
+        await File.WriteAllTextAsync(Path.Combine(fixture.DirectoryPath, "Inventory.vb"), """
+            Public Class BodyOnly
+            End Class
+            Public Class Inventory(Of T)
+                Public Function Make() As Object
+                    Return New System.Collections.Generic.List(Of BodyOnly)()
+                End Function
+            End Class
+            """);
+        var restoreInfo = new System.Diagnostics.ProcessStartInfo("dotnet")
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+            UseShellExecute = false
+        };
+        restoreInfo.ArgumentList.Add("restore");
+        restoreInfo.ArgumentList.Add(projectPath);
+        using var restore = System.Diagnostics.Process.Start(restoreInfo)!;
+        var restoreOutput = restore.StandardOutput.ReadToEndAsync();
+        var restoreError = restore.StandardError.ReadToEndAsync();
+        await restore.WaitForExitAsync();
+        Assert.True(restore.ExitCode == 0, await restoreOutput + await restoreError);
+        var result = await RunCliAsync([projectPath, "-o", outputPath]);
+        Assert.Equal(0, result.ExitCode);
+        var graph = await File.ReadAllTextAsync(outputPath);
+        Assert.True(graph.Contains("/ontology/usesType>"), result.Stdout + result.Stderr + graph);
+        Assert.Contains("BodyOnly", graph);
+        Assert.Contains("/ontology/hasTypeParameter>", graph);
+    }
+
+    [Theory]
     [InlineData("culture", false)]
     [InlineData("culture", true)]
     [InlineData("public-key", false)]

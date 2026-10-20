@@ -5,6 +5,7 @@ using System.Reflection.PortableExecutable;
 using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.VisualBasic;
 
 namespace RoslynToRdf.Tests;
 
@@ -25,7 +26,18 @@ internal static class TestUtilities
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, allowUnsafe: allowUnsafe));
     }
 
-    public static (string assemblyPath, string directory) EmitToTempAssembly(CSharpCompilation compilation)
+    public static VisualBasicCompilation CreateVisualBasicCompilation(
+        string source,
+        string assemblyName = "TestAssembly")
+    {
+        return VisualBasicCompilation.Create(
+            assemblyName,
+            new[] { VisualBasicSyntaxTree.ParseText(source) },
+            GetDefaultReferences(),
+            new VisualBasicCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+    }
+
+    public static (string assemblyPath, string directory) EmitToTempAssembly(Compilation compilation)
     {
         var dir = Path.Combine(Path.GetTempPath(), "roslyn2rdf-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);

@@ -57,12 +57,13 @@ roslyn2rdf MyProject.csproj -o source-graph.nt --solution-dir ./ --configuration
 | `-b, --base-uri` | Base URI for IRIs (default: `http://dotnet.example/`) |
 | `--include-private` | Include private members |
 | `--include-internal` | Include internal members (default: true) |
-| `--exclude-attributes` | Exclude attribute information |
+| `--include-attributes` | Include attribute information (default: excluded) |
+| `--exclude-attributes` | Explicitly exclude attributes; incompatible with `--include-attributes` |
 | `--exclude-external-types` | Exclude external/referenced types |
 | `--extract-exceptions` | Extract exception types from XML docs (default: true) |
 | `--extract-seealso` | Extract seealso references from XML docs (default: true) |
 | `-r, --reference` | Additional assembly reference paths |
-| `--fail-on-missing-references` | Fail on unresolved or unreadable references (DLL inputs only; default: false) |
+| `--strict`, `--fail-on-missing-references` | Fail on unresolved or unreadable references (DLL inputs only; default: false) |
 | `-s, --search-dir` | Additional directories to search for dependencies |
 | `--solution-dir` | Solution directory for source-project evaluation (defaults to the project directory) |
 | `--configuration` | MSBuild configuration for source-project evaluation (defaults to `Debug`) |
@@ -77,10 +78,10 @@ or unreadable `-r` files produce warnings on stderr, including with `--quiet`. E
 returns exit code 0 by default, although the graph may be incomplete. Use `--fail-on-missing-references`
 to return exit code 1 before extracting an assembly with reference failures. An output file may already
 exist, and a combined output may contain earlier assemblies. A missing or invalid target assembly is
-always fatal. The strict option is rejected for `.csproj` inputs; source projects use MSBuild resolution.
+always fatal. Both strict aliases are rejected for `.csproj` and `.vbproj` inputs; source projects use MSBuild resolution.
 
-Passing a `.csproj` opens the evaluated C# project with MSBuild and analyzes its Roslyn compilation,
-including source syntax and the evaluated `AllowUnsafeBlocks` setting. Projects where that setting is
+Passing a `.csproj` or `.vbproj` opens the evaluated C# or Visual Basic project with MSBuild and analyzes its Roslyn compilation,
+including source syntax and, for C#, the evaluated `AllowUnsafeBlocks` setting. C# projects where that setting is
 false still receive the ordinary type graph, while unsafe-method facts are omitted. Source generators
 are represented when their generated trees are present in the compilation supplied by the workspace.
 The MSBuild options above are passed as project-evaluation properties, without changing the caller's
@@ -89,7 +90,11 @@ environment. The `rg` generator supplies `SolutionDir`, `Configuration`, `Platfo
 Unsafe reason nodes describe a method's own unsafe modifier or unsafe syntax and carry project-relative
 source paths with one-based line and column numbers. An unsafe enclosing type contributes to type and
 assembly `containsUnsafeCode` aggregates, but does not mark each ordinary method in that type unsafe.
-The `.dll` mode remains metadata-only and does not report method-body unsafe facts.
+Both source and DLL modes inventory statically bound body type dependencies as `dt:usesType`,
+including generic constituents, unsafe pointer signatures and delegate/function-pointer signatures.
+This is static analysis, not runtime inference. Source mode retains source-semantic dependencies
+that compilation can erase; DLL mode reads emitted IL and does not invent missing source dependencies.
+The `.dll` mode does not report source locations or method-body unsafe reason facts.
 
 ## RDF Schema
 
