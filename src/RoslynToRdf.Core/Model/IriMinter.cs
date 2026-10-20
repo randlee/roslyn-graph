@@ -153,14 +153,14 @@ public partial class IriMinter
             return $"{GetFullMetadataName(pointerType.PointedAtType, forMemberSignature)}*";
         }
 
-        if (forMemberSignature && type is IFunctionPointerTypeSymbol functionPointer)
+        if (type is IFunctionPointerTypeSymbol functionPointer)
         {
             var signature = functionPointer.Signature;
             var conventions = string.Join(",", signature.UnmanagedCallingConventionTypes
-                .Select(convention => GetFullMetadataName(convention, forMemberSignature: true)));
+                .Select(convention => GetFullMetadataName(convention, forMemberSignature)));
             var parameters = string.Join(",", signature.Parameters
-                .Select(parameter => $"{parameter.RefKind}:{GetFullMetadataName(parameter.Type, forMemberSignature: true)}"));
-            var returnType = GetFullMetadataName(signature.ReturnType, forMemberSignature: true);
+                .Select(parameter => $"{parameter.RefKind}:{GetFullMetadataName(parameter.Type, forMemberSignature)}"));
+            var returnType = GetFullMetadataName(signature.ReturnType, forMemberSignature);
             return $"delegate*{signature.CallingConvention}[{conventions}]({parameters})~{signature.RefKind}:{returnType}";
         }
 

@@ -26,7 +26,7 @@ public class Program
         var rootCommand = new RootCommand("Extract .NET assembly type graphs to RDF format") { Name = "roslyn2rdf" };
         rootCommand.AddCommand(CreateSkillCommand());
 
-        var assemblyArg = new Argument<FileInfo>("assembly", "Path to a .NET assembly (.dll) or C# source project (.csproj) to analyze");
+        var assemblyArg = new Argument<FileInfo>("assembly", "Path to a .NET assembly (.dll) or C#/VB source project (.csproj/.vbproj) to analyze");
         var additionalAssembliesOption = new Option<FileInfo[]>(["--assembly", "-a"], () => [], "Additional target assemblies to include in the same graph");
         var outputOption = new Option<FileInfo?>(["--output", "-o"], "Output file path");
         var formatOption = new Option<OutputFormat>(["--format", "-f"], () => OutputFormat.NTriples, "Output format");
@@ -34,6 +34,7 @@ public class Program
         var includePrivateOption = new Option<bool>("--include-private", () => false, "Include private members");
         var includeInternalOption = new Option<bool>("--include-internal", () => true, "Include internal members");
         var excludeAttributesOption = new Option<bool>("--exclude-attributes", () => false, "Exclude attributes");
+        var includeAttributesOption = new Option<bool>("--include-attributes", () => false, "Include attributes (excluded by default)");
         var excludeExternalTypesOption = new Option<bool>("--exclude-external-types", () => false, "Exclude external types");
         var extractExceptionsOption = new Option<bool>("--extract-exceptions", () => true, "Extract exceptions from XML docs");
         var extractSeeAlsoOption = new Option<bool>("--extract-seealso", () => true, "Extract seealso from XML docs");
@@ -42,6 +43,7 @@ public class Program
         var refsOption = new Option<string[]>(["--reference", "-r"], () => [], "Additional assembly references");
         var failOnMissingReferencesOption = new Option<bool>("--fail-on-missing-references", () => false,
             "Fail on unresolved or unreadable assembly references (.dll inputs only)");
+        failOnMissingReferencesOption.AddAlias("--strict");
         var searchDirOption = new Option<string[]>(["--search-dir", "-s"], () => [], "Search directories");
         var solutionDirOption = new Option<DirectoryInfo?>("--solution-dir", "Solution directory used to evaluate a source project (defaults to the project directory)");
         var configurationOption = new Option<string?>("--configuration", "MSBuild configuration used to evaluate a source project");
@@ -56,6 +58,7 @@ public class Program
         rootCommand.AddOption(includePrivateOption);
         rootCommand.AddOption(includeInternalOption);
         rootCommand.AddOption(excludeAttributesOption);
+        rootCommand.AddOption(includeAttributesOption);
         rootCommand.AddOption(excludeExternalTypesOption);
         rootCommand.AddOption(extractExceptionsOption);
         rootCommand.AddOption(extractSeeAlsoOption);
@@ -80,6 +83,7 @@ public class Program
             var includePrivate = context.ParseResult.GetValueForOption(includePrivateOption);
             var includeInternal = context.ParseResult.GetValueForOption(includeInternalOption);
             var excludeAttributes = context.ParseResult.GetValueForOption(excludeAttributesOption);
+            var includeAttributes = context.ParseResult.GetValueForOption(includeAttributesOption);
             var excludeExternalTypes = context.ParseResult.GetValueForOption(excludeExternalTypesOption);
             var extractExceptions = context.ParseResult.GetValueForOption(extractExceptionsOption);
             var extractSeeAlso = context.ParseResult.GetValueForOption(extractSeeAlsoOption);
@@ -94,7 +98,7 @@ public class Program
             var targetFramework = context.ParseResult.GetValueForOption(targetFrameworkOption);
 
             context.ExitCode = await RunExtraction([assembly, ..additionalAssemblies], output, format, baseUri, includePrivate, includeInternal,
-                excludeAttributes, excludeExternalTypes, extractExceptions, extractSeeAlso, verbose, quiet, refs, searchDirs,
+                includeAttributes, excludeAttributes, excludeExternalTypes, extractExceptions, extractSeeAlso, verbose, quiet, refs, searchDirs,
                 solutionDir?.FullName, configuration, platform, targetFramework, failOnMissingReferences);
         });
 
@@ -126,7 +130,7 @@ public class Program
     }
 
     private static async Task<int> RunExtraction(IEnumerable<FileInfo> requestedAssemblies, FileInfo? output, OutputFormat format, string baseUri,
-        bool includePrivate, bool includeInternal, bool excludeAttributes, bool excludeExternalTypes,
+        bool includePrivate, bool includeInternal, bool includeAttributes, bool excludeAttributes, bool excludeExternalTypes,
         bool extractExceptions, bool extractSeeAlso, bool verbose, bool quiet, string[] refs, string[] searchDirs,
         string? solutionDir, string? configuration, string? platform, string? targetFramework, bool failOnMissingReferences)
     {
@@ -135,7 +139,15 @@ public class Program
             .Select(group => group.First())
             .ToArray();
 
-        var sourceProjects = assemblies.Where(file => file.Extension.Equals(".csproj", StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (includeAttributes && excludeAttributes)
+        {
+            Console.Error.WriteLine("--include-attributes and --exclude-attributes cannot be combined.");
+            return 1;
+        }
+
+        var sourceProjects = assemblies.Where(file =>
+            file.Extension.Equals(".csproj", StringComparison.OrdinalIgnoreCase)
+            || file.Extension.Equals(".vbproj", StringComparison.OrdinalIgnoreCase)).ToArray();
         if (sourceProjects.Length > 0 && (sourceProjects.Length != 1 || assemblies.Length != 1))
         {
             Console.Error.WriteLine("A source project must be extracted alone; it cannot be combined with --assembly.");
@@ -169,7 +181,7 @@ public class Program
             SourceRoot = sourceProjects.Length == 1 ? Path.GetDirectoryName(sourceProjects[0].FullName) : null,
             IncludePrivate = includePrivate,
             IncludeInternal = includeInternal,
-            IncludeAttributes = !excludeAttributes,
+            IncludeAttributes = includeAttributes,
             IncludeExternalTypes = !excludeExternalTypes,
             ExtractExceptions = extractExceptions,
             ExtractSeeAlso = extractSeeAlso,
@@ -204,14 +216,16 @@ public class Program
                 using var workspace = MSBuildWorkspace.Create(properties);
                 workspace.WorkspaceFailed += (_, args) => log?.Invoke($"MSBuild workspace: {args.Diagnostic.Message}");
                 var project = await workspace.OpenProjectAsync(projectPath);
-                if (project.Language != LanguageNames.CSharp)
-                    throw new InvalidOperationException("Only C# source projects are supported.");
+                if (project.Language != LanguageNames.CSharp && project.Language != LanguageNames.VisualBasic)
+                    throw new InvalidOperationException("Only C# and Visual Basic source projects are supported.");
                 var compilation = await project.GetCompilationAsync()
-                    ?? throw new InvalidOperationException("MSBuild did not provide a C# compilation for the project.");
+                    ?? throw new InvalidOperationException("MSBuild did not provide a compilation for the project.");
                 if (compilation.Options is CSharpCompilationOptions { AllowUnsafe: false })
                     log?.Invoke("AllowUnsafeBlocks is false; unsafe-method analysis is skipped for this project.");
                 var extractor = new AssemblyGraphExtractor(emitter, options, log);
                 extractor.Extract(compilation, compilation.Assembly);
+                foreach (var diagnostic in extractor.BodyResolutionDiagnostics)
+                    Console.Error.WriteLine($"Warning: {diagnostic}");
             }
             else
             {
@@ -236,7 +250,9 @@ public class Program
                         return 1;
                     }
                     var extractor = new AssemblyGraphExtractor(emitter, options, log);
-                    extractor.Extract(compilation, assemblySymbol);
+                    extractor.Extract(compilation, assemblySymbol, peImagePath: assembly.FullName);
+                    foreach (var diagnostic in extractor.BodyResolutionDiagnostics)
+                        Console.Error.WriteLine($"Warning: {diagnostic}");
                 }
             }
             emitter.Flush();
