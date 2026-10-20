@@ -14,6 +14,7 @@ from types import SimpleNamespace
 import pytest
 
 from roslyn_graph import explore, oxigraph, traverse
+from roslyn_graph.result import RgError
 from roslyn_graph.util import DT, RDF_TYPE
 
 
@@ -83,3 +84,18 @@ def test_unlimited_default_export_exceeds_former_triple_cap(tmp_path: Path, monk
                             union=False, logical=False)
     assert result["summary"]["triples"] == count
     assert sum(1 for _ in output.open(encoding="utf-8")) == count
+
+
+def test_query_and_export_failures_never_return_partial_success(tmp_path: Path, monkeypatch):
+    """AC1: backend failures propagate instead of producing a partial success result."""
+    store = tmp_path / "store"
+    monkeypatch.setattr(explore, "store_for", lambda _path: (store, {"kind": "solution"}))
+    failure = RgError.of("OXIGRAPH_FAILED", "simulated backend failure")
+    monkeypatch.setattr(explore.oxigraph, "select", lambda *_args, **_kwargs: (_ for _ in ()).throw(failure))
+    with pytest.raises(RgError) as query_error:
+        explore.query(tmp_path / "manifest.json", "SELECT ?s WHERE { ?s ?p ?o }", union=False)
+    assert query_error.value.problems[0].code == "OXIGRAPH_FAILED"
+    monkeypatch.setattr(explore.oxigraph, "construct", lambda *_args, **_kwargs: (_ for _ in ()).throw(failure))
+    with pytest.raises(RgError) as export_error:
+        explore.export(tmp_path / "manifest.json", "CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }", tmp_path / "out.nt", False, False)
+    assert export_error.value.problems[0].code == "OXIGRAPH_FAILED" and not (tmp_path / "out.nt").exists()
