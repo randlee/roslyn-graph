@@ -11,6 +11,18 @@ python <skill>/scripts/rg.py records --selection picked.selection.json --schema 
 
 ## Input
 
+Traversal contexts can pin separately admitted dependencies in `additionalComponents`, with
+`artifactId`, `graphIri`, `manifestPath`, `origin`, `package` and `assembly`. Records validates and
+reopens these exact artifacts; later catalog changes cannot replace them. Deleted artifacts or
+mismatched IDs fail rather than silently rediscovering or removing components.
+`logicalTypeMappings` retains the physical-to-logical mapping of admitted own types.
+
+`externalReferences` retains boundary evidence and its known package/assembly provenance. Only
+context-listed external target keys are excluded from movable records; A/P/Q component types remain
+records, while their E dependencies remain evidence. Other `RECORDS_TYPE_NOT_IN_STORE` errors are
+not suppressed. The context's diagnostics and incomplete-coverage information remain provenance,
+not evidence that absent body facts are false.
+
 Exactly one of:
 
 | Option | Input | Types |

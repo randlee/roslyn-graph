@@ -39,4 +39,4 @@ rg:logicalType a rdf:Property ; rdfs:comment "Links a physical, versioned dt:Typ
 rg:assemblyName a rdf:Property ; rdfs:domain rg:LogicalType ; rdfs:range xsd:string .
 
 # Derived traversal graphs (rg.py graph)
-rg:references a rdf:Property ; rdfs:comment "Written only into exported traversal graphs: the subject type uses the object type as a base type, interface, member type, parameter type or generic argument" ; rdfs:domain dt:Type ; rdfs:range dt:Type .
+rg:references a rdf:Property ; rdfs:comment "Written only into exported traversal graphs: the subject type uses the object type as a base type, interface, member type, parameter type, generic argument or member-body type (dt:usesType)" ; rdfs:domain dt:Type ; rdfs:range dt:Type .

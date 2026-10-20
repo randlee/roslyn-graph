@@ -71,8 +71,16 @@ def test_graph_definition_docs_match_unlimited_defaults_and_export_options():
     doc = (EXPLORE / "reference" / "graph-definitions.md").read_text(encoding="utf-8")
     assert "omitted = until closure" in doc
     assert "`--max-triples`" in doc and "`--unbounded`" in doc
-    for relation in ("constraints", "enclosing_type"):
+    for relation in ("constraints", "enclosing_type", "body_types"):
         assert relation in traverse.FOLLOW and f"`{relation}`" in doc
+
+
+def test_graph_and_records_docs_describe_pinned_components_and_external_evidence():
+    for name in ("graph-definitions.md", "records.md"):
+        doc = (EXPLORE / "reference" / name).read_text(encoding="utf-8")
+        for field in ("additionalComponents", "artifactId", "graphIri", "manifestPath", "externalReferences"):
+            assert f"`{field}`" in doc, f"{name} omits {field}"
+        assert "incomplete" in doc
 
 
 def test_params_are_substituted_and_escaped():

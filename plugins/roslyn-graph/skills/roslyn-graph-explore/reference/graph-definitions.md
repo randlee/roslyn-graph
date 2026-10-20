@@ -37,7 +37,7 @@ kinds = ["Interface"]                          # optional filter for pattern mat
 implementations = "transitive"                 # none | direct | transitive (default)
 
 [expand]
-follow = ["base_types", "interfaces", "member_types", "parameter_types", "constraints", "enclosing_type"]   # default
+follow = ["base_types", "interfaces", "member_types", "parameter_types", "constraints", "enclosing_type", "body_types"]   # default
 generic_arguments = true                       # default: List<Foo> and Foo[] reference Foo
 max_depth = 0                                  # 0 = until closure (default)
 # max_types = 1500                             # optional positive cap; omitted = until closure (default)
@@ -68,11 +68,20 @@ is an error (`GRAPH_SEED_NOT_FOUND`); find exact names with `queries/find-type.r
 | `parameter_types` | parameter types of its methods, constructors and indexers |
 | `constraints` | constraints on its type or method type parameters |
 | `enclosing_type` | its containing type when it is nested |
+| `body_types` | statically bound types used by its members (`dt:hasMember` / `dt:usesType`), including uncalled private bodies |
 | `attributes` | attribute classes applied to it or its members |
-| `referenced_by` | component types that consume it through inheritance, implemented interfaces, member/parameter types, or attributes |
+| `referenced_by` | component types that consume it through inheritance, interfaces, member/parameter/body types or constraints; attribute consumers only when `attributes` is also enabled |
 
 With `generic_arguments`, constructed generics contribute their definition and every type argument, and
-arrays their element type. Only component types are added; references to framework types end there.
+arrays and pointers their element type. Function pointers contribute `dt:signatureReturnType`,
+`dt:signatureParameter` / `dt:parameterType`, and `dt:callingConventionType` targets. Delegate Invoke
+signatures use the existing member/parameter relations. Saved explicit follow lists are preserved:
+`body_types` is a default for omitted lists, not an automatic addition to a saved list.
+
+Only component definitions enter the traversal frontier. Registered, already-analyzed dependencies
+may supply a reached definition by exact bound assembly/type identity and configured TFM. Reduction
+never downloads packages, restores, executes the build plan or regenerates artifacts. Unregistered
+dependencies remain external boundaries, not extra movable types.
 
 ### Output
 
@@ -86,8 +95,30 @@ reference that pulled a type in, drawn as dotted grey lines.
 
 With `members = true` (the default) every exported type also carries its members: kind, name, type
 (`dt:returnType`, `dt:propertyType`, `dt:fieldType`, `dt:eventType`) and parameters (name, ordinal,
-type), so clicking a type shows its signatures. With `logical = true` the members of a type present in
+type), plus original `dt:usesType` body edges. Self-use facts remain even though projected
+`rg:references` self-edges are omitted. With `logical = true` the members of a type present in
 several versions are merged with the type. Set `members = false` for very large graphs.
+
+### Dependency context and boundaries
+
+The adjacent context pins admitted artifacts in `additionalComponents`. Each entry records
+`artifactId`, `graphIri`, `manifestPath`, `origin`, `package` and `assembly`; the source manifest is
+not modified. `logicalTypeMappings` preserves physical-to-logical identities for newly admitted
+types when the source view uses logical output. Reopening uses these pins, not a newer catalog.
+
+`externalReferences` records unresolved boundary evidence: owner, predicate, target, assembly,
+reason and known manifest package identity. Boundary types retain their available RDF identity and
+connecting wrapper/signature edges, but do not enter the frontier or count as selected components.
+Package identity is never inferred from an assembly name. Attribute-only boundaries require
+`attributes` in the follow list.
+
+Missing, unreadable, incompatible or ambiguous registered artifacts are diagnosed as incomplete
+coverage while independent branches continue. Ambiguity reports candidate artifact IDs and admits
+neither; there is no newest-version fallback. An unregistered package is an intentional boundary.
+Legacy missing identity fields are reported, not invented. Published manifests lack affirmative
+body-coverage certification, so known facts remain usable but missing coverage evidence is
+unknown/incomplete; even existing `dt:usesType` triples do not certify completeness.
+Store/query/resource failures remain errors, not complete partial results.
 
 ## Example
 
@@ -104,7 +135,7 @@ kinds = ["Interface"]
 implementations = "transitive"
 
 [expand]
-follow = ["base_types", "interfaces", "member_types", "parameter_types", "constraints", "enclosing_type"]
+follow = ["base_types", "interfaces", "member_types", "parameter_types", "constraints", "enclosing_type", "body_types"]
 max_depth = 0
 # max_types = 1500  # optional cap
 ```
