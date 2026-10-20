@@ -116,7 +116,7 @@ def cmd_query(a) -> dict:
 
 def cmd_export(a) -> dict:
     return explore.export(Path(a.manifest), explore.read_query(a.query, a.query_file, a.param), Path(a.output), union=a.union, logical=a.logical, unbounded=a.unbounded, timeout=a.timeout,
-                          query_file=a.query_file, params=a.param)
+                          max_triples=a.max_triples, query_file=a.query_file, params=a.param)
 
 
 def cmd_render(a) -> dict:
@@ -184,6 +184,12 @@ def parser() -> argparse.ArgumentParser:
     def data_root(p: argparse.ArgumentParser) -> None:
         p.add_argument("--data-root", help="Parent of .roslyn-graph; defaults to ROSLYN_GRAPH_DATA_ROOT.")
 
+    def positive(value: str) -> int:
+        parsed = int(value)
+        if parsed <= 0:
+            raise argparse.ArgumentTypeError("must be a positive integer")
+        return parsed
+
     p = add("discover", cmd_discover, "Inspect a built .sln and suggest workspace.toml values (design-toml).")
     p.add_argument("--solution", required=True)
     p.add_argument("--root", help="Profile root; defaults to the common ancestor of the solution and its projects.")
@@ -229,11 +235,12 @@ def parser() -> argparse.ArgumentParser:
         p.add_argument("--union", action="store_true",
                        help="Treat the union of all named graphs as the default graph (slow on large stores; prefer GRAPH ?g).")
         if name == "query":
-            p.add_argument("--limit", type=int, default=explore.MAX_ROWS)
+            p.add_argument("--limit", type=positive, default=None, help="Maximum rows to return; omitted returns every row.")
         else:
             p.add_argument("--output", required=True)
             p.add_argument("--logical", action="store_true", help="Collapse physical type versions to logical types (views only).")
-            p.add_argument("--unbounded", action="store_true", help="Deliberate full export: no timeout and no triple cap.")
+            p.add_argument("--max-triples", type=positive, help="Maximum triples to export; a reached bound fails loudly.")
+            p.add_argument("--unbounded", action="store_true", help="Disable the export timeout; incompatible with --max-triples.")
 
     p = add("render", cmd_render, "Build a self-contained page for a registered visualizer.")
     p.add_argument("--visualizer", default="explorer")

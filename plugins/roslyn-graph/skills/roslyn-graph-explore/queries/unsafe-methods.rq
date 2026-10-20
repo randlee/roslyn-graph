@@ -18,4 +18,3 @@ SELECT ?assembly ?typeName ?methodName ?reason ?location WHERE {
   }
 }
 ORDER BY ?assemblyName ?typeName ?methodName ?reason
-LIMIT 2000

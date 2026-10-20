@@ -37,10 +37,10 @@ kinds = ["Interface"]                          # optional filter for pattern mat
 implementations = "transitive"                 # none | direct | transitive (default)
 
 [expand]
-follow = ["base_types", "interfaces", "member_types", "parameter_types"]   # default
+follow = ["base_types", "interfaces", "member_types", "parameter_types", "constraints", "enclosing_type"]   # default
 generic_arguments = true                       # default: List<Foo> and Foo[] reference Foo
 max_depth = 0                                  # 0 = until closure (default)
-max_types = 1500                               # stop before exceeding this many types (default)
+# max_types = 1500                             # optional positive cap; omitted = until closure (default)
 
 [output]
 visualizer = "explorer"                        # default
@@ -66,6 +66,8 @@ is an error (`GRAPH_SEED_NOT_FOUND`); find exact names with `queries/find-type.r
 | `interfaces` | the interfaces it implements or extends (`dt:implements`) |
 | `member_types` | return, property, field and event types of its members |
 | `parameter_types` | parameter types of its methods, constructors and indexers |
+| `constraints` | constraints on its type or method type parameters |
+| `enclosing_type` | its containing type when it is nested |
 | `attributes` | attribute classes applied to it or its members |
 | `referenced_by` | component types that consume it through inheritance, implemented interfaces, member/parameter types, or attributes |
 
@@ -76,8 +78,8 @@ arrays their element type. Only component types are added; references to framewo
 
 `rg.py graph --definition <file> [--output-dir <dir>] [--open]` writes `<name>.nt` and `<name>.html`
 (default folder: `out/` next to the definition) and returns a `type: "graph"` result with the seed and
-implementation counts, per-depth growth (`expansion`), the total, `truncated` when `max_types` stopped
-it, and the export summary.
+implementation counts, per-depth growth (`expansion`), the total, `truncated` when an explicit `max_types`
+or positive `max_depth` stopped expansion, and the export summary.
 
 Edges drawn: `dt:inherits`, `dt:implements` between exported types, plus `rg:references` for every other
 reference that pulled a type in, drawn as dotted grey lines.
@@ -102,10 +104,12 @@ kinds = ["Interface"]
 implementations = "transitive"
 
 [expand]
-follow = ["base_types", "interfaces", "member_types", "parameter_types"]
+follow = ["base_types", "interfaces", "member_types", "parameter_types", "constraints", "enclosing_type"]
 max_depth = 0
-max_types = 1500
+# max_types = 1500  # optional cap
 ```
 
-When the result is `truncated`, narrow the seeds, drop `parameter_types`, or set `max_depth`, and tell
-the user what the limit cut.
+When the result is `truncated`, an explicit type cap or depth bound cut the traversal; tell the user which
+limit cut it. `rg.py export` accepts optional `--max-triples N`, which sets a positive export cap and fails loudly
+when reached. `--max-triples` cannot be combined with `--unbounded`, which preserves the compatibility mode that disables
+the export timeout. Explicit `LIMIT` clauses in saved queries are preserved.

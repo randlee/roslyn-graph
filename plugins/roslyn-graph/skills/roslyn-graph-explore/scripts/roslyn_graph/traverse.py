@@ -25,6 +25,9 @@ FOLLOW = {  # relation -> graph patterns binding ?t (the referencing type) and ?
     "interfaces": ["?t dt:implements ?r"],
     "member_types": ["?t dt:hasMember ?m . ?m dt:returnType|dt:propertyType|dt:fieldType|dt:eventType ?r"],
     "parameter_types": ["?t dt:hasMember ?m . ?m dt:hasParameter ?p . ?p dt:parameterType ?r"],
+    "constraints": ["?t dt:hasTypeParameter ?parameter . ?parameter dt:constrainedToType ?r",
+                    "?t dt:hasMember ?method . ?method dt:hasTypeParameter ?parameter . ?parameter dt:constrainedToType ?r"],
+    "enclosing_type": ["?t dt:nestedIn ?r"],
     "attributes": ["?t dt:hasAttribute ?at . ?at dt:attributeType ?r",
                    "?t dt:hasMember ?m . ?m dt:hasAttribute ?at . ?at dt:attributeType ?r"],
 }
@@ -34,6 +37,8 @@ INVERSE_FOLLOW = {  # relation -> patterns binding ?t (the consumed type) and ?r
         "?r dt:implements ?t",
         "?r dt:hasMember ?m . ?m dt:returnType|dt:propertyType|dt:fieldType|dt:eventType ?t",
         "?r dt:hasMember ?m . ?m dt:hasParameter ?p . ?p dt:parameterType ?t",
+        "?r dt:hasTypeParameter ?parameter . ?parameter dt:constrainedToType ?t",
+        "?r dt:hasMember ?method . ?method dt:hasTypeParameter ?parameter . ?parameter dt:constrainedToType ?t",
         "?r dt:hasAttribute ?at . ?at dt:attributeType ?t",
         "?r dt:hasMember ?m . ?m dt:hasAttribute ?at . ?at dt:attributeType ?t",
     ],
@@ -58,7 +63,7 @@ class Definition:
     follow: list[str]
     generic_arguments: bool
     max_depth: int
-    max_types: int
+    max_types: int | None
     visualizer: str
     members: bool = True
 
@@ -112,14 +117,16 @@ def load_definition(path: Path) -> Definition:
     implementations = seeds.get("implementations", "transitive")
     if implementations not in IMPLEMENTATIONS:
         bad("seeds.implementations", f"must be one of {sorted(IMPLEMENTATIONS)}")
-    follow = strings(expand, "follow", "expand") if "follow" in expand else ["base_types", "interfaces", "member_types", "parameter_types"]
+    follow = strings(expand, "follow", "expand") if "follow" in expand else ["base_types", "interfaces", "member_types", "parameter_types", "constraints", "enclosing_type"]
     for item in follow:
         if item not in FOLLOW:
             bad("expand.follow", f"unknown relation {item!r}", f"Use {', '.join(FOLLOW)}.")
-    max_depth, max_types = expand.get("max_depth", 0), expand.get("max_types", 1500)
-    for key, value in (("max_depth", max_depth), ("max_types", max_types)):
+    max_depth, max_types = expand.get("max_depth", 0), expand.get("max_types")
+    for key, value in (("max_depth", max_depth),):
         if not isinstance(value, int) or isinstance(value, bool) or value < 0:
             bad(f"expand.{key}", "must be a non-negative integer (max_depth 0 = until closure)")
+    if max_types is not None and (not isinstance(max_types, int) or isinstance(max_types, bool) or max_types <= 0):
+        bad("expand.max_types", "must be a positive integer when set (omitted = until closure)")
     problems.raise_if_any()
     return Definition(
         path=path, title=str(data.get("title") or path.stem.replace(".graph", "")),
@@ -226,7 +233,7 @@ def _own_names(store: Path, iris: set[str]) -> dict[str, str]:
 def _underlying(store: Path, refs: set[str], generic_arguments: bool) -> dict[str, set[str]]:
     """Each referenced IRI mapped to itself plus the types inside it: generic definition, array element and
     (when enabled) type arguments, recursively."""
-    patterns = ["?t dt:genericDefinition ?r", "?t dt:arrayElementType ?r"]
+    patterns = ["?t dt:genericDefinition ?r", "?t dt:arrayElementType ?r", "?t dt:pointerElementType ?r"]
     if generic_arguments:
         patterns.append("?t dt:typeArgument ?a . ?a dt:type ?r")
     children: dict[str, set[str]] = {}
@@ -306,13 +313,47 @@ def expand(store: Path, d: Definition, start: dict[str, str]) -> tuple[dict[str,
                     edges.add((u, target))
                     if u not in seen:
                         added[u] = own[u]
-        if len(seen) + len(added) > d.max_types:
+        if d.max_types is not None and len(seen) + len(added) > d.max_types:
             truncated = True
             stats.append({"depth": depth, "added": len(added), "stopped": f"would exceed max_types={d.max_types}"})
             break
         seen.update(added)
         stats.append({"depth": depth, "added": len(added), "total": len(seen)})
         frontier = sorted(added)
+    if frontier and d.max_depth and depth == d.max_depth and not truncated:
+        # One bounded lookahead distinguishes a real depth cut from a leaf frontier.  It deliberately
+        # does not expand the frontier or add new types, but preserves edges wholly within the selection.
+        direct: set[tuple[str, str]] = set()
+        inverse: set[tuple[str, str]] = set()
+        for relation in d.follow:
+            if relation in INVERSE_FOLLOW:
+                for pattern in INVERSE_FOLLOW[relation]:
+                    inverse.update(_inverse_pairs(store, frontier, pattern))
+            else:
+                for pattern in FOLLOW[relation]:
+                    direct.update(_pairs(store, frontier, pattern))
+        inside = _underlying(store, {r for _, r in direct}, d.generic_arguments)
+        inverse_inside = _underlying(store, {r for _, r in inverse}, d.generic_arguments)
+        own = _own_names(store, {u for us in inside.values() for u in us})
+        own.update(_own_names(store, {u for us in inverse_inside.values() for u in us}))
+        omitted = False
+        for t, r in direct:
+            for u in inside[r]:
+                if u in own and u != t:
+                    if u in seen:
+                        edges.add((t, u))
+                    else:
+                        omitted = True
+        for target, consumer in inverse:
+            for u in inverse_inside[consumer]:
+                if u in own and u != target:
+                    if u in seen:
+                        edges.add((u, target))
+                    else:
+                        omitted = True
+        if omitted:
+            truncated = True
+            stats[-1]["stopped"] = f"max_depth={d.max_depth}"
     return seen, sorted(edges), stats, truncated
 
 

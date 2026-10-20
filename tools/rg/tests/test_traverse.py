@@ -45,8 +45,8 @@ def test_valid_definition_and_defaults(tmp_path):
     assert d.follow == ["base_types", "member_types"] and d.generic_arguments is True
 
     minimal = traverse.load_definition(write(tmp_path / "m", 'schema_version = 1\n[source]\nmanifest = "views/x/manifest.json"\n[seeds]\ntypes = ["A.B"]\n'))
-    assert minimal.follow == ["base_types", "interfaces", "member_types", "parameter_types"]
-    assert (minimal.implementations, minimal.max_depth, minimal.max_types, minimal.visualizer) == ("transitive", 0, 1500, "explorer")
+    assert minimal.follow == ["base_types", "interfaces", "member_types", "parameter_types", "constraints", "enclosing_type"]
+    assert (minimal.implementations, minimal.max_depth, minimal.max_types, minimal.visualizer) == ("transitive", 0, None, "explorer")
     assert minimal.title == "repo"
 
 
@@ -104,6 +104,31 @@ def test_referenced_by_adds_component_consumers_with_edges_pointing_to_the_consu
     assert edges == [("consumer", "seed")]
     assert stats == [{"depth": 1, "added": 1, "total": 2}]
     assert truncated is False
+
+
+def test_explicit_max_types_is_positive_and_omitted_is_unlimited(tmp_path):
+    base = 'schema_version = 1\n[source]\nmanifest = "views/x/manifest.json"\n[seeds]\ntypes = ["A.B"]\n[expand]\n'
+    assert traverse.load_definition(write(tmp_path / "unlimited", base)).max_types is None
+    for value in ("0", "-1"):
+        with pytest.raises(RgError) as info:
+            traverse.load_definition(write(tmp_path / value, base + f"max_types = {value}\n"))
+        assert any(p.context["key"] == "expand.max_types" for p in info.value.problems)
+
+
+def test_depth_probe_reports_real_cut_and_preserves_cycle_edges(monkeypatch):
+    graph = {"A": ["B"], "B": ["C"], "C": []}
+    definition = SimpleNamespace(follow=["base_types"], max_depth=1, max_types=None, generic_arguments=False)
+    monkeypatch.setattr(traverse, "_pairs", lambda _store, subjects, _pattern: [(t, r) for t in subjects for r in graph[t]])
+    monkeypatch.setattr(traverse, "_underlying", lambda _store, refs, _generic: {ref: {ref} for ref in refs})
+    monkeypatch.setattr(traverse, "_own_names", lambda _store, iris: {iri: iri for iri in iris})
+    types, edges, stats, truncated = traverse.expand(Path("store"), definition, {"A": "A"})
+    assert types == {"A": "A", "B": "B"} and edges == [("A", "B")]
+    assert truncated is True and stats[-1]["stopped"] == "max_depth=1"
+
+    graph["B"] = ["A"]
+    types, edges, stats, truncated = traverse.expand(Path("store"), definition, {"A": "A"})
+    assert types == {"A": "A", "B": "B"} and edges == [("A", "B"), ("B", "A")]
+    assert truncated is False and "stopped" not in stats[-1]
 
 
 def test_members_are_exported_by_default_and_can_be_turned_off(tmp_path):
