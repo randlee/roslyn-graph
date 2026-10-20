@@ -91,9 +91,18 @@ public sealed partial class AssemblyGraphExtractor
             pending.Enqueue((root, Context(symbol), ImmutableHashSet<MethodDefinitionHandle>.Empty));
             while (pending.TryDequeue(out var work))
             {
-                if (work.Ancestors.Contains(work.Handle)
-                    || !_visited.Add((owner, work.Handle, ContextKey(work.Context.TypeArguments), ContextKey(work.Context.MethodArguments))))
+                var key = (Owner: owner, Method: work.Handle, TypeArguments: ContextKey(work.Context.TypeArguments),
+                    MethodArguments: ContextKey(work.Context.MethodArguments));
+                if (_visited.Contains(key))
                     continue;
+                if (work.Ancestors.Contains(work.Handle))
+                {
+                    var name = _reader.GetString(_reader.GetMethodDefinition(work.Handle).Name);
+                    _extractor.ReportBodyDiagnostic(
+                        $"recursive generic context not expanded: owner {owner}, method {name}, type arguments {key.TypeArguments}, method arguments {key.MethodArguments}");
+                    continue;
+                }
+                _visited.Add(key);
                 var ancestors = work.Ancestors.Add(work.Handle);
                 var definition = _reader.GetMethodDefinition(work.Handle);
                 EnqueueStateMachine(definition, pending, owner, work.Context, ancestors);
