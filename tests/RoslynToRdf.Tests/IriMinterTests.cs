@@ -5,6 +5,23 @@ namespace RoslynToRdf.Tests;
 
 public class IriMinterTests
 {
+    [Fact]
+    public void Type_NonFunctionPointerIrisKeepTheirEstablishedForms()
+    {
+        var compilation = TestUtilities.CreateCompilation("""
+            namespace Sample;
+            public unsafe class C { public int* Pointer; public System.Collections.Generic.List<int> Values = new(); }
+            """, "TestAsm", allowUnsafe: true);
+        var type = compilation.GetTypeByMetadataName("Sample.C")!;
+        var pointer = ((IFieldSymbol)type.GetMembers("Pointer").Single()).Type;
+        var list = ((IFieldSymbol)type.GetMembers("Values").Single()).Type;
+        var minter = new IriMinter();
+
+        Assert.Equal("http://dotnet.example/type/TestAsm/0.0.0.0/Sample.C", minter.Type(type));
+        Assert.Equal("http://dotnet.example/type/_builtin_/System.Int32%2A", minter.Type(pointer));
+        Assert.Equal("http://dotnet.example/type/System.Private.CoreLib/8.0.0.0/System.Collections.Generic.List%601%5BSystem.Int32%5D", minter.Type(list));
+    }
+
     #region Basic Functionality Tests
 
     [Fact]
