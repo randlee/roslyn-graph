@@ -6,6 +6,7 @@ acceptance scenarios exercise the built extractor and a real pinned store on eve
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 from pathlib import Path
@@ -155,6 +156,56 @@ def test_core_harness_extracts_csharp_and_vb_source_fixtures(tmp_path: Path, lan
     oxigraph.load(store, ttl, "urn:fixture")
     assert oxigraph.select(store, f"PREFIX dt: <{DT}> SELECT ?p WHERE {{ GRAPH ?g {{ ?owner dt:hasTypeParameter ?p . ?p dt:constrainedToType ?c . }} }}")
     assert oxigraph.select(store, f"PREFIX dt: <{DT}> SELECT ?inner WHERE {{ GRAPH ?g {{ ?inner dt:nestedIn ?outer . }} }}")
+
+
+def test_export_preserves_full_real_source_rdf_and_context(tmp_path: Path, monkeypatch):
+    """AC5: export every fact from a Core-extracted source fixture and identify its source separately."""
+    ttl = extract_source_with_core_harness(
+        tmp_path, "cs",
+        "public interface IFoo {} public unsafe class Outer { public class Inner {} public P* F; public P M<U>() where U : IFoo => default; } public struct P {}")
+    store = tmp_path / "store"
+    oxigraph.load(store, ttl, "urn:fixture")
+    assembly = oxigraph.select(store, f"PREFIX dt: <{DT}> SELECT ?assembly WHERE {{ GRAPH ?g {{ ?assembly a dt:Assembly }} }}")
+    assert len(assembly) == 1
+    provenance = tmp_path / "provenance.nt"
+    provenance.write_text(f"<{assembly[0]['assembly']}> <{RG}builtFromProject> <urn:fixture-project> .\n")
+    oxigraph.load(store, provenance, "urn:fixture")
+    manifest_path = tmp_path / "artifact.json"
+    manifest_path.write_text(json.dumps({"kind": "solution", "artifactId": "fixture-artifact", "workspace": {"collection": "fixture"}}))
+    manifest = json.loads(manifest_path.read_text())
+    monkeypatch.setattr(explore, "store_for", lambda _path: (store, manifest))
+    query = "CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }"
+    output = tmp_path / "fixture.nt"
+    result = explore.export(manifest_path, query, output, union=True, logical=False)
+    expected = tmp_path / "expected.nt"
+    oxigraph.construct(store, query, expected, union=True)
+    assert set(output.read_text().splitlines()) == set(expected.read_text().splitlines())
+    rdf = output.read_text()
+    for term in (RDF_TYPE, DT + "hasMember", DT + "memberOf", DT + "returnType", DT + "fieldType",
+                 DT + "definedInAssembly", RG + "builtFromProject", DT + "constrainedToType",
+                 DT + "pointerElementType", DT + "nestedIn"):
+        assert f"<{term}>" in rdf
+    context = json.loads(Path(result["context"]).read_text())
+    assert context["source"]["manifest"] == str(manifest_path.resolve())
+    assert context["source"]["store"] == str((manifest_path.parent / "store.oxigraph").resolve())
+    assert context["source"]["artifactId"] == "fixture-artifact"
+
+
+def test_private_library_inventory_has_every_type_and_private_member(tmp_path: Path):
+    """AC6: the >1500-type fixture is a real private-inclusive library, not entry-point reachability."""
+    public_types = {f"T{index}" for index in range(1_501)}
+    source = "\n".join([*(f"public class {name} {{ }}" for name in sorted(public_types)),
+                        "internal class Hidden { private void Uncalled() {} }",
+                        "public class Outer { private class Inner { private void InnerUncalled() {} } }"])
+    ttl = extract_compiled_fixture(tmp_path, "cs", source)
+    store = tmp_path / "store"
+    oxigraph.load(store, ttl, "urn:fixture")
+    definition = SimpleNamespace(seed_types=[], seed_patterns=["*"], seed_kinds=[])
+    types, unmatched = traverse.find_seeds(store, definition)
+    expected = public_types | {"<Module>", "Hidden", "Outer", "Outer.Inner"}
+    assert not unmatched and set(types.values()) == expected
+    members = "\n".join(traverse.member_lines(store, sorted(types)))
+    assert '"Uncalled"' in members and '"InnerUncalled"' in members
 
 
 def test_unlimited_defaults_return_more_than_former_traversal_and_query_caps(tmp_path: Path, monkeypatch):
