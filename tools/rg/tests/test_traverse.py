@@ -286,6 +286,80 @@ def test_registered_dependencies_follow_private_bodies_and_cycle_without_decoys(
     assert {item["reason"] for item in stores.diagnostics} == {"body-coverage-unknown"}
 
 
+def test_explicit_type_cap_reports_omitted_frontier(dependency_catalog):
+    fixture = dependency_catalog
+    fixture.publish("p-artifact", "P", "P.Entry", "Q.Leaf")
+    fixture.publish("q-artifact", "Q", "Q.Leaf")
+    fixture.definition.max_types = 2
+    stores = traverse.DependencyStores.registered(fixture.root, fixture.definition, fixture.manifest, fixture.source)
+    types, edges, stats, truncated = traverse.expand(stores, fixture.definition, {"urn:type:A.Root": "A.Root"})
+    assert types == {"urn:type:A.Root": "A.Root", "urn:type:P.Entry": "P.Entry"}
+    assert len(types) <= fixture.definition.max_types
+    assert truncated is True
+    assert stats == [{"depth": 1, "added": 1, "total": 2},
+                     {"depth": 2, "added": 1, "stopped": "would exceed max_types=2"}]
+    assert edges == [("urn:type:A.Root", "urn:type:P.Entry"), ("urn:type:P.Entry", "urn:type:Q.Leaf")]
+    traverse.evidence_lines(stores, types, fixture.definition)
+    assert stores.external_references == [{"owner": "urn:member:P.Entry", "predicate": traverse.DT + "usesType",
+                                          "target": "urn:type:Q.Leaf", "assembly": "urn:asm:Q",
+                                          "reason": "selection-boundary"}]
+
+
+def test_explicit_export_triple_cap_fails_without_output(dependency_catalog):
+    import subprocess
+    import sys
+
+    fixture = dependency_catalog
+    manifest = fixture.source.parent / "manifest.json"
+    manifest.write_text(json.dumps(fixture.manifest | {"schemaVersion": 2}), encoding="utf-8")
+    output = fixture.root / "limited.nt"
+    result = subprocess.run(
+        [sys.executable, str(Path(__file__).resolve().parents[1] / "rg.py"), "export",
+         "--manifest", str(manifest), "--query", "CONSTRUCT { ?s ?p ?o } WHERE { GRAPH ?g { ?s ?p ?o } }",
+         "--output", str(output), "--max-triples", "1"],
+        capture_output=True, text=True, encoding="utf-8")
+    assert result.returncode == 1, result.stdout + result.stderr
+    payload = json.loads(result.stdout)
+    assert [problem["code"] for problem in payload["errors"]] == ["EXPORT_TOO_LARGE"]
+    assert payload["errors"][0]["context"]["maxTriples"] == 1
+    assert not output.exists()
+    assert not output.with_suffix(".raw.nt").exists()
+    assert not traverse.explore.context_path(output).exists()
+
+
+def test_legacy_boundary_without_assembly_identity_is_reported(dependency_catalog):
+    fixture = dependency_catalog
+    data = fixture.root / "legacy.ttl"
+    data.write_text(f'@prefix dt: <{traverse.DT}> .\n'
+                    '<urn:member:A.Root> dt:usesType <urn:type:Legacy.External> .\n'
+                    '<urn:type:Legacy.External> a dt:Class ; dt:fullName "Legacy.External" ; '
+                    'dt:definedInAssembly <urn:asm:Legacy> .\n', encoding="utf-8")
+    traverse.oxigraph.load(fixture.source, data, "urn:graph:a")
+    manifest = fixture.source.parent / "manifest.json"
+    manifest.write_text(json.dumps(fixture.manifest | {"schemaVersion": 2}), encoding="utf-8")
+    definition = fixture.root / "legacy.graph.toml"
+    definition.write_text(f'schema_version = 1\n[source]\nmanifest = "{manifest.as_posix()}"\nlogical = false\n'
+                          '[seeds]\ntypes = ["A.Root"]\nimplementations = "none"\n'
+                          '[expand]\nfollow = ["body_types"]\n', encoding="utf-8")
+    result = traverse.run(definition, str(fixture.root), fixture.root / "out", False)
+    output = Path(result["data"])
+    context = json.loads(traverse.explore.context_path(output).read_text(encoding="utf-8"))
+    lines = output.read_text(encoding="utf-8").splitlines()
+    assert result["types"] == 1 and result["truncated"] is False
+    assert f'<urn:member:A.Root> <{traverse.DT}usesType> <urn:type:Legacy.External> .' in lines
+    assert f'<urn:type:Legacy.External> <{traverse.DT}definedInAssembly> <urn:asm:Legacy> .' in lines
+    assert not any(line.startswith("<urn:asm:Legacy> ") for line in lines)
+    diagnostic = {"reason": "external-identity-incomplete", "target": "urn:type:Legacy.External",
+                  "assembly": "urn:asm:Legacy"}
+    assert diagnostic in result["diagnostics"] and diagnostic in context["diagnostics"]
+    assert {"owner": "urn:member:A.Root", "predicate": traverse.DT + "usesType",
+            "target": "urn:type:Legacy.External", "assembly": "urn:asm:Legacy",
+            "reason": "external-boundary"} in context["externalReferences"]
+    assert context["coverage"] == result["coverage"]
+    assert context["coverage"]["complete"] is False
+    assert "external-identity-incomplete" in context["coverage"]["reasons"]
+
+
 def test_catalog_corruption_does_not_hide_overlay_package(dependency_catalog):
     fixture = dependency_catalog
     fixture.publish("p-artifact", "P", "P.Entry", "Q.Leaf")
