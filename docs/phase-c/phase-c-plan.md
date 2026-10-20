@@ -39,7 +39,7 @@ c-3 consumes c-1's unbounded `Definition.max_types`/query/export behavior and c-
 | 1 limits; 2 pointers; 5 constraints; 6 enclosing types | c-1 | c-1 |
 | 3 delegates; 4 function pointers | c-2 | c-3 |
 | 7 attribute option / inverse policy | c-2 / c-3 | c-3 |
-| 8 strict alias | c-2 | c-3 |
+| 8 strict alias | c-2 | c-2 (AC3) |
 | 9 body extraction / query-export wiring | c-2 / c-3 | c-3 |
 | Registered analyzed dependencies absent from selected store | c-3 | c-3 |
 | External identity and source-artifact evidence dropped by export | c-2 stub metadata / c-3 export | c-3 |
