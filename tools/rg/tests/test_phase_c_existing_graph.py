@@ -18,6 +18,10 @@ from roslyn_graph.result import RgError
 from roslyn_graph.util import DT, RDF_TYPE, RG
 
 
+REPO = Path(__file__).parents[3]
+BUILT_EXTRACTOR = REPO / "src" / "RoslynToRdf.Cli" / "bin" / "Release" / "net8.0" / "RoslynToRdf.Cli.dll"
+
+
 @pytest.fixture(scope="session", autouse=True)
 def require_real_store_tools():
     dotnet = shutil.which("dotnet")
@@ -47,6 +51,23 @@ def test_real_store_pointer_constraint_and_enclosing_follow(tmp_path: Path):
     types, _edges, _stats, truncated = traverse.expand(store, definition, {s: "S", inner: "Outer.Inner"})
     assert set(types) == {s, iface, inner, outer} and p not in types and decoy not in types and not truncated
     assert traverse._underlying(store, {pointer}, False)[pointer] == {pointer, p}
+
+
+def test_real_csharp_pointer_fixture_extracts_and_reduces_without_decoy(tmp_path: Path):
+    """AC2 source-mode evidence: the existing extractor emits pointer constituents used by traversal."""
+    if not BUILT_EXTRACTOR.is_file():
+        pytest.fail("Phase C fixture requires the Release RoslynToRdf CLI built by authoritative validation.")
+    project = tmp_path / "Fixture.csproj"
+    project.write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net8.0</TargetFramework><AllowUnsafeBlocks>true</AllowUnsafeBlocks></PropertyGroup></Project>')
+    (tmp_path / "Fixture.cs").write_text("public unsafe struct S { public P** F; } public struct P {} public struct Decoy {}")
+    ttl = tmp_path / "fixture.ttl"
+    completed = subprocess.run(["dotnet", str(BUILT_EXTRACTOR), str(project), "--output", str(ttl), "--format", "Turtle", "--include-private", "--quiet"],
+                               capture_output=True, text=True)
+    assert completed.returncode == 0 and ttl.is_file(), completed.stderr
+    store = tmp_path / "store"
+    oxigraph.load(store, ttl, "urn:fixture")
+    rows = oxigraph.select(store, f"PREFIX dt: <{DT}> SELECT ?pointer ?p WHERE {{ GRAPH ?g {{ ?pointer dt:pointerElementType ?p . ?p dt:fullName \"P\" }} }}")
+    assert rows, "unsafe pointer fixture must emit dt:pointerElementType"
 
 
 def test_unlimited_defaults_return_more_than_former_traversal_and_query_caps(tmp_path: Path, monkeypatch):
