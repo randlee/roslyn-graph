@@ -65,6 +65,7 @@
 | `dt:memberOf` | `dt:Member` | `dt:Type` |  |
 | `dt:overridesMethod` | `dt:Member` | `dt:Member` |  |
 | `dt:requiresUnsafeCompilation` | `dt:Member` | `xsd:boolean` | True on an emitted method or accessor with its own unsafe modifier or unsafe construct requiring C# AllowUnsafeBlocks; an enclosing unsafe type alone does not mark it. |
+| `dt:usesType` | `dt:Member` | `dt:Type` |  |
 | `dt:hasParameter` | `dt:Method` | `dt:Parameter` |  |
 | `dt:isExtensionMethod` | `dt:Method` | `xsd:boolean` |  |
 | `dt:isPartialDefinition` | `dt:Method` | `xsd:boolean` |  |
@@ -89,6 +90,8 @@
 | `dt:setterAccessibility` | `dt:Property` | `xsd:string` |  |
 | `dt:arrayElementType` | `dt:Type` | `dt:Type` |  |
 | `dt:arrayRank` | `dt:Type` | `xsd:integer` |  |
+| `dt:callingConvention` | `dt:Type` | `xsd:string` |  |
+| `dt:callingConventionType` | `dt:Type` | `dt:Type` |  |
 | `dt:definedInAssembly` | `dt:Type` | `dt:Assembly` |  |
 | `dt:genericDefinition` | `dt:Type` | `dt:Type` |  |
 | `dt:hasMember` | `dt:Type` | `dt:Member` |  |
@@ -99,6 +102,9 @@
 | `dt:isUnmanagedType` | `dt:Type` | `xsd:boolean` |  |
 | `dt:nestedIn` | `dt:Type` | `dt:Type` |  |
 | `dt:pointerElementType` | `dt:Type` | `dt:Type` |  |
+| `dt:signatureParameter` | `dt:Type` | `dt:Parameter` |  |
+| `dt:signatureReturnRefKind` | `dt:Type` | `xsd:string` |  |
+| `dt:signatureReturnType` | `dt:Type` | `dt:Type` |  |
 | `dt:specialType` | `dt:Type` | `xsd:string` | Roslyn SpecialType name for built-in types, such as System_Int32 |
 | `dt:typeArgument` | `dt:Type` |  |  |
 | `dt:typeKind` | `dt:Type` | `xsd:string` |  |

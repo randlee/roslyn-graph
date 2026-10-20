@@ -72,6 +72,11 @@ public static class DotNetOntology
         public const string TypeArgument = "typeArgument";
         public const string ArrayElementType = "arrayElementType";
         public const string PointerElementType = "pointerElementType";
+        public const string SignatureReturnType = "signatureReturnType";
+        public const string SignatureParameter = "signatureParameter";
+        public const string SignatureReturnRefKind = "signatureReturnRefKind";
+        public const string CallingConvention = "callingConvention";
+        public const string CallingConventionType = "callingConventionType";
         public const string Throws = "throws";
         public const string RelatedTo = "relatedTo";
     }
@@ -111,6 +116,7 @@ public static class DotNetOntology
     public static class MemberRels
     {
         public const string MemberOf = "memberOf";
+        public const string UsesType = "usesType";
         public const string ReturnType = "returnType";
         public const string PropertyType = "propertyType";
         public const string FieldType = "fieldType";
