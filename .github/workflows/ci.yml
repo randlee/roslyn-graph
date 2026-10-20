@@ -106,6 +106,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Checkout docli
+        uses: actions/checkout@v4
+        with:
+          repository: randlee/docli
+          ref: develop
+          path: docli
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
