@@ -130,6 +130,8 @@ jobs:
 
       - name: Install pinned Oxigraph CLI
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           case "$RUNNER_OS" in
             Linux) asset=oxigraph_v0.5.8_x86_64_linux_gnu ;;
