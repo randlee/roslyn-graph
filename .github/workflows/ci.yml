@@ -114,6 +114,37 @@ jobs:
       - name: Install pytest
         run: python -m pip install pytest
 
+      - name: Setup .NET SDKs for real-store tests
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Install pinned Oxigraph CLI
+        shell: bash
+        run: |
+          case "$RUNNER_OS" in
+            Linux) asset=oxigraph_v0.5.8_x86_64_linux_gnu ;;
+            macOS) asset=oxigraph_v0.5.8_aarch64_apple ;;
+            Windows) asset=oxigraph_v0.5.8_x86_64_windows_msvc.exe ;;
+            *) echo "Unsupported runner: $RUNNER_OS" >&2; exit 1 ;;
+          esac
+          mkdir -p "$RUNNER_TEMP/oxigraph"
+          gh release download v0.5.8 --repo oxigraph/oxigraph --pattern "$asset" --dir "$RUNNER_TEMP/oxigraph"
+          if [ "$RUNNER_OS" = Windows ]; then
+            mv "$RUNNER_TEMP/oxigraph/$asset" "$RUNNER_TEMP/oxigraph/oxigraph.exe"
+            "$RUNNER_TEMP/oxigraph/oxigraph.exe" --version | grep -F 0.5.8
+          else
+            mv "$RUNNER_TEMP/oxigraph/$asset" "$RUNNER_TEMP/oxigraph/oxigraph"
+            chmod +x "$RUNNER_TEMP/oxigraph/oxigraph"
+            "$RUNNER_TEMP/oxigraph/oxigraph" --version | grep -F 0.5.8
+          fi
+          echo "$RUNNER_TEMP/oxigraph" >> "$GITHUB_PATH"
+
+      - name: Build extractor for real-store tests
+        run: dotnet build RoslynToRdf.sln --configuration Release
+
       - name: Skill copies match their masters (tools/rg, ontology, viewer, ontology reference)
         run: python scripts/check_plugin_sync.py
 
