@@ -15,7 +15,7 @@ import pytest
 
 from roslyn_graph import explore, oxigraph, traverse
 from roslyn_graph.result import RgError
-from roslyn_graph.util import DT, RDF_TYPE
+from roslyn_graph.util import DT, RDF_TYPE, RG
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -99,3 +99,33 @@ def test_query_and_export_failures_never_return_partial_success(tmp_path: Path, 
     with pytest.raises(RgError) as export_error:
         explore.export(tmp_path / "manifest.json", "CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }", tmp_path / "out.nt", False, False)
     assert export_error.value.problems[0].code == "OXIGRAPH_FAILED" and not (tmp_path / "out.nt").exists()
+
+
+def test_shipped_queries_are_not_limited_by_their_former_caps(tmp_path: Path):
+    """AC1: every shipped query returns more matches than its removed LIMIT allowed."""
+    graph, asm = "urn:queries", "urn:queries-assembly"
+    lines = [f"<{asm}> <{RDF_TYPE}> <{DT}Assembly> .", f'<{asm}> <{DT}name> "Fixture" .', f'<{asm}> <{DT}version> "1.0" .']
+    for index in range(2_001):
+        type_iri, member, fact = f"urn:q-type:{index}", f"urn:q-member:{index}", f"urn:q-fact:{index}"
+        lines += [f'<{type_iri}> <{DT}fullName> "Fixture.Repository{index}" .', f'<{type_iri}> <{DT}name> "Repository{index}" .',
+                  f'<{type_iri}> <{DT}typeKind> "Class" .', f"<{type_iri}> <{DT}definedInAssembly> <{asm}> .",
+                  f'<{type_iri}> <{DT}containsUnsafeCode> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .', f"<{type_iri}> <{DT}hasMember> <{member}> .",
+                  f'<{member}> <{DT}containsUnsafeCode> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .', f"<{member}> <{DT}name> \"M{index}\" .",
+                  f'<{member}> <{DT}requiresUnsafeCompilation> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .', f"<{member}> <{DT}hasUnsafeFact> <{fact}> .",
+                  f'<{fact}> <{DT}unsafeReason> "Pointer" .', f'<{fact}> <{DT}unsafeLocation> "L{index}" .']
+    for index in range(501):
+        logical = f"urn:logical:{index}"
+        for version in ("1", "2"):
+            physical, version_asm = f"urn:physical:{index}:{version}", f"urn:logical-asm:{index}:{version}"
+            lines += [f"<{physical}> <{RG}logicalType> <{logical}> .", f"<{logical}> <{RG}assemblyName> <urn:fixture:{index}> .",
+                      f'<{logical}> <{DT}fullName> "Fixture.Logical{index}" .', f"<{physical}> <{DT}definedInAssembly> <{version_asm}> .",
+                      f"<{version_asm}> <{RDF_TYPE}> <{DT}Assembly> .", f'<{version_asm}> <{DT}version> "{version}.0" .']
+    nt, store = tmp_path / "queries.nt", tmp_path / "store"
+    nt.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    oxigraph.load(store, nt, graph)
+    queries = Path(__file__).parents[3] / "plugins" / "roslyn-graph" / "skills" / "roslyn-graph-explore" / "queries"
+    find_type = explore.read_query(None, str(queries / "find-type.rq"), ["NAME=Repository"])
+    assert len(oxigraph.select(store, find_type)) == 2_001
+    assert len(oxigraph.select(store, (queries / "logical-versions.rq").read_text(encoding="utf-8"))) == 501
+    assert len(oxigraph.select(store, (queries / "unsafe-aggregates.rq").read_text(encoding="utf-8"))) == 2_001
+    assert len(oxigraph.select(store, (queries / "unsafe-methods.rq").read_text(encoding="utf-8"))) == 2_001
