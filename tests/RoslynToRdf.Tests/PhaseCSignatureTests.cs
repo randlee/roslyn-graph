@@ -86,11 +86,12 @@ public class PhaseCSignatureTests
         var right = Wrappers("Right");
         Assert.NotEqual(minter.Type(left.Array), minter.Type(right.Array));
         Assert.NotEqual(minter.Type(left.Pointer), minter.Type(right.Pointer));
-        Assert.Contains("/type/Left/0.0.0.0/", minter.Type(left.Array));
+        Assert.Equal("http://dotnet.example/type/Left/0.0.0.0/T%3AOwner%601.T%5B%5D", minter.Type(left.Array));
+        Assert.Equal("http://dotnet.example/type/Right/0.0.0.0/T%3AOwner%601.T%2A", minter.Type(right.Pointer));
         foreach (var side in new[] { left, right })
         {
-            Has(side.Emitter, minter.Type(side.Array), "arrayElementType", minter.Type(side.Parameter));
-            Has(side.Emitter, minter.Type(side.Pointer), "pointerElementType", minter.Type(side.Parameter));
+            HasOnly(side.Emitter, minter.Type(side.Array), "arrayElementType", minter.Type(side.Parameter));
+            HasOnly(side.Emitter, minter.Type(side.Pointer), "pointerElementType", minter.Type(side.Parameter));
         }
     }
 
@@ -186,20 +187,26 @@ public class PhaseCSignatureTests
         foreach (var name in new[] { "LeftArray", "RightArray" })
         {
             var array = (IArrayTypeSymbol)Field(name);
-            Has(emitter, minter.Type(array), "arrayElementType", minter.Type(array.ElementType));
+            HasOnly(emitter, minter.Type(array), "arrayElementType", minter.Type(array.ElementType));
         }
         foreach (var name in new[] { "LeftPointer", "RightPointer" })
         {
             var pointer = (IPointerTypeSymbol)Field(name);
-            Has(emitter, minter.Type(pointer), "pointerElementType", minter.Type(pointer.PointedAtType));
+            HasOnly(emitter, minter.Type(pointer), "pointerElementType", minter.Type(pointer.PointedAtType));
         }
         foreach (var name in new[] { "LeftList", "RightList", "LeftArrayList", "RightArrayList" })
         {
             var list = (INamedTypeSymbol)Field(name);
-            Has(emitter, minter.Type(list) + "/typearg/0", "type", minter.Type(list.TypeArguments.Single()));
+            HasOnly(emitter, minter.Type(list) + "/typearg/0", "type", minter.Type(list.TypeArguments.Single()));
         }
 
-        // Elements resolve to their own assembly, and the established same-assembly form is unchanged.
+        // Hand-authored expected identities: elements resolve to their own assembly, generic arguments from another
+        // assembly are qualified, and the established same-assembly form is unchanged.
+        const string type = "http://dotnet.example/type/";
+        Assert.Equal(type + "Left/0.0.0.0/Shared.Arg%5B%5D", minter.Type(Field("LeftArray")));
+        Assert.Equal(type + "Right/0.0.0.0/Shared.Arg%2A", minter.Type(Field("RightPointer")));
+        Assert.EndsWith("/System.Collections.Generic.List%601%5B%5BLeft%2C0.0.0.0%5DShared.Arg%5D", minter.Type(Field("LeftList")));
+        Assert.EndsWith("/System.Collections.Generic.List%601%5B%5BRight%2C0.0.0.0%5DShared.Arg%5B%5D%5D", minter.Type(Field("RightArrayList")));
         Assert.Contains("/type/Left/0.0.0.0/Shared.Arg", minter.Type(((IArrayTypeSymbol)Field("LeftArray")).ElementType));
         Assert.Contains("/type/Right/0.0.0.0/Shared.Arg%5B%5D", minter.Type(Field("RightArray")));
         Assert.EndsWith("/System.Collections.Generic.List%601%5BSystem.Int32%5D", minter.Type(Field("Ints")));
@@ -349,7 +356,7 @@ public class PhaseCSignatureTests
 
     private static void AssertSignatureParameter(TestEmitter emitter, IriMinter minter, IFunctionPointerTypeSymbol pointer, ITypeSymbol target)
     {
-        Has(emitter, minter.Type(pointer) + "/sigparam/0", "parameterType", minter.Type(target));
+        HasOnly(emitter, minter.Type(pointer) + "/sigparam/0", "parameterType", minter.Type(target));
     }
 
     private static MetadataReference AliasedReference(byte[] image, string alias) =>
@@ -370,6 +377,15 @@ public class PhaseCSignatureTests
         var emitter = new TestEmitter();
         new AssemblyGraphExtractor(emitter, new ExtractionOptions { IncludeAttributes = false }).Extract(compilation, assembly);
         return emitter;
+    }
+
+    // Exactly one value for (subject, predicate), and it is the expected one: a merged identity shows up as a
+    // second value on the shared subject.
+    private static void HasOnly(TestEmitter emitter, string subject, string predicate, string value)
+    {
+        var values = emitter.Triples.Where(triple => triple.Subject == subject
+            && triple.Predicate == "http://dotnet.example/ontology/" + predicate).Select(triple => triple.Object).Distinct().ToList();
+        Assert.Equal(new[] { value }, values);
     }
 
     private static void Has(TestEmitter emitter, string subject, string predicate, string value)
