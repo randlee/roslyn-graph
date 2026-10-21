@@ -44,14 +44,16 @@ public partial class IriMinter
     public string Type(ITypeSymbol type)
     {
         var fullName = GetFullMetadataName(type);
-        
-        if (type.ContainingAssembly is null)
+
+        // Arrays and pointers have no containing assembly; scope them by their element's assembly so Foo[] and Foo*
+        // from two assemblies, or two versions of one assembly, keep distinct identities.
+        var asm = type.ContainingAssembly ?? ElementAssembly(type);
+        if (asm is null)
         {
-            // Special types like dynamic, void, etc.
+            // Special types like dynamic, void, function pointers, type-parameter arrays, etc.
             return $"{_baseUri}/type/_builtin_/{Escape(fullName)}";
         }
 
-        var asm = type.ContainingAssembly;
         var version = asm.Identity.Version.ToString();
         return $"{_baseUri}/type/{Escape(asm.Name)}/{Escape(version)}/{Escape(fullName)}";
     }
@@ -267,6 +269,28 @@ public partial class IriMinter
         return $"{assemblyIdentity}:{name}";
     }
 
+    // The assembly that owns the named type at the core of an array or pointer, or null (type parameters, function
+    // pointers, dynamic).
+    private static IAssemblySymbol? ElementAssembly(ITypeSymbol type) => type switch
+    {
+        IArrayTypeSymbol array => ElementAssembly(array.ElementType),
+        IPointerTypeSymbol pointer => ElementAssembly(pointer.PointedAtType),
+        INamedTypeSymbol named => named.ContainingAssembly,
+        _ => null,
+    };
+
+    // A constructed type's IRI is scoped by its own assembly, so a type argument from that same assembly keeps the
+    // established unqualified form (List`1[System.Int32]); an argument from any other assembly is qualified with its
+    // assembly name and version, so List<Left.Arg> and List<Right.Arg> do not merge.
+    private static string GetTypeArgumentIdentity(ITypeSymbol argument, IAssemblySymbol? context)
+    {
+        var name = GetFullMetadataName(argument);
+        var assembly = argument.ContainingAssembly ?? ElementAssembly(argument);
+        return assembly is null || SymbolEqualityComparer.Default.Equals(assembly, context)
+            ? name
+            : $"[{assembly.Identity.Name},{assembly.Identity.Version}]{name}";
+    }
+
     private static void AppendTypeParameters(StringBuilder sb, INamedTypeSymbol type, bool forMemberSignature)
     {
         if (type.TypeParameters.Length == 0 && type.TypeArguments.Length == 0)
@@ -281,7 +305,9 @@ public partial class IriMinter
             for (int i = 0; i < type.TypeArguments.Length; i++)
             {
                 if (i > 0) sb.Append(',');
-                sb.Append(GetFullMetadataName(type.TypeArguments[i], forMemberSignature));
+                sb.Append(forMemberSignature
+                    ? GetFullMetadataName(type.TypeArguments[i], true)
+                    : GetTypeArgumentIdentity(type.TypeArguments[i], type.ContainingAssembly));
             }
             sb.Append(']');
         }

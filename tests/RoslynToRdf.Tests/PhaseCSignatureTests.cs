@@ -62,6 +62,73 @@ public class PhaseCSignatureTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public void ArraysPointersAndGenericArguments_KeepAssemblyQualifiedElementsDistinct(bool metadata)
+    {
+        var left = Emit("Left", "namespace Shared { public struct Arg {} }");
+        var right = Emit("Right", "namespace Shared { public struct Arg {} }");
+        var consumer = TestUtilities.CreateCompilation("""
+            extern alias left;
+            extern alias right;
+            using System.Collections.Generic;
+            public unsafe class Root {
+                public left::Shared.Arg[] LeftArray;
+                public right::Shared.Arg[] RightArray;
+                public left::Shared.Arg* LeftPointer;
+                public right::Shared.Arg* RightPointer;
+                public List<left::Shared.Arg> LeftList;
+                public List<right::Shared.Arg> RightList;
+                public List<left::Shared.Arg[]> LeftArrayList;
+                public List<right::Shared.Arg[]> RightArrayList;
+                public List<int> Ints;
+            }
+            """, "Root", allowUnsafe: true)
+            .AddReferences(AliasedReference(left, "left"), AliasedReference(right, "right"));
+        Assert.DoesNotContain(consumer.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+
+        Compilation context = consumer;
+        IAssemblySymbol assembly = consumer.Assembly;
+        if (metadata)
+        {
+            var rootReference = MetadataReference.CreateFromImage(Emit(consumer));
+            context = TestUtilities.CreateCompilation("", "MetadataConsumer")
+                .AddReferences(MetadataReference.CreateFromImage(left), MetadataReference.CreateFromImage(right), rootReference);
+            assembly = (IAssemblySymbol)context.GetAssemblyOrModuleSymbol(rootReference)!;
+        }
+
+        var root = assembly.GetTypeByMetadataName("Root")!;
+        ITypeSymbol Field(string name) => ((IFieldSymbol)root.GetMembers(name).Single()).Type;
+        var minter = new IriMinter();
+        var emitter = Extract(context, assembly);
+
+        foreach (var (l, r) in new[] { ("LeftArray", "RightArray"), ("LeftPointer", "RightPointer"),
+                     ("LeftList", "RightList"), ("LeftArrayList", "RightArrayList") })
+            Assert.NotEqual(minter.Type(Field(l)), minter.Type(Field(r)));
+
+        foreach (var name in new[] { "LeftArray", "RightArray" })
+        {
+            var array = (IArrayTypeSymbol)Field(name);
+            Has(emitter, minter.Type(array), "arrayElementType", minter.Type(array.ElementType));
+        }
+        foreach (var name in new[] { "LeftPointer", "RightPointer" })
+        {
+            var pointer = (IPointerTypeSymbol)Field(name);
+            Has(emitter, minter.Type(pointer), "pointerElementType", minter.Type(pointer.PointedAtType));
+        }
+        foreach (var name in new[] { "LeftList", "RightList", "LeftArrayList", "RightArrayList" })
+        {
+            var list = (INamedTypeSymbol)Field(name);
+            Has(emitter, minter.Type(list) + "/typearg/0", "type", minter.Type(list.TypeArguments.Single()));
+        }
+
+        // Elements resolve to their own assembly, and the established same-assembly form is unchanged.
+        Assert.Contains("/type/Left/0.0.0.0/Shared.Arg", minter.Type(((IArrayTypeSymbol)Field("LeftArray")).ElementType));
+        Assert.Contains("/type/Right/0.0.0.0/Shared.Arg%5B%5D", minter.Type(Field("RightArray")));
+        Assert.EndsWith("/System.Collections.Generic.List%601%5BSystem.Int32%5D", minter.Type(Field("Ints")));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void FunctionPointers_PreserveSignaturesAndGenericOwners(bool metadata)
     {
         var compilation = TestUtilities.CreateCompilation("""
