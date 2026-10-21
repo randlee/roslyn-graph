@@ -62,6 +62,85 @@ public class PhaseCSignatureTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public void TypeParameterArraysAndPointers_KeepOwnerAssemblyDistinct(bool metadata)
+    {
+        const string owner = "public unsafe class Owner<T> where T : unmanaged { public T[] Array; public T* Pointer; }";
+        (ITypeSymbol Array, ITypeSymbol Pointer, ITypeSymbol Parameter, TestEmitter Emitter) Wrappers(string assemblyName)
+        {
+            var source = TestUtilities.CreateCompilation(owner, assemblyName, allowUnsafe: true);
+            Compilation context = source;
+            IAssemblySymbol assembly = source.Assembly;
+            if (metadata)
+            {
+                var reference = MetadataReference.CreateFromImage(Emit(source));
+                context = TestUtilities.CreateCompilation("", assemblyName + "Consumer").AddReferences(reference);
+                assembly = (IAssemblySymbol)context.GetAssemblyOrModuleSymbol(reference)!;
+            }
+            var type = assembly.GetTypeByMetadataName("Owner`1")!;
+            return (((IFieldSymbol)type.GetMembers("Array").Single()).Type, ((IFieldSymbol)type.GetMembers("Pointer").Single()).Type,
+                type.TypeParameters.Single(), Extract(context, assembly));
+        }
+
+        var minter = new IriMinter();
+        var left = Wrappers("Left");
+        var right = Wrappers("Right");
+        Assert.NotEqual(minter.Type(left.Array), minter.Type(right.Array));
+        Assert.NotEqual(minter.Type(left.Pointer), minter.Type(right.Pointer));
+        Assert.Contains("/type/Left/0.0.0.0/", minter.Type(left.Array));
+        foreach (var side in new[] { left, right })
+        {
+            Has(side.Emitter, minter.Type(side.Array), "arrayElementType", minter.Type(side.Parameter));
+            Has(side.Emitter, minter.Type(side.Pointer), "pointerElementType", minter.Type(side.Parameter));
+        }
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void FunctionPointers_KeepConstructedContainingTypeArgumentsDistinct(bool metadata, bool rightFirst)
+    {
+        var left = Emit("Left", "namespace Shared { public struct Arg {} }");
+        var right = Emit("Right", "namespace Shared { public struct Arg {} }");
+        var leftField = "public delegate*<Outer<left::Shared.Arg>.Inner, void> LeftNested;";
+        var rightField = "public delegate*<Outer<right::Shared.Arg>.Inner, void> RightNested;";
+        var consumer = TestUtilities.CreateCompilation($$"""
+            extern alias left;
+            extern alias right;
+            public class Outer<T> { public class Inner {} }
+            public unsafe class Root {
+                {{(rightFirst ? rightField : leftField)}}
+                {{(rightFirst ? leftField : rightField)}}
+            }
+            """, "Root", allowUnsafe: true)
+            .AddReferences(AliasedReference(left, "left"), AliasedReference(right, "right"));
+        Assert.DoesNotContain(consumer.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+
+        Compilation context = consumer;
+        IAssemblySymbol assembly = consumer.Assembly;
+        if (metadata)
+        {
+            var rootReference = MetadataReference.CreateFromImage(Emit(consumer));
+            context = TestUtilities.CreateCompilation("", "MetadataConsumer")
+                .AddReferences(MetadataReference.CreateFromImage(left), MetadataReference.CreateFromImage(right), rootReference);
+            assembly = (IAssemblySymbol)context.GetAssemblyOrModuleSymbol(rootReference)!;
+        }
+
+        var root = assembly.GetTypeByMetadataName("Root")!;
+        var leftPointer = (IFunctionPointerTypeSymbol)((IFieldSymbol)root.GetMembers("LeftNested").Single()).Type;
+        var rightPointer = (IFunctionPointerTypeSymbol)((IFieldSymbol)root.GetMembers("RightNested").Single()).Type;
+        var minter = new IriMinter();
+        Assert.NotEqual(minter.Type(leftPointer), minter.Type(rightPointer));
+
+        var emitter = Extract(context, assembly);
+        AssertSignatureParameter(emitter, minter, leftPointer, leftPointer.Signature.Parameters.Single().Type);
+        AssertSignatureParameter(emitter, minter, rightPointer, rightPointer.Signature.Parameters.Single().Type);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void ArraysPointersAndGenericArguments_KeepAssemblyQualifiedElementsDistinct(bool metadata)
     {
         var left = Emit("Left", "namespace Shared { public struct Arg {} }");

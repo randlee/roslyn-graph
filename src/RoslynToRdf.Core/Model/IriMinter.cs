@@ -259,23 +259,38 @@ public partial class IriMinter
         var assemblyIdentity = assembly is null
             ? "_builtin_"
             : $"{assembly.Identity.Name},{assembly.Identity.Version}";
-        var definition = type.OriginalDefinition;
-        var name = GetFullMetadataName(definition);
-        if (type.IsGenericType && !type.IsUnboundGenericType
-            && !type.TypeArguments.All(argument => argument is ITypeParameterSymbol))
-        {
-            name += "[" + string.Join(",", type.TypeArguments.Select(argument => GetBoundConstituentIdentity(argument))) + "]";
-        }
-        return $"{assemblyIdentity}:{name}";
+        return $"{assemblyIdentity}:{GetBoundNamedTypeName(type)}";
     }
 
-    // The assembly that owns the named type at the core of an array or pointer, or null (type parameters, function
-    // pointers, dynamic).
+    // Namespace.Outer`1[args]+Inner`1[args]: each level carries its own bound type arguments, so a nested type keeps
+    // the constructed arguments of the types that contain it (Outer<Left>.Inner and Outer<Right>.Inner stay distinct).
+    // Levels without constructed arguments produce the same text as the definition's metadata name.
+    private static string GetBoundNamedTypeName(INamedTypeSymbol type)
+    {
+        var sb = new StringBuilder();
+        if (type.ContainingType is { } containing)
+            sb.Append(GetBoundNamedTypeName(containing)).Append('+');
+        else if (type.ContainingNamespace is { IsGlobalNamespace: false } ns)
+            sb.Append(ns.ToDisplayString()).Append('.');
+        sb.Append(type.Name);
+        if (type.Arity > 0)
+        {
+            sb.Append('`').Append(type.Arity);
+            if (!type.IsUnboundGenericType && !type.TypeArguments.All(argument => argument is ITypeParameterSymbol))
+                sb.Append('[').Append(string.Join(",", type.TypeArguments.Select(GetBoundConstituentIdentity))).Append(']');
+        }
+        return sb.ToString();
+    }
+
+    // The assembly that owns the type at the core of an array or pointer: a named type's assembly, or a type
+    // parameter's owner assembly (Left's Owner<T>.T[] and Right's must not merge). Null for function pointers and
+    // dynamic, which keep _builtin_.
     private static IAssemblySymbol? ElementAssembly(ITypeSymbol type) => type switch
     {
         IArrayTypeSymbol array => ElementAssembly(array.ElementType),
         IPointerTypeSymbol pointer => ElementAssembly(pointer.PointedAtType),
         INamedTypeSymbol named => named.ContainingAssembly,
+        ITypeParameterSymbol parameter => parameter.ContainingAssembly,
         _ => null,
     };
 
