@@ -44,14 +44,16 @@ public partial class IriMinter
     public string Type(ITypeSymbol type)
     {
         var fullName = GetFullMetadataName(type);
-        
-        if (type.ContainingAssembly is null)
+
+        // Arrays and pointers have no containing assembly; scope them by their element's assembly so Foo[] and Foo*
+        // from two assemblies, or two versions of one assembly, keep distinct identities.
+        var asm = type.ContainingAssembly ?? ElementAssembly(type);
+        if (asm is null)
         {
-            // Special types like dynamic, void, etc.
+            // Special types like dynamic, void, function pointers, type-parameter arrays, etc.
             return $"{_baseUri}/type/_builtin_/{Escape(fullName)}";
         }
 
-        var asm = type.ContainingAssembly;
         var version = asm.Identity.Version.ToString();
         return $"{_baseUri}/type/{Escape(asm.Name)}/{Escape(version)}/{Escape(fullName)}";
     }
@@ -257,14 +259,51 @@ public partial class IriMinter
         var assemblyIdentity = assembly is null
             ? "_builtin_"
             : $"{assembly.Identity.Name},{assembly.Identity.Version}";
-        var definition = type.OriginalDefinition;
-        var name = GetFullMetadataName(definition);
-        if (type.IsGenericType && !type.IsUnboundGenericType
-            && !type.TypeArguments.All(argument => argument is ITypeParameterSymbol))
+        return $"{assemblyIdentity}:{GetBoundNamedTypeName(type)}";
+    }
+
+    // Namespace.Outer`1[args]+Inner`1[args]: each level carries its own bound type arguments, so a nested type keeps
+    // the constructed arguments of the types that contain it (Outer<Left>.Inner and Outer<Right>.Inner stay distinct).
+    // Levels without constructed arguments produce the same text as the definition's metadata name.
+    private static string GetBoundNamedTypeName(INamedTypeSymbol type)
+    {
+        var sb = new StringBuilder();
+        if (type.ContainingType is { } containing)
+            sb.Append(GetBoundNamedTypeName(containing)).Append('+');
+        else if (type.ContainingNamespace is { IsGlobalNamespace: false } ns)
+            sb.Append(ns.ToDisplayString()).Append('.');
+        sb.Append(type.Name);
+        if (type.Arity > 0)
         {
-            name += "[" + string.Join(",", type.TypeArguments.Select(argument => GetBoundConstituentIdentity(argument))) + "]";
+            sb.Append('`').Append(type.Arity);
+            if (!type.IsUnboundGenericType && !type.TypeArguments.All(argument => argument is ITypeParameterSymbol))
+                sb.Append('[').Append(string.Join(",", type.TypeArguments.Select(GetBoundConstituentIdentity))).Append(']');
         }
-        return $"{assemblyIdentity}:{name}";
+        return sb.ToString();
+    }
+
+    // The assembly that owns the type at the core of an array or pointer: a named type's assembly, or a type
+    // parameter's owner assembly (Left's Owner<T>.T[] and Right's must not merge). Null for function pointers and
+    // dynamic, which keep _builtin_.
+    private static IAssemblySymbol? ElementAssembly(ITypeSymbol type) => type switch
+    {
+        IArrayTypeSymbol array => ElementAssembly(array.ElementType),
+        IPointerTypeSymbol pointer => ElementAssembly(pointer.PointedAtType),
+        INamedTypeSymbol named => named.ContainingAssembly,
+        ITypeParameterSymbol parameter => parameter.ContainingAssembly,
+        _ => null,
+    };
+
+    // A constructed type's IRI is scoped by its own assembly, so a type argument from that same assembly keeps the
+    // established unqualified form (List`1[System.Int32]); an argument from any other assembly is qualified with its
+    // assembly name and version, so List<Left.Arg> and List<Right.Arg> do not merge.
+    private static string GetTypeArgumentIdentity(ITypeSymbol argument, IAssemblySymbol? context)
+    {
+        var name = GetFullMetadataName(argument);
+        var assembly = argument.ContainingAssembly ?? ElementAssembly(argument);
+        return assembly is null || SymbolEqualityComparer.Default.Equals(assembly, context)
+            ? name
+            : $"[{assembly.Identity.Name},{assembly.Identity.Version}]{name}";
     }
 
     private static void AppendTypeParameters(StringBuilder sb, INamedTypeSymbol type, bool forMemberSignature)
@@ -281,7 +320,9 @@ public partial class IriMinter
             for (int i = 0; i < type.TypeArguments.Length; i++)
             {
                 if (i > 0) sb.Append(',');
-                sb.Append(GetFullMetadataName(type.TypeArguments[i], forMemberSignature));
+                sb.Append(forMemberSignature
+                    ? GetFullMetadataName(type.TypeArguments[i], true)
+                    : GetTypeArgumentIdentity(type.TypeArguments[i], type.ContainingAssembly));
             }
             sb.Append(']');
         }

@@ -62,6 +62,159 @@ public class PhaseCSignatureTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public void TypeParameterArraysAndPointers_KeepOwnerAssemblyDistinct(bool metadata)
+    {
+        const string owner = "public unsafe class Owner<T> where T : unmanaged { public T[] Array; public T* Pointer; }";
+        (ITypeSymbol Array, ITypeSymbol Pointer, ITypeSymbol Parameter, TestEmitter Emitter) Wrappers(string assemblyName)
+        {
+            var source = TestUtilities.CreateCompilation(owner, assemblyName, allowUnsafe: true);
+            Compilation context = source;
+            IAssemblySymbol assembly = source.Assembly;
+            if (metadata)
+            {
+                var reference = MetadataReference.CreateFromImage(Emit(source));
+                context = TestUtilities.CreateCompilation("", assemblyName + "Consumer").AddReferences(reference);
+                assembly = (IAssemblySymbol)context.GetAssemblyOrModuleSymbol(reference)!;
+            }
+            var type = assembly.GetTypeByMetadataName("Owner`1")!;
+            return (((IFieldSymbol)type.GetMembers("Array").Single()).Type, ((IFieldSymbol)type.GetMembers("Pointer").Single()).Type,
+                type.TypeParameters.Single(), Extract(context, assembly));
+        }
+
+        var minter = new IriMinter();
+        var left = Wrappers("Left");
+        var right = Wrappers("Right");
+        Assert.NotEqual(minter.Type(left.Array), minter.Type(right.Array));
+        Assert.NotEqual(minter.Type(left.Pointer), minter.Type(right.Pointer));
+        Assert.Equal("http://dotnet.example/type/Left/0.0.0.0/T%3AOwner%601.T%5B%5D", minter.Type(left.Array));
+        Assert.Equal("http://dotnet.example/type/Right/0.0.0.0/T%3AOwner%601.T%2A", minter.Type(right.Pointer));
+        foreach (var side in new[] { left, right })
+        {
+            HasOnly(side.Emitter, minter.Type(side.Array), "arrayElementType", minter.Type(side.Parameter));
+            HasOnly(side.Emitter, minter.Type(side.Pointer), "pointerElementType", minter.Type(side.Parameter));
+        }
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void FunctionPointers_KeepConstructedContainingTypeArgumentsDistinct(bool metadata, bool rightFirst)
+    {
+        var left = Emit("Left", "namespace Shared { public struct Arg {} }");
+        var right = Emit("Right", "namespace Shared { public struct Arg {} }");
+        var leftField = "public delegate*<Outer<left::Shared.Arg>.Inner, void> LeftNested;";
+        var rightField = "public delegate*<Outer<right::Shared.Arg>.Inner, void> RightNested;";
+        var consumer = TestUtilities.CreateCompilation($$"""
+            extern alias left;
+            extern alias right;
+            public class Outer<T> { public class Inner {} }
+            public unsafe class Root {
+                {{(rightFirst ? rightField : leftField)}}
+                {{(rightFirst ? leftField : rightField)}}
+            }
+            """, "Root", allowUnsafe: true)
+            .AddReferences(AliasedReference(left, "left"), AliasedReference(right, "right"));
+        Assert.DoesNotContain(consumer.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+
+        Compilation context = consumer;
+        IAssemblySymbol assembly = consumer.Assembly;
+        if (metadata)
+        {
+            var rootReference = MetadataReference.CreateFromImage(Emit(consumer));
+            context = TestUtilities.CreateCompilation("", "MetadataConsumer")
+                .AddReferences(MetadataReference.CreateFromImage(left), MetadataReference.CreateFromImage(right), rootReference);
+            assembly = (IAssemblySymbol)context.GetAssemblyOrModuleSymbol(rootReference)!;
+        }
+
+        var root = assembly.GetTypeByMetadataName("Root")!;
+        var leftPointer = (IFunctionPointerTypeSymbol)((IFieldSymbol)root.GetMembers("LeftNested").Single()).Type;
+        var rightPointer = (IFunctionPointerTypeSymbol)((IFieldSymbol)root.GetMembers("RightNested").Single()).Type;
+        var minter = new IriMinter();
+        Assert.NotEqual(minter.Type(leftPointer), minter.Type(rightPointer));
+
+        var emitter = Extract(context, assembly);
+        AssertSignatureParameter(emitter, minter, leftPointer, leftPointer.Signature.Parameters.Single().Type);
+        AssertSignatureParameter(emitter, minter, rightPointer, rightPointer.Signature.Parameters.Single().Type);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ArraysPointersAndGenericArguments_KeepAssemblyQualifiedElementsDistinct(bool metadata)
+    {
+        var left = Emit("Left", "namespace Shared { public struct Arg {} }");
+        var right = Emit("Right", "namespace Shared { public struct Arg {} }");
+        var consumer = TestUtilities.CreateCompilation("""
+            extern alias left;
+            extern alias right;
+            using System.Collections.Generic;
+            public unsafe class Root {
+                public left::Shared.Arg[] LeftArray;
+                public right::Shared.Arg[] RightArray;
+                public left::Shared.Arg* LeftPointer;
+                public right::Shared.Arg* RightPointer;
+                public List<left::Shared.Arg> LeftList;
+                public List<right::Shared.Arg> RightList;
+                public List<left::Shared.Arg[]> LeftArrayList;
+                public List<right::Shared.Arg[]> RightArrayList;
+                public List<int> Ints;
+            }
+            """, "Root", allowUnsafe: true)
+            .AddReferences(AliasedReference(left, "left"), AliasedReference(right, "right"));
+        Assert.DoesNotContain(consumer.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+
+        Compilation context = consumer;
+        IAssemblySymbol assembly = consumer.Assembly;
+        if (metadata)
+        {
+            var rootReference = MetadataReference.CreateFromImage(Emit(consumer));
+            context = TestUtilities.CreateCompilation("", "MetadataConsumer")
+                .AddReferences(MetadataReference.CreateFromImage(left), MetadataReference.CreateFromImage(right), rootReference);
+            assembly = (IAssemblySymbol)context.GetAssemblyOrModuleSymbol(rootReference)!;
+        }
+
+        var root = assembly.GetTypeByMetadataName("Root")!;
+        ITypeSymbol Field(string name) => ((IFieldSymbol)root.GetMembers(name).Single()).Type;
+        var minter = new IriMinter();
+        var emitter = Extract(context, assembly);
+
+        foreach (var (l, r) in new[] { ("LeftArray", "RightArray"), ("LeftPointer", "RightPointer"),
+                     ("LeftList", "RightList"), ("LeftArrayList", "RightArrayList") })
+            Assert.NotEqual(minter.Type(Field(l)), minter.Type(Field(r)));
+
+        foreach (var name in new[] { "LeftArray", "RightArray" })
+        {
+            var array = (IArrayTypeSymbol)Field(name);
+            HasOnly(emitter, minter.Type(array), "arrayElementType", minter.Type(array.ElementType));
+        }
+        foreach (var name in new[] { "LeftPointer", "RightPointer" })
+        {
+            var pointer = (IPointerTypeSymbol)Field(name);
+            HasOnly(emitter, minter.Type(pointer), "pointerElementType", minter.Type(pointer.PointedAtType));
+        }
+        foreach (var name in new[] { "LeftList", "RightList", "LeftArrayList", "RightArrayList" })
+        {
+            var list = (INamedTypeSymbol)Field(name);
+            HasOnly(emitter, minter.Type(list) + "/typearg/0", "type", minter.Type(list.TypeArguments.Single()));
+        }
+
+        // Hand-authored expected identities: elements resolve to their own assembly, generic arguments from another
+        // assembly are qualified, and the established same-assembly form is unchanged.
+        const string type = "http://dotnet.example/type/";
+        Assert.Equal(type + "Left/0.0.0.0/Shared.Arg%5B%5D", minter.Type(Field("LeftArray")));
+        Assert.Equal(type + "Right/0.0.0.0/Shared.Arg%2A", minter.Type(Field("RightPointer")));
+        Assert.EndsWith("/System.Collections.Generic.List%601%5B%5BLeft%2C0.0.0.0%5DShared.Arg%5D", minter.Type(Field("LeftList")));
+        Assert.EndsWith("/System.Collections.Generic.List%601%5B%5BRight%2C0.0.0.0%5DShared.Arg%5B%5D%5D", minter.Type(Field("RightArrayList")));
+        Assert.Contains("/type/Left/0.0.0.0/Shared.Arg", minter.Type(((IArrayTypeSymbol)Field("LeftArray")).ElementType));
+        Assert.Contains("/type/Right/0.0.0.0/Shared.Arg%5B%5D", minter.Type(Field("RightArray")));
+        Assert.EndsWith("/System.Collections.Generic.List%601%5BSystem.Int32%5D", minter.Type(Field("Ints")));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void FunctionPointers_PreserveSignaturesAndGenericOwners(bool metadata)
     {
         var compilation = TestUtilities.CreateCompilation("""
@@ -203,7 +356,7 @@ public class PhaseCSignatureTests
 
     private static void AssertSignatureParameter(TestEmitter emitter, IriMinter minter, IFunctionPointerTypeSymbol pointer, ITypeSymbol target)
     {
-        Has(emitter, minter.Type(pointer) + "/sigparam/0", "parameterType", minter.Type(target));
+        HasOnly(emitter, minter.Type(pointer) + "/sigparam/0", "parameterType", minter.Type(target));
     }
 
     private static MetadataReference AliasedReference(byte[] image, string alias) =>
@@ -224,6 +377,15 @@ public class PhaseCSignatureTests
         var emitter = new TestEmitter();
         new AssemblyGraphExtractor(emitter, new ExtractionOptions { IncludeAttributes = false }).Extract(compilation, assembly);
         return emitter;
+    }
+
+    // Exactly one value for (subject, predicate), and it is the expected one: a merged identity shows up as a
+    // second value on the shared subject.
+    private static void HasOnly(TestEmitter emitter, string subject, string predicate, string value)
+    {
+        var values = emitter.Triples.Where(triple => triple.Subject == subject
+            && triple.Predicate == "http://dotnet.example/ontology/" + predicate).Select(triple => triple.Object).Distinct().ToList();
+        Assert.Equal(new[] { value }, values);
     }
 
     private static void Has(TestEmitter emitter, string subject, string predicate, string value)

@@ -18,8 +18,36 @@ public class IriMinterTests
         var minter = new IriMinter();
 
         Assert.Equal("http://dotnet.example/type/TestAsm/0.0.0.0/Sample.C", minter.Type(type));
-        Assert.Equal("http://dotnet.example/type/_builtin_/System.Int32%2A", minter.Type(pointer));
+        // Pointers are scoped by their element's assembly (was _builtin_, which merged same-named elements).
+        Assert.Equal("http://dotnet.example/type/System.Private.CoreLib/8.0.0.0/System.Int32%2A", minter.Type(pointer));
         Assert.Equal("http://dotnet.example/type/System.Private.CoreLib/8.0.0.0/System.Collections.Generic.List%601%5BSystem.Int32%5D", minter.Type(list));
+    }
+
+    [Fact]
+    public void Type_ArraysAndGenericArgumentsFromTwoVersionsOfOneAssembly_StayDistinct()
+    {
+        static (ITypeSymbol Array, ITypeSymbol List) Wrappers(string version)
+        {
+            var lib = TestUtilities.CreateCompilation(
+                $"[assembly: System.Reflection.AssemblyVersion(\"{version}\")] namespace Shared {{ public class Arg {{}} }}", "Lib");
+            using var stream = new MemoryStream();
+            Assert.True(lib.Emit(stream).Success);
+            var consumer = TestUtilities.CreateCompilation(
+                "public class Root { public Shared.Arg[] Array; public System.Collections.Generic.List<Shared.Arg> List; }", "Root")
+                .AddReferences(MetadataReference.CreateFromImage(stream.ToArray()));
+            Assert.DoesNotContain(consumer.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+            var root = consumer.GetTypeByMetadataName("Root")!;
+            return (((IFieldSymbol)root.GetMembers("Array").Single()).Type, ((IFieldSymbol)root.GetMembers("List").Single()).Type);
+        }
+
+        var minter = new IriMinter();
+        var v1 = Wrappers("1.0.0.0");
+        var v2 = Wrappers("2.0.0.0");
+
+        Assert.Equal("http://dotnet.example/type/Lib/1.0.0.0/Shared.Arg%5B%5D", minter.Type(v1.Array));
+        Assert.Equal("http://dotnet.example/type/Lib/2.0.0.0/Shared.Arg%5B%5D", minter.Type(v2.Array));
+        Assert.NotEqual(minter.Type(v1.List), minter.Type(v2.List));
+        Assert.EndsWith("List%601%5B%5BLib%2C1.0.0.0%5DShared.Arg%5D", minter.Type(v1.List));
     }
 
     #region Basic Functionality Tests
