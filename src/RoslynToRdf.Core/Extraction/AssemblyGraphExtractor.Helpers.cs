@@ -13,6 +13,9 @@ public sealed partial class AssemblyGraphExtractor
         if (type is IPointerTypeSymbol pointerType)
             return EnsurePointerTypeEmitted(pointerType);
 
+        if (type is IFunctionPointerTypeSymbol functionPointerType)
+            return EnsureFunctionPointerTypeEmitted(functionPointerType);
+
         if (type is ITypeParameterSymbol)
             return _iris.Type(type);
 
@@ -47,6 +50,14 @@ public sealed partial class AssemblyGraphExtractor
         {
             var asmIri = _iris.Assembly(namedType.ContainingAssembly);
             _emitter.EmitIri(typeIri, Prop(DotNetOntology.TypeRels.DefinedInAssembly), asmIri);
+            var assembly = namedType.ContainingAssembly;
+            _emitter.EmitLiteral(asmIri, Prop(DotNetOntology.AsmProps.Name), assembly.Name);
+            _emitter.EmitLiteral(asmIri, Prop(DotNetOntology.AsmProps.Version), assembly.Identity.Version.ToString());
+            if (!string.IsNullOrEmpty(assembly.Identity.CultureName))
+                _emitter.EmitLiteral(asmIri, Prop(DotNetOntology.AsmProps.Culture), assembly.Identity.CultureName);
+            if (!assembly.Identity.PublicKeyToken.IsEmpty)
+                _emitter.EmitLiteral(asmIri, Prop(DotNetOntology.AsmProps.PublicKeyToken),
+                    Convert.ToHexString(assembly.Identity.PublicKeyToken.ToArray()).ToLowerInvariant());
         }
 
         if (namedType.ContainingNamespace is { IsGlobalNamespace: false } containingNamespace)
@@ -111,6 +122,33 @@ public sealed partial class AssemblyGraphExtractor
         var pointedAtIri = EnsureTypeEmitted(pointerType.PointedAtType);
         _emitter.EmitIri(typeIri, Prop(DotNetOntology.TypeRels.PointerElementType), pointedAtIri);
 
+        return typeIri;
+    }
+
+    private string EnsureFunctionPointerTypeEmitted(IFunctionPointerTypeSymbol pointer)
+    {
+        var typeIri = _iris.Type(pointer);
+        if (!_emittedTypes.Add(typeIri))
+            return typeIri;
+
+        var signature = pointer.Signature;
+        _emitter.EmitIri(typeIri, RdfType, Prop(DotNetOntology.Classes.Type));
+        _emitter.EmitLiteral(typeIri, Prop(DotNetOntology.TypeProps.TypeKind), "FunctionPointer");
+        _emitter.EmitLiteral(typeIri, Prop(DotNetOntology.TypeRels.SignatureReturnRefKind), signature.RefKind.ToString());
+        _emitter.EmitLiteral(typeIri, Prop(DotNetOntology.TypeRels.CallingConvention), signature.CallingConvention.ToString());
+        if (!signature.ReturnsVoid)
+            _emitter.EmitIri(typeIri, Prop(DotNetOntology.TypeRels.SignatureReturnType), EnsureTypeEmitted(signature.ReturnType));
+        foreach (var convention in signature.UnmanagedCallingConventionTypes)
+            _emitter.EmitIri(typeIri, Prop(DotNetOntology.TypeRels.CallingConventionType), EnsureTypeEmitted(convention));
+        foreach (var parameter in signature.Parameters)
+        {
+            var parameterIri = $"{typeIri}/sigparam/{parameter.Ordinal}";
+            _emitter.EmitIri(typeIri, Prop(DotNetOntology.TypeRels.SignatureParameter), parameterIri);
+            _emitter.EmitIri(parameterIri, RdfType, Prop(DotNetOntology.Classes.Parameter));
+            _emitter.EmitInt(parameterIri, Prop(DotNetOntology.ParamProps.Ordinal), parameter.Ordinal);
+            _emitter.EmitLiteral(parameterIri, Prop(DotNetOntology.ParamProps.RefKind), parameter.RefKind.ToString());
+            _emitter.EmitIri(parameterIri, Prop(DotNetOntology.ParamRels.ParameterType), EnsureTypeEmitted(parameter.Type));
+        }
         return typeIri;
     }
 

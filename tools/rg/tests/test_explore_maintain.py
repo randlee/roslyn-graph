@@ -158,6 +158,24 @@ def test_export_requires_construct(tmp_path):
     assert info.value.problems[0].code == "EXPORT_NEEDS_CONSTRUCT"
 
 
+def test_query_is_unlimited_by_default_and_marks_explicit_limits_partial(monkeypatch, tmp_path):
+    monkeypatch.setattr(explore, "store_for", lambda _: (tmp_path / "store", {"kind": "solution"}))
+    seen = []
+    monkeypatch.setattr(explore.oxigraph, "select", lambda _store, text, **_kwargs: seen.append(text) or [{"n": str(i)} for i in range(3)])
+    unlimited = explore.query(tmp_path / "manifest.json", "SELECT ?n WHERE {}", union=False)
+    assert unlimited["rowCount"] == 3 and unlimited["truncated"] is False and "LIMIT" not in seen[-1]
+    limited = explore.query(tmp_path / "manifest.json", "SELECT ?n WHERE {}", union=False, limit=2)
+    assert limited["rowCount"] == 2 and limited["truncated"] is True and "LIMIT 3" in seen[-1]
+
+
+def test_export_rejects_invalid_or_conflicting_explicit_limits(tmp_path):
+    query = "CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }"
+    for kwargs in ({"max_triples": 0}, {"unbounded": True, "max_triples": 1}):
+        with pytest.raises(RgError) as info:
+            explore.export(tmp_path / "manifest.json", query, tmp_path / "o.nt", True, False, **kwargs)
+        assert info.value.problems[0].code == "USAGE"
+
+
 def test_read_query_needs_exactly_one_source(tmp_path):
     with pytest.raises(RgError):
         explore.read_query(None, None)
