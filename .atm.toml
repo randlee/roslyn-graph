@@ -1,0 +1,94 @@
+# ATM configuration for roslyn-graph (Roslyn-based code graph).
+#
+# Runtime identity (see `atm help identity`):
+#   export ATM_IDENTITY=rg-lead ATM_TEAM=rgraph
+#
+# Register the team on the ATM daemon before first use. --backend herdr is NOT
+# set by add-member and without it no nudge ever reaches a pane (atm doctor still
+# reports "healthy", so this is the silent half of the setup):
+#   atm teams add-member rgraph rg-lead     --agent-type lead      --model opus          --home-dir "$HOME/github/roslyn-graph" --backend herdr
+#   atm teams add-member rgraph rg-qa       --agent-type qa        --model sonnet        --home-dir "$HOME/github/roslyn-graph" --backend herdr
+#   atm teams add-member rgraph rg-sanity   --agent-type sanity    --model sonnet        --home-dir "$HOME/github/roslyn-graph" --backend herdr
+#   atm teams add-member rgraph rg-publisher --agent-type publisher --model sonnet       --home-dir "$HOME/github/roslyn-graph" --backend herdr
+#   atm teams add-member rgraph typ         --agent-type dev       --model gpt-6.1-terra --home-dir "$HOME/github/roslyn-graph" --backend herdr
+#   atm teams add-member rgraph link        --agent-type dev       --model gpt-6-luna    --home-dir "$HOME/github/roslyn-graph" --backend herdr
+#   atm teams add-member rgraph sraf        --agent-type dev       --model gpt-6.1-sol   --home-dir "$HOME/github/roslyn-graph" --backend herdr
+#   (then, per codex member: atm teams update-member rgraph <name> --harness codex-cli)
+#
+# Conventions carried from the rest of the fleet:
+#   - 'rg-' prefix on the role panes keeps herdr agent names unique machine-wide.
+#   - Dev names encode the codex model: typ=terra, link=luna, sraf=sol.
+#   - Codex panes run --no-daemon AND --yolo: under codex 0.16x the shared
+#     app-server does not inherit the pane environment, so ATM_IDENTITY and
+#     BEADS_ACTOR arrive empty and the agent cannot identify itself.
+#   - rg-sanity is deliberately claude, not codex: an independent verifier that
+#     shares the developers' model family is a weaker check.
+#
+# No [startup.*] blocks: this repo has no publisher or sanity role file yet
+# (.claude/agents/ carries only quality-mgr, critical-plan-reviewer and
+# plan-scope-reviewer), so a directive would point at a path that does not exist
+# and fail silently on launch. Add them when the role files land.
+
+[atm]
+default_team = "rgraph"
+
+[rmux]
+session = "rgraph"
+
+[[rmux.windows]]
+name = "lead"
+layout = "even-horizontal"
+
+[[rmux.windows.panes]]
+name = "rg-lead"
+model = "opus"
+dir = "/Users/randlee/github/roslyn-graph"
+env = { ATM_IDENTITY = "rg-lead", ATM_TEAM = "rgraph", CLAUDE_CODE_TASK_LIST_ID = "rgraph" }
+
+[[rmux.windows]]
+name = "developers"
+layout = "even-horizontal"
+
+[[rmux.windows.panes]]
+name = "typ"
+command = "codex --no-daemon -c features.hooks=true --model gpt-6.1-terra --yolo"
+dir = "/Users/randlee/github/roslyn-graph"
+env = { ATM_IDENTITY = "typ", ATM_TEAM = "rgraph", CLAUDE_CODE_TASK_LIST_ID = "rgraph" }
+
+[[rmux.windows.panes]]
+name = "link"
+command = "codex --no-daemon -c features.hooks=true --model gpt-6-luna --yolo"
+dir = "/Users/randlee/github/roslyn-graph"
+env = { ATM_IDENTITY = "link", ATM_TEAM = "rgraph", CLAUDE_CODE_TASK_LIST_ID = "rgraph" }
+
+[[rmux.windows.panes]]
+name = "sraf"
+command = "codex --no-daemon -c features.hooks=true --model gpt-6.1-sol --yolo"
+dir = "/Users/randlee/github/roslyn-graph"
+env = { ATM_IDENTITY = "sraf", ATM_TEAM = "rgraph", CLAUDE_CODE_TASK_LIST_ID = "rgraph" }
+
+[[rmux.windows]]
+name = "quality"
+layout = "even-horizontal"
+
+[[rmux.windows.panes]]
+name = "rg-qa"
+model = "sonnet"
+dir = "/Users/randlee/github/roslyn-graph"
+env = { ATM_IDENTITY = "rg-qa", ATM_TEAM = "rgraph", CLAUDE_CODE_TASK_LIST_ID = "rgraph" }
+
+[[rmux.windows.panes]]
+name = "rg-sanity"
+model = "sonnet"
+dir = "/Users/randlee/github/roslyn-graph"
+env = { ATM_IDENTITY = "rg-sanity", ATM_TEAM = "rgraph", CLAUDE_CODE_TASK_LIST_ID = "rgraph" }
+
+[[rmux.windows]]
+name = "publishing"
+layout = "even-horizontal"
+
+[[rmux.windows.panes]]
+name = "rg-publisher"
+model = "sonnet"
+dir = "/Users/randlee/github/roslyn-graph"
+env = { ATM_IDENTITY = "rg-publisher", ATM_TEAM = "rgraph", CLAUDE_CODE_TASK_LIST_ID = "rgraph" }
