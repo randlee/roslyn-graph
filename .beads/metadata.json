@@ -1,0 +1,10 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "server",
+  "dolt_server_user": "skillrx",
+  "dolt_database": "roslyn-graph",
+  "project_id": "cba40b91-27e2-4f42-b480-c6ac28166ac5",
+  "global_dolt_database": "beads_global",
+  "global_project_id": "00000000-0000-0000-0000-000000000000"
+}
