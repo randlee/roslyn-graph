@@ -7,6 +7,7 @@ using RoslynToRdf.Core.Model;
 
 namespace RoslynToRdf.Tests;
 
+[Collection("ProcessConsole")]
 public class DeclarationIndexerTests
 {
     private static string WriteFiles(params (string Name, string Text)[] files)

@@ -9,4 +9,3 @@ SELECT ?assembly ?fullName (COUNT(DISTINCT ?physical) AS ?versions) (GROUP_CONCA
 GROUP BY ?assembly ?fullName
 HAVING (COUNT(DISTINCT ?physical) > 1)
 ORDER BY ?assembly ?fullName
-LIMIT 500

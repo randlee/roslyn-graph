@@ -18,4 +18,3 @@ SELECT ?assemblyName ?typeName (COUNT(DISTINCT ?method) AS ?unsafeMethodCount) W
 }
 GROUP BY ?assemblyName ?typeName
 ORDER BY ?assemblyName ?typeName
-LIMIT 2000

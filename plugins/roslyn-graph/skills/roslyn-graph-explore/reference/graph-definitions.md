@@ -37,10 +37,10 @@ kinds = ["Interface"]                          # optional filter for pattern mat
 implementations = "transitive"                 # none | direct | transitive (default)
 
 [expand]
-follow = ["base_types", "interfaces", "member_types", "parameter_types"]   # default
+follow = ["base_types", "interfaces", "member_types", "parameter_types", "constraints", "enclosing_type", "body_types"]   # default
 generic_arguments = true                       # default: List<Foo> and Foo[] reference Foo
 max_depth = 0                                  # 0 = until closure (default)
-max_types = 1500                               # stop before exceeding this many types (default)
+# max_types = 1500                             # optional positive cap; omitted = until closure (default)
 
 [output]
 visualizer = "explorer"                        # default
@@ -66,26 +66,65 @@ is an error (`GRAPH_SEED_NOT_FOUND`); find exact names with `queries/find-type.r
 | `interfaces` | the interfaces it implements or extends (`dt:implements`) |
 | `member_types` | return, property, field and event types of its members |
 | `parameter_types` | parameter types of its methods, constructors and indexers |
+| `constraints` | constraints on its type or method type parameters |
+| `enclosing_type` | its containing type when it is nested |
+| `body_types` | statically bound types used by its members (`dt:hasMember` / `dt:usesType`), including uncalled private bodies |
 | `attributes` | attribute classes applied to it or its members |
-| `referenced_by` | component types that consume it through inheritance, implemented interfaces, member/parameter types, or attributes |
+| `referenced_by` | component types that consume it through inheritance, interfaces, member/parameter/body types or constraints; attribute consumers only when `attributes` is also enabled |
 
 With `generic_arguments`, constructed generics contribute their definition and every type argument, and
-arrays their element type. Only component types are added; references to framework types end there.
+arrays and pointers their element type. Function pointers contribute `dt:signatureReturnType`,
+`dt:signatureParameter` / `dt:parameterType`, and `dt:callingConventionType` targets. Delegate Invoke
+signatures use the existing member/parameter relations. Saved explicit follow lists are preserved:
+`body_types` is a default for omitted lists, not an automatic addition to a saved list.
+
+Only component definitions enter the traversal frontier. Registered, already-analyzed dependencies
+may supply a reached definition by exact bound assembly/type identity and configured TFM. Reduction
+never downloads packages, restores, executes the build plan or regenerates artifacts. Unregistered
+dependencies remain external boundaries, not extra movable types.
 
 ### Output
 
 `rg.py graph --definition <file> [--output-dir <dir>] [--open]` writes `<name>.nt` and `<name>.html`
 (default folder: `out/` next to the definition) and returns a `type: "graph"` result with the seed and
-implementation counts, per-depth growth (`expansion`), the total, `truncated` when `max_types` stopped
-it, and the export summary.
+implementation counts, per-depth growth (`expansion`), the total, `truncated` when an explicit `max_types`
+or positive `max_depth` stopped expansion, and the export summary.
 
 Edges drawn: `dt:inherits`, `dt:implements` between exported types, plus `rg:references` for every other
 reference that pulled a type in, drawn as dotted grey lines.
 
 With `members = true` (the default) every exported type also carries its members: kind, name, type
 (`dt:returnType`, `dt:propertyType`, `dt:fieldType`, `dt:eventType`) and parameters (name, ordinal,
-type), so clicking a type shows its signatures. With `logical = true` the members of a type present in
+type), plus original `dt:usesType` body edges. Self-use facts remain even though projected
+`rg:references` self-edges are omitted. With `logical = true` the members of a type present in
 several versions are merged with the type. Set `members = false` for very large graphs.
+With `members = false`, enabled external boundaries still retain the minimal original witness path:
+type-to-member ownership, the member's typed edge and any necessary wrapper/signature chain, plus
+boundary identity. Unrelated member names, flags, parameters and other member details remain omitted.
+Without boundary targets, this option's existing output is unchanged. `externalReferences` is present
+in the context in either mode.
+
+### Dependency context and boundaries
+
+The adjacent context pins admitted artifacts in `additionalComponents`. Each entry records
+`artifactId`, `graphIri`, `manifestPath`, `origin`, `package` and `assembly`; the source manifest is
+not modified. `logicalTypeMappings` preserves physical-to-logical identities for newly admitted
+types when the source view uses logical output. Reopening uses these pins, not a newer catalog.
+
+`externalReferences` records unresolved boundary evidence: owner, predicate, target, assembly,
+reason and known manifest package identity. Boundary types retain their available RDF identity and
+connecting wrapper/signature edges, but do not enter the frontier or count as selected components.
+Package identity is never inferred from an assembly name. Attribute-only boundaries require
+`attributes` in the follow list.
+
+Missing, unreadable, incompatible or ambiguous registered artifacts are diagnosed as incomplete
+coverage while independent branches continue. Ambiguity reports candidate artifact IDs and admits
+neither; there is no newest-version fallback. An unregistered package is an intentional boundary.
+Legacy missing identity fields are reported, not invented. Published manifests lack affirmative
+body-coverage certification, so known facts remain usable but missing coverage evidence is
+unknown/incomplete; even existing `dt:usesType` triples do not certify completeness.
+Missing or corrupt candidate stores are diagnosed without hiding independent candidates.
+Other store/query/resource failures remain errors, not complete partial results.
 
 ## Example
 
@@ -102,10 +141,12 @@ kinds = ["Interface"]
 implementations = "transitive"
 
 [expand]
-follow = ["base_types", "interfaces", "member_types", "parameter_types"]
+follow = ["base_types", "interfaces", "member_types", "parameter_types", "constraints", "enclosing_type", "body_types"]
 max_depth = 0
-max_types = 1500
+# max_types = 1500  # optional cap
 ```
 
-When the result is `truncated`, narrow the seeds, drop `parameter_types`, or set `max_depth`, and tell
-the user what the limit cut.
+When the result is `truncated`, an explicit type cap or depth bound cut the traversal; tell the user which
+limit cut it. `rg.py export` accepts optional `--max-triples N`, which sets a positive export cap and fails loudly
+when reached. `--max-triples` cannot be combined with `--unbounded`, which preserves the compatibility mode that disables
+the export timeout. Explicit `LIMIT` clauses in saved queries are preserved.

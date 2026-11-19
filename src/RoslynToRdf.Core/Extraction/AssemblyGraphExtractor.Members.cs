@@ -75,6 +75,7 @@ public sealed partial class AssemblyGraphExtractor
                     _emitter.EmitIri(methodIri, Prop(DotNetOntology.TypeRels.RelatedTo), 
                         related is ITypeSymbol t ? EnsureTypeEmitted(t) : _iris.Member(related));
         }
+        ExtractBodyDependencies(method, methodIri);
     }
 
     private void ExtractProperty(string typeIri, IPropertySymbol prop)
@@ -133,6 +134,7 @@ public sealed partial class AssemblyGraphExtractor
             foreach (var related in _xmlDocParser.GetSeeAlsoReferences(prop))
                 _emitter.EmitIri(propIri, Prop(DotNetOntology.TypeRels.RelatedTo), 
                     related is ITypeSymbol t ? EnsureTypeEmitted(t) : _iris.Member(related));
+        ExtractBodyDependencies(prop, propIri);
     }
 
     private void ExtractField(string typeIri, IFieldSymbol field)
@@ -163,6 +165,7 @@ public sealed partial class AssemblyGraphExtractor
             foreach (var attr in field.GetAttributes())
                 ExtractAttribute(fieldIri, field, attr, attrIndex++);
         }
+        ExtractBodyDependencies(field, fieldIri);
     }
 
     private void ExtractEvent(string typeIri, IEventSymbol evt)
@@ -202,6 +205,7 @@ public sealed partial class AssemblyGraphExtractor
             foreach (var attr in evt.GetAttributes())
                 ExtractAttribute(evtIri, evt, attr, attrIndex++);
         }
+        ExtractBodyDependencies(evt, evtIri);
     }
 
     private void ExtractAccessorUnsafeFacts(string typeIri, string memberIri, IMethodSymbol? accessor)

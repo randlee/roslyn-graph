@@ -295,6 +295,115 @@ def read_jsonl(path: Path) -> list[dict]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
 
 
+@pytest.fixture
+def pinned_graph(tmp_path, view):
+    graph = write_graph(tmp_path, view)
+    physical, logical, external = "urn:type:dependency", "urn:logical:dependency", "urn:type:external"
+    assembly, component_graph = "urn:assembly:dependency", "urn:graph:dependency"
+    directory = tmp_path / "pinned"
+    directory.mkdir()
+    manifest = directory / "manifest.json"
+    pin = {"artifactId": "dependency-1", "graphIri": component_graph, "manifestPath": str(manifest),
+           "origin": {"kind": "nuget", "id": "Dependency"}, "package": {"id": "Dependency", "version": "1.0"},
+           "assembly": {"name": "Dependency", "version": "1.0.0.0"}}
+    manifest.write_text(json.dumps({"schemaVersion": 2, "kind": "assembly", **pin}))
+    triples = tmp_path / "dependency.nt"
+    triples.write_text("\n".join(asm_lines(assembly, "Dependency", ["Dependency"])
+                                + type_lines(physical, assembly, "Dependency.Entry", "Class", assembly + "/ns/Dependency")
+                                + [f"<{physical}> <{DT}hasMember> <urn:member:run> .",
+                                   f"<urn:member:run> <{DT}usesType> <{external}> ."]) + "\n")
+    oxigraph.load(directory / "store.oxigraph", triples)
+    with graph.open("a") as handle:
+        handle.write(f'<{logical}> <{DT}fullName> "Dependency.Entry" .\n'
+                     f'<{external}> <{DT}fullName> "External.Entry" .\n')
+    context_path = graph.with_suffix(".context.json")
+    context = json.loads(context_path.read_text())
+    context.update({"additionalComponents": [pin], "logicalTypeMappings": {physical: logical},
+                    "externalReferences": [{"owner": "urn:member:run", "predicate": DT + "usesType",
+                                            "target": external, "assembly": "urn:assembly:external",
+                                            "reason": "unregistered"}]})
+    context_path.write_text(json.dumps(context))
+    return graph, manifest, pin, context
+
+
+def test_pinned_records_reopen_default_store_and_retain_boundary_provenance(tmp_path, pinned_graph):
+    graph, manifest, pin, context = pinned_graph
+    source = records.read_graph(graph)
+    assert "urn:type:external" not in source.names
+    store = records.Store(Path(source.store_manifest), None, source.context)
+    assert store.own_by_name(["Dependency.Entry"]) == [("urn:type:dependency", "Dependency.Entry", pin["graphIri"])]
+    assert store.pairs(["urn:member:run"], "?t dt:usesType ?r") == [("urn:member:run", "urn:type:external")]
+    assert store.component_manifest(pin["graphIri"])["artifactId"] == pin["artifactId"]
+    out = tmp_path / "pinned.jsonl"
+    result = records.run(str(graph), None, None, str(write_schema(tmp_path)), out, "jsonl", {})
+    assert result["count"] == 6
+    dependency = next(row for row in read_jsonl(out) if row["fullName"] == "Dependency.Entry")
+    assert dependency["iri"] == "urn:logical:dependency"
+    assert dependency["assemblies"] == ["Dependency"]
+    assert dependency["origin"] == "nuget"
+    provenance = json.loads(out.with_suffix(".context.json").read_text())
+    assert provenance["input"]["context"] == context
+    assert manifest.is_file()
+
+
+@pytest.mark.parametrize("damage", ["deleted", "id", "graph", "store"])
+def test_pinned_records_fail_on_missing_or_mismatched_artifact(tmp_path, pinned_graph, damage):
+    graph, manifest, pin, context = pinned_graph
+    if damage == "deleted":
+        manifest.unlink()
+    elif damage == "store":
+        manifest.parent.joinpath("store.oxigraph").rename(manifest.parent / "missing-store")
+    else:
+        data = json.loads(manifest.read_text())
+        data["artifactId" if damage == "id" else "graphIri"] = "different"
+        manifest.write_text(json.dumps(data))
+    with pytest.raises(RgError):
+        records.run(str(graph), None, None, str(write_schema(tmp_path)), tmp_path / "failed.jsonl", "jsonl", {})
+    assert not (tmp_path / "failed.jsonl").exists()
+
+
+def test_external_context_does_not_hide_other_missing_types(tmp_path, pinned_graph):
+    graph, _, _, _ = pinned_graph
+    with graph.open("a") as handle:
+        handle.write(f'<urn:type:missing> <{DT}fullName> "Missing.Type" .\n')
+    with pytest.raises(RgError) as info:
+        records.run(str(graph), None, None, str(write_schema(tmp_path)), tmp_path / "failed.jsonl", "jsonl", {})
+    assert codes(info) == ["RECORDS_TYPE_NOT_IN_STORE"]
+    assert info.value.problems[0].context["missing"] == ["Missing.Type"]
+
+
+def test_pinned_records_cli_ignores_catalog_changes(tmp_path, pinned_graph):
+    graph, _, pin, context = pinned_graph
+    replacement = tmp_path / ".roslyn-graph" / "assemblies" / "nuget" / "Dependency" / "new"
+    replacement.mkdir(parents=True)
+    (replacement / "manifest.json").write_text(json.dumps({"schemaVersion": 2, "kind": "assembly",
+                                                          **pin, "artifactId": "newer-unpinned"}))
+    output = tmp_path / "cli-pinned.jsonl"
+    result = subprocess.run([sys.executable, str(SCRIPTS / "rg.py"), "records", "--graph", str(graph),
+                             "--schema", str(write_schema(tmp_path)), "--output", str(output)],
+                            capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr + result.stdout
+    rows = read_jsonl(output)
+    assert len(rows) == 6
+    assert next(row for row in rows if row["fullName"] == "Dependency.Entry")["iri"] == "urn:logical:dependency"
+    provenance = json.loads(output.with_suffix(".context.json").read_text())
+    assert provenance["input"]["context"]["additionalComponents"] == context["additionalComponents"]
+    assert provenance["input"]["context"]["externalReferences"] == context["externalReferences"]
+
+
+def test_pinned_records_preserve_physical_keys(tmp_path, pinned_graph):
+    graph, _, _, context = pinned_graph
+    graph.write_text(graph.read_text().replace("urn:logical:dependency", "urn:type:dependency"))
+    context.pop("logicalTypeMappings")
+    graph.with_suffix(".context.json").write_text(json.dumps(context))
+    source = records.read_graph(graph)
+    store = records.Store(Path(source.store_manifest), None, source.context)
+    units, _ = records.resolve_units(store, source)
+    dependency = next(unit for unit in units if unit.full_name == "Dependency.Entry")
+    assert dependency.key == "urn:type:dependency"
+    assert dependency.physicals == ["urn:type:dependency"]
+
+
 @requires_oxigraph
 def test_graph_export_of_every_store_field(tmp_path, view):
     graph = write_graph(tmp_path, view)

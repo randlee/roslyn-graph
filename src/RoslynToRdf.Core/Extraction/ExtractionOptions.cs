@@ -43,7 +43,7 @@ public sealed class ExtractionOptions
     /// <summary>
     /// Include attributes on types and members.
     /// </summary>
-    public bool IncludeAttributes { get; set; } = true;
+    public bool IncludeAttributes { get; set; } = false;
 
     /// <summary>
     /// Include reference types (external assemblies) as nodes with minimal info.

@@ -51,7 +51,21 @@ public sealed partial class AssemblyGraphExtractor
     /// <summary>
     /// Extract the type graph from a compilation, focusing on a target assembly.
     /// </summary>
-    public void Extract(Compilation compilation, IAssemblySymbol targetAssembly)
+    public void Extract(Compilation compilation, IAssemblySymbol targetAssembly, string? peImagePath = null)
+    {
+        _peImagePath = peImagePath;
+        _bodyResolutionDiagnostics.Clear();
+        try
+        {
+            ExtractCore(compilation, targetAssembly);
+        }
+        finally
+        {
+            DisposeMetadataBodies();
+        }
+    }
+
+    private void ExtractCore(Compilation compilation, IAssemblySymbol targetAssembly)
     {
         _xmlDocParser = new XmlDocParser(compilation);
         _compilation = compilation;
@@ -115,7 +129,8 @@ public sealed partial class AssemblyGraphExtractor
 
     private bool ShouldIncludeMember(ISymbol member)
     {
-        if (member.IsImplicitlyDeclared && !_options.IncludeCompilerGenerated)
+        if (member.IsImplicitlyDeclared && !_options.IncludeCompilerGenerated
+            && member is not IMethodSymbol { MethodKind: MethodKind.DelegateInvoke })
             return false;
 
         return member.DeclaredAccessibility switch
@@ -299,7 +314,9 @@ public sealed partial class AssemblyGraphExtractor
                                                method.MethodKind == MethodKind.StaticConstructor ||
                                                method.MethodKind == MethodKind.Destructor ||
                                                method.MethodKind == MethodKind.UserDefinedOperator ||
-                                               method.MethodKind == MethodKind.Conversion:
+                                               method.MethodKind == MethodKind.Conversion ||
+                                               method.MethodKind == MethodKind.DelegateInvoke ||
+                                               method.MethodKind == MethodKind.ExplicitInterfaceImplementation:
                     ExtractMethod(typeIri, method);
                     break;
                 case IPropertySymbol prop:

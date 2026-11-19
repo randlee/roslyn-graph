@@ -12,7 +12,6 @@ from . import artifacts, oxigraph
 from .result import RgError
 from .util import DT, RDF_TYPE, RG, resource
 
-MAX_ROWS = 2000
 _NT_LINE = re.compile(r'^(<[^>]*>|_:\S+) (<[^>]*>) (.*) \.$')
 
 
@@ -57,7 +56,6 @@ def read_query(query: str | None, query_file: str | None, params: list[str] | No
     return _PARAM.sub(lambda m: values[m.group(1)], text)
 
 
-MAX_EXPORT_TRIPLES = 500_000
 QUERY_TIMEOUT = 120  # seconds; exploration queries fail loudly instead of running unbounded
 _PROLOGUE = re.compile(r"^(\s*(?:#[^\n]*\n|PREFIX\s+\w*:\s*<[^>]*>|BASE\s+<[^>]*>|\s+))*", re.IGNORECASE)
 
@@ -76,11 +74,19 @@ def bounded_select(text: str, limit: int) -> str:
     return f"{prologue}SELECT * WHERE {{\n{body}\n}}\nLIMIT {limit + 1}\n"
 
 
-def query(manifest_path: Path, text: str, union: bool, limit: int = MAX_ROWS, timeout: int = QUERY_TIMEOUT) -> dict[str, Any]:
+def query(manifest_path: Path, text: str, union: bool, limit: int | None = None, timeout: int = QUERY_TIMEOUT) -> dict[str, Any]:
     store, manifest = store_for(manifest_path)
-    rows = oxigraph.select(store, bounded_select(text, limit), union=union, timeout=timeout)
-    return {"type": "query", "manifest": str(manifest_path), "kind": manifest["kind"], "rowCount": min(len(rows), limit),
-            "truncated": len(rows) > limit, "rows": rows[:limit]}
+    if limit is not None and limit <= 0:
+        raise RgError.of("USAGE", "--limit must be a positive integer.")
+    query_text = text if limit is None else bounded_select(text, limit)
+    # Validate SELECT form whether or not an explicit bound is requested.
+    if limit is None:
+        bounded_select(text, 1)
+    rows = oxigraph.select(store, query_text, union=union, timeout=timeout)
+    truncated = limit is not None and len(rows) > limit
+    selected = rows if limit is None else rows[:limit]
+    return {"type": "query", "manifest": str(manifest_path), "kind": manifest["kind"], "rowCount": len(selected),
+            "truncated": truncated, "rows": selected}
 
 
 def logical_map(store: Path, manifest: dict[str, Any]) -> dict[str, str]:
@@ -166,13 +172,17 @@ def write_context(data: Path, context: dict[str, Any]) -> Path:
 
 
 def export(manifest_path: Path, text: str, output: Path, union: bool, logical: bool, unbounded: bool = False,
-           max_triples: int = MAX_EXPORT_TRIPLES, timeout: int = QUERY_TIMEOUT, query_file: str | None = None,
+           max_triples: int | None = None, timeout: int = QUERY_TIMEOUT, query_file: str | None = None,
            params: list[str] | None = None) -> dict[str, Any]:
     """Run a CONSTRUCT. Results are never truncated silently: an oversized export or a runaway query fails with
     EXPORT_TOO_LARGE or QUERY_TIMEOUT unless --unbounded asks for a deliberate full export. The query and its
     parameters are recorded beside the output (<name>.context.json) so a rendered page can say where it came from."""
     if not re.search(r"\bCONSTRUCT\b", text, re.IGNORECASE):
         raise RgError.of("EXPORT_NEEDS_CONSTRUCT", "Exports use a CONSTRUCT query.", "See reference/query-design.md for the viewer-ready CONSTRUCT patterns.")
+    if max_triples is not None and max_triples <= 0:
+        raise RgError.of("USAGE", "--max-triples must be a positive integer.")
+    if unbounded and max_triples is not None:
+        raise RgError.of("USAGE", "--unbounded cannot be combined with --max-triples.")
     store, manifest = store_for(manifest_path)
     output.parent.mkdir(parents=True, exist_ok=True)
     raw = output.with_suffix(".raw.nt")
@@ -184,7 +194,7 @@ def export(manifest_path: Path, text: str, output: Path, union: bool, logical: b
                 line = line.strip()
                 if line:
                     lines.append(line)
-                    if not unbounded and len(lines) > max_triples:
+                    if max_triples is not None and len(lines) > max_triples:
                         raise RgError.of("EXPORT_TOO_LARGE", f"The export exceeds {max_triples:,} triples.",
                                          "Narrow the CONSTRUCT (a namespace, an assembly, one type's neighbourhood); "
                                          "pass --unbounded only for a deliberate full export.", maxTriples=max_triples)
